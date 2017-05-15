@@ -1,3 +1,17 @@
+/*
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
 #ifndef _VMCA_SERVICE_INCLUDES_H__
 #define _VMCA_SERVICE_INCLUDES_H__
 
@@ -8,6 +22,8 @@ extern "C" {
 #ifndef _WIN32
 
 #include <vmcasys.h>
+#include <vmafdclient.h>
+#include <vmafdtypes.h>
 
 #include <lw/types.h>
 #include <lw/base.h>
@@ -22,6 +38,9 @@ extern "C" {
 #include <openssl/conf.h>
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
+#include <openssl/bio.h>
+
+#include <gssapi/gssapi.h>
 
 #ifndef OPENSSL_NO_ENGINE
 #include <openssl/engine.h>
@@ -32,6 +51,14 @@ extern "C" {
 #include <vmca_h.h>
 //#include <vmcasrvutils.h>
 #include <vmcadb.h>
+
+#if 0
+#include <vmrest.h>
+#include <jansson.h>
+#include <common_types.h>
+#include <oidc_types.h>
+#include <oidc.h>
+#endif
 
 #include "defines.h"
 #include "structs.h"
@@ -64,6 +91,9 @@ extern "C" {
 #include <assert.h>
 #include <winsock2.h>
 #include "banned.h"
+#include <vmafdclient.h>
+#include <vmafdtypes.h>
+
 
 //#include <openssl/ssl.h>
 #include <openssl/err.h>

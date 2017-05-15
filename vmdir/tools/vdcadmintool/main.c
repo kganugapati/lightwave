@@ -1,3 +1,18 @@
+/*
+ * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
+
 #include "includes.h"
 
 #ifndef _WIN32
@@ -8,7 +23,7 @@ int _tmain(int argc, TCHAR *targv[])
 {
     while (1)
     {
-        CHAR pszChoice[3] = { '\0' };
+        CHAR pszChoice[16] = { '\0' };
         int choice = -1;
 
         VmDirReadString(
@@ -20,6 +35,8 @@ int _tmain(int argc, TCHAR *targv[])
             "3. Reset account password\n"
             "4. Set log level and mask\n"
             "5. Set vmdir state\n"
+            "6. Get vmdir state\n"
+            "7. Get vmdir log level and mask\n"
 //            "99. Set SRP Authentication data\n"  do not want to expose this to users.  internal test only.
             "==================\n\n",
             pszChoice,
@@ -53,6 +70,14 @@ int _tmain(int argc, TCHAR *targv[])
 
           case 5:
               VdcadminSetVmdirState();
+              break;
+
+          case 6:
+              VdcadminGetVmdirState();
+              break;
+
+          case 7:
+              VdcadminGetLogParameters();
               break;
 
           case 99:

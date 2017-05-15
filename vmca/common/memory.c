@@ -1,3 +1,16 @@
+/*
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
 
 #include "includes.h"
 
@@ -23,7 +36,7 @@ VMCAAllocateMemory(
     pMemory = calloc(1, dwSize);
     if (!pMemory)
     {
-        dwError = -2; //ERROR_NO_MEMORY;
+        dwError = VMCA_OUT_MEMORY_ERR;
         BAIL_ON_ERROR(dwError);
     }
 
@@ -39,6 +52,48 @@ error:
     goto cleanup;
 }
 
+DWORD
+VMCAReallocateMemory(
+    PVOID        pMemory,
+    PVOID*       ppNewMemory,
+    DWORD        dwSize
+    )
+{
+    DWORD       dwError = 0;
+    void*       pNewMemory = NULL;
+
+    if (!ppNewMemory)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMCA_ERROR(dwError);
+    }
+
+    if (pMemory)
+    {
+        pNewMemory = realloc(pMemory, dwSize);
+    }
+    else
+    {
+        dwError = VMCAAllocateMemory(dwSize, &pNewMemory);
+        BAIL_ON_VMCA_ERROR(dwError);
+    }
+
+    if (!pNewMemory)
+    {
+        dwError = VMCA_OUT_MEMORY_ERR;
+        BAIL_ON_VMCA_ERROR(dwError);
+    }
+
+    *ppNewMemory = pNewMemory;
+
+cleanup:
+
+    return dwError;
+
+error:
+
+    goto cleanup;
+}
 
 VOID
 VMCAFreeMemory(
@@ -60,19 +115,26 @@ VMCAAllocateStringWithLengthA(
     RP_PSTR * ppszString
     )
 {
+    DWORD dwError = 0;
     PSTR pszNewString = NULL;
 
     if (!ppszString || (DWORD)(dwSize + 1) == 0) {
-        return ERROR_INVALID_PARAMETER;
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_ERROR(dwError);
     }
     pszNewString = malloc(dwSize + 1);
     if (!pszNewString) {
-        return -2; //ERROR_NO_MEMORY
+        dwError = VMCA_OUT_MEMORY_ERR;
+        BAIL_ON_ERROR(dwError);
     }
     memcpy(pszNewString, pszString, dwSize);
     pszNewString[dwSize] = 0;
     *ppszString = pszNewString;
-    return 0;
+
+cleanup:
+    return dwError;
+error:
+    goto cleanup;
 }
 
 

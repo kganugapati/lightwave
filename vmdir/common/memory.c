@@ -16,14 +16,6 @@
 
 #include "includes.h"
 
-static
-DWORD
-vmdirVsnprintf(
-    PSTR*    ppszOut,
-    PCSTR    pszFormat,
-    va_list  args
-    );
-
 DWORD
 VmDirAllocateMemory(
     size_t   dwSize,
@@ -109,7 +101,7 @@ DWORD
 VmDirCopyMemory(
     PVOID   pDestination,
     size_t  destinationSize,
-    PCVOID  pSource,
+    const void* pSource,
     size_t  maxCount
     )
 {
@@ -212,78 +204,39 @@ VmDirFreeMemory(
 }
 
 DWORD
-VmDirAllocateStringAVsnprintf(
-    PSTR*   ppszOut,
-    PCSTR   pszFormat,
-    ...
-    )
-{
-    DWORD   dwError = 0;
-    BOOLEAN bVAEnd = FALSE;
-    va_list args;
-    //PSTR str1, str2;
-
-
-    if (!ppszOut || !pszFormat)
-    {
-        dwError = ERROR_INVALID_PARAMETER;
-        BAIL_ON_VMDIR_ERROR(dwError);
-    }
-
-    va_start(args, pszFormat);
-    bVAEnd = TRUE;
-
-    //TODO: Clean this up later
-    //str1 = va_arg( args, char*);
-    //str2 = va_arg( args, char*);
-
-    dwError = vmdirVsnprintf(
-                ppszOut,
-                pszFormat,
-                args);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-cleanup:
-
-    if (bVAEnd)
-    {
-        va_end(args);
-    }
-
-    return dwError;
-
-error:
-
-    goto cleanup;
-}
-
-DWORD
-VmDirAllocateStringA(
-    PCSTR   pszString,
-    PSTR*   ppszString
+VmDirAllocateStringOfLenA(
+    PCSTR   pszSource,
+    SIZE_T  sLength,
+    PSTR*   ppszDestination
     )
 {
     DWORD  dwError = 0;
     PSTR   pszNewString = NULL;
-    size_t dwLen = 0;
 
-    if (!pszString || !ppszString)
+    if (!pszSource || !ppszDestination)
     {
-        if (ppszString) { *ppszString = NULL; }
+        if (ppszDestination) { *ppszDestination = NULL; }
         return 0;
     }
 
-    dwLen = VmDirStringLenA(pszString);
-    // + 1 for \'0'
-    dwError = VmDirAllocateMemory(dwLen + 1, (PVOID*)&pszNewString);
+    //
+    // Check if the user is trying to copy more than is available.
+    //
+    if (strlen(pszSource) < sLength)
+    {
+        dwError = VMDIR_ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = VmDirAllocateMemory(sLength + 1, (PVOID*)&pszNewString);
     BAIL_ON_VMDIR_ERROR(dwError);
 
 #ifndef _WIN32
-    memcpy(pszNewString, pszString, dwLen);
+    memcpy(pszNewString, pszSource, sLength);
 #else
-    memcpy_s(pszNewString, (dwLen + 1), pszString, dwLen);
+    memcpy_s(pszNewString, sLength + 1, pszSource, sLength);
 #endif
-    *ppszString = pszNewString;
+    *ppszDestination = pszNewString;
 
 cleanup:
 
@@ -296,14 +249,27 @@ error:
     goto cleanup;
 }
 
+DWORD
+VmDirAllocateStringA(
+    PCSTR   pszString,
+    PSTR*   ppszString
+    )
+{
+    if (!pszString || !ppszString)
+    {
+        if (ppszString) { *ppszString = NULL; }
+        return 0;
+    }
+
+    return VmDirAllocateStringOfLenA(pszString, VmDirStringLenA(pszString), ppszString);
+}
+
 VOID
 VmDirFreeStringA(
     PSTR pszString
     )
 {
     VMDIR_SAFE_FREE_MEMORY(pszString);
-
-    return;
 }
 
 /*
@@ -348,8 +314,6 @@ VmDirFreeStringArrayW(
         VmDirFreeMemory(ppwszStrings);
     }
 }
-
-
 
 /*
  * pszString is expected to be a multistring.
@@ -411,9 +375,8 @@ error:
     goto cleanup;
 }
 
-static
 DWORD
-vmdirVsnprintf(
+VmDirVsnprintf(
     PSTR*    ppszOut,
     PCSTR    pszFormat,
     va_list args

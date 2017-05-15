@@ -1,6 +1,6 @@
 
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -507,7 +507,6 @@ VMCAGetRootCACertificateHW(
     PVMCA_CERTIFICATE* ppCertificate
 );
 
-
 // VMCAGetRootCACertificate gets the Root CA certificate
 // that is being used by the VMware Certificate Authority.
 //
@@ -515,6 +514,109 @@ VMCAGetRootCACertificateHW(
 //      pszServerName : VMCA Server Name
 //      dwCertLength  : Number of Certificates returned in the Container, it will 1 for this call.
 //      ppCertContainer : Pointer to a array of CertContainers
+// Returns:
+//  Error Code
+
+DWORD
+VMCASetServerOptionA(
+    PCSTR pszServerName,
+    unsigned int dwOption
+    );
+
+DWORD
+VMCASetServerOptionW(
+    PCWSTR pwszServerName,
+    unsigned int dwOption
+    );
+
+DWORD
+VMCASetServerOptionHA(
+    PVMCA_SERVER_CONTEXT hInBinding,
+    PCSTR pszServerName,
+    unsigned int dwOption
+    );
+
+DWORD
+VMCASetServerOptionHW(
+    PVMCA_SERVER_CONTEXT hInBinding,
+    PCWSTR pwszServerName,
+    unsigned int dwOption
+    );
+
+// VMCASetServerOption sets server option to enable certain behaviors
+//
+// Arguments :
+//      pszServerName : VMCA Server Name
+//      dwOption : Bit flag of options which you want to enable
+// Returns:
+//  Error Code
+
+DWORD
+VMCAUnsetServerOptionA(
+    PCSTR pszServerName,
+    unsigned int dwOption
+    );
+
+DWORD
+VMCAUnsetServerOptionW(
+    PCWSTR pwszServerName,
+    unsigned int dwOption
+    );
+
+DWORD
+VMCAUnsetServerOptionHA(
+    PVMCA_SERVER_CONTEXT hInBinding,
+    PCSTR pszServerName,
+    unsigned int dwOption
+    );
+
+DWORD
+VMCAUnsetServerOptionHW(
+    PVMCA_SERVER_CONTEXT hInBinding,
+    PCWSTR pwszServerName,
+    unsigned int dwOption
+    );
+
+// VMCAUnsetServerOption unsets server option to disable certain behaviors
+//
+// Arguments :
+//      pszServerName : VMCA Server Name
+//      dwOption : Bit flag of options which you want to disable
+// Returns:
+//  Error Code
+
+DWORD
+VMCAGetServerOptionA(
+    PCSTR pszServerName,
+    unsigned int *pdwOption
+    );
+
+DWORD
+VMCAGetServerOptionW(
+    PCWSTR pwszServerName,
+    unsigned int *pdwOption
+    );
+
+DWORD
+VMCAGetServerOptionHA(
+    PVMCA_SERVER_CONTEXT hInBinding,
+    PCSTR pszServerName,
+    unsigned int *pdwOption
+    );
+
+DWORD
+VMCAGetServerOptionHW(
+    PVMCA_SERVER_CONTEXT hInBinding,
+    PCWSTR pwszServerName,
+    unsigned int *pdwOption
+    );
+
+// VMCAGetServerOption gets the current server option settings (enabled/disabled)
+// that is being used by the VMware Certificate Authority.
+//
+// Arguments :
+//      pszServerName : VMCA Server Name
+//      pdwOption : Bit flag of options which are currently enabled/disabled
 // Returns:
 //  Error Code
 
@@ -1105,21 +1207,6 @@ VMCAGetCertificateCountHW(
     VMCA_CERTIFICATE_STATUS dwStatus,
     DWORD *dwNumCertificates
 );
-// DWORD
-// VMCAReadPKCS12();
-
-
-DWORD
-VMCALoginUser(
-    PSTR pszDomain,
-    PSTR pszUserName,
-    PSTR pszPassword
-    );
-
-
-DWORD
-VMCALogout(
-    );
 
 DWORD
 VMCAOpenServerA(
@@ -1308,27 +1395,30 @@ VMCAGetCSRFromCertificate(
     PVMCA_CSR *ppszCSR
     );
 
+DWORD
+VMCAGetSignedCertificateForHostA(
+    PVMCA_SERVER_CONTEXT hInBinding,
+    PCSTR pszHostName,
+    PCSTR pszHostIp,
+    PCVMCA_CSR pCertRequest,
+    time_t tmNotBefore,
+    time_t tmNotAfter,
+    PVMCA_CERTIFICATE* ppCertificate
+    );
+
+DWORD
+VMCAGetSignedCertificateForHostW(
+    PVMCA_SERVER_CONTEXT hInBinding,
+    PCWSTR pszHostName,
+    PCWSTR pszHostIp,
+    PCVMCA_CSR pCertRequest,
+    time_t tmNotBefore,
+    time_t tmNotAfter,
+    PVMCA_CERTIFICATE* ppCertificate
+    );
 
 // VMCAPublishRootCerts publishes the root certificate to
 // the Lotus directory service.
-
-/* Defines related to GSS_SRP authentication */
-#ifndef GSS_SRP_MECH_OID
-#define GSS_SRP_MECH_OID_LENGTH 9
-#define GSS_SRP_MECH_OID "\x2a\x86\x48\x86\xf7\x12\x01\x02\x0a"
-#endif
-
-#ifndef GSS_SRP_PASSWORD_OID
-#define GSS_SRP_PASSWORD_OID "\x2b\x06\x01\x04\x01\x81\xd6\x29\x03\x01"
-#define GSS_SRP_PASSWORD_LEN 10
-#endif
-
-#ifndef SPNEGO_OID
-#define SPNEGO_OID_LENGTH 6
-#define SPNEGO_OID "\x2b\x06\x01\x05\x05\x02"
-#endif
-
-
 #ifdef UNICODE
 #define VMCA_PKCS_10_REQ_DATA               VMCA_PKCS_10_REQ_DATAW
 #define PVMCA_PKCS_10_REQ_DATA              PVMCA_PKCS_10_REQ_DATAW
@@ -1344,6 +1434,12 @@ VMCAGetCSRFromCertificate(
 #define VMCAGetCertificateAsString          VMCAGetCertificateAsStringW
 #define VMCAGetRootCACertificate            VMCAGetRootCACertificateW
 #define VMCAGetRootCACertificateH           VMCAGetRootCACertificateHW
+#define VMCASetServerOption                 VMCASetServerOptionW
+#define VMCASetServerOptionH                VMCASetServerOptionHW
+#define VMCAUnsetServerOption               VMCAUnsetServerOptionW
+#define VMCAUnsetServerOptionH              VMCAUnsetServerOptionHW
+#define VMCAGetServerOption                 VMCAGetServerOptionW
+#define VMCAGetServerOptionH                VMCAGetServerOptionHW
 #define VMCAGetServerVersion                VMCAGetServerVersionW
 #define VMCAGetServerVersionH               VMCAGetServerVersionHW
 #define VMCAGetSignedCertificate            VMCAGetSignedCertificateW
@@ -1364,6 +1460,7 @@ VMCAGetCSRFromCertificate(
 #define VMCAInitPKCS10Data                  VMCAInitPKCS10DataW
 #define VMCAInitPKCS10Data                  VMCAInitPKCS10DataW
 #define VMCAGetCertificateCount             VMCAGetCertificateCountW
+#define VMCAGetSignedCertificateForHost     VMCAGetSignedCertificateForHostW
 #else
 #define VMCA_PKCS_10_REQ_DATA               VMCA_PKCS_10_REQ_DATAA
 #define PVMCA_PKCS_10_REQ_DATA              PVMCA_PKCS_10_REQ_DATAA
@@ -1379,6 +1476,12 @@ VMCAGetCSRFromCertificate(
 #define VMCAGetCertificateAsString          VMCAGetCertificateAsStringA
 #define VMCAGetRootCACertificate            VMCAGetRootCACertificateA
 #define VMCAGetRootCACertificateH           VMCAGetRootCACertificateHA
+#define VMCASetServerOption                 VMCASetServerOptionA
+#define VMCASetServerOptionH                VMCASetServerOptionHA
+#define VMCAUnsetServerOption               VMCAUnsetServerOptionA
+#define VMCAUnsetServerOptionH              VMCAUnsetServerOptionHA
+#define VMCAGetServerOption                 VMCAGetServerOptionA
+#define VMCAGetServerOptionH                VMCAGetServerOptionHA
 #define VMCAGetServerVersion                VMCAGetServerVersionA
 #define VMCAGetServerVersionH               VMCAGetServerVersionHA
 #define VMCAGetSignedCertificate            VMCAGetSignedCertificateA
@@ -1398,6 +1501,7 @@ VMCAGetCSRFromCertificate(
 #define VMCAPublishRootCerts                VMCAPublishRootCertsA
 #define VMCAInitPKCS10Data                  VMCAInitPKCS10DataA
 #define VMCAGetCertificateCount             VMCAGetCertificateCountA
+#define VMCAGetSignedCertificateForHost     VMCAGetSignedCertificateForHostA
 #endif
 
 #ifdef __cplusplus

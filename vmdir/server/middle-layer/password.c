@@ -27,6 +27,8 @@
 
 #include "includes.h"
 
+PVDIR_PASSWORD_HASH_SCHEME _gpDefaultScheme = NULL;
+
 // NOTE: the first scheme in the table is the default scheme
 // NOTE: order of fields MUST stay in sync with struct definition...
 #define VDIR_PASSWORD_SCHEME_INITIALIZER                \
@@ -61,6 +63,16 @@
     VMDIR_SF_INIT(.pHashFunc, hashFuncSHA256),          \
     VMDIR_SF_INIT(.pNext, NULL)                         \
     },                                                  \
+    {                                                   \
+    VMDIR_SF_INIT(.uId, 0x4),                           \
+    VMDIR_SF_INIT(.uDigestSizeInByte, 20),              \
+    VMDIR_SF_INIT(.uIteration, 1),                      \
+    VMDIR_SF_INIT(.uSaltSizeInByte, 0),                 \
+    VMDIR_SF_INIT(.bPreSalt, TRUE),                     \
+    VMDIR_SF_INIT(.pszName, PASSWD_SCHEME_SHA1),        \
+    VMDIR_SF_INIT(.pHashFunc, hashFuncSHA1),            \
+    VMDIR_SF_INIT(.pNext, NULL)                         \
+    },                                                  \
 }
 
 /*
@@ -82,6 +94,14 @@ hashFuncSHA256(
 static
 DWORD
 hashFuncSHA512(
+    PCSTR     pszPassword,      // in:password string
+    uint8_t   uPasswordLen,     // in:password string length
+    PSTR      pszOutBuf         // caller supply buffer
+    );
+
+static
+DWORD
+hashFuncSHA1(
     PCSTR     pszPassword,      // in:password string
     uint8_t   uPasswordLen,     // in:password string length
     PSTR      pszOutBuf         // caller supply buffer
@@ -164,6 +184,13 @@ VmDirPasswordSchemeInit(
     int         iSize  = sizeof(initPasswordSchemeTbl)/sizeof(initPasswordSchemeTbl[0]);
     PVDIR_PASSWORD_HASH_SCHEME  pNewScheme = NULL;
     PVDIR_PASSWORD_HASH_SCHEME  pScheme = NULL;
+    DWORD       dwOverrideSchemeId = 0;
+
+    (VOID) VmDirGetRegKeyValueDword(
+                VMDIR_CONFIG_PARAMETER_V1_KEY_PATH,
+                VMDIR_REG_KEY_OVERRIDE_PASS_SCHEME,
+                &dwOverrideSchemeId,
+                FALSE);
 
     for (iCnt = iSize; iCnt > 0; iCnt--)
     {
@@ -182,19 +209,23 @@ VmDirPasswordSchemeInit(
 
         assert(pScheme->uDigestSizeInByte <= MAX_PASSWROD_DIGEST_LEN);
 
-        if (pNewScheme)
+        if (dwOverrideSchemeId == (DWORD)iCnt)
         {
-            pScheme->pNext = pNewScheme;
-            pNewScheme = pScheme;
+            _gpDefaultScheme = pScheme;
+            VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Override pass scheme to (%d)", dwOverrideSchemeId);
         }
-        else
-        {
-            pNewScheme = pScheme;
-        }
+
+        // Add pScheme to front of list
+        pScheme->pNext = pNewScheme;
+        pNewScheme = pScheme;
     }
 
-    // always make the first scheme VDIR_PASSWORD_SCHEME_INITIALIZER the default one
-    gpVdirPasswdSchemeGlobals = pScheme;
+    gpVdirPasswdSchemeGlobals = pScheme; // gpVdirPasswdSchemeGlobals points to the first scheme in table
+    if (!_gpDefaultScheme)
+    {
+        // no reg key override, default to first scheme
+        _gpDefaultScheme = gpVdirPasswdSchemeGlobals;
+    }
 
 cleanup:
 
@@ -222,6 +253,7 @@ VmDirPasswordSchemeFree(
 
     LwRtlFreeHashTable(&gVdirLockoutCache.pHashTbl);
     gVdirLockoutCache.pHashTbl = NULL;
+    _gpDefaultScheme = NULL;
 }
 
 DWORD
@@ -558,7 +590,7 @@ cleanup:
 
 error:
 
-    VmDirLog(LDAP_DEBUG_TRACE, "Verify supported scheme - (%s)", pszErrorContext);
+    VMDIR_LOG_DEBUG(LDAP_DEBUG_TRACE, "Verify supported scheme - (%s)", pszErrorContext);
 
     goto cleanup;
 }
@@ -619,7 +651,7 @@ cleanup:
 
 error:
 
-    VmDirLog( LDAP_DEBUG_TRACE, "VdirPasswordAddSchemeCode failed (%u)(%s)", dwError, VDIR_SAFE_STRING(pszLocalErrMsg) );
+    VMDIR_LOG_DEBUG( LDAP_DEBUG_TRACE, "VdirPasswordAddSchemeCode failed (%u)(%s)", dwError, VDIR_SAFE_STRING(pszLocalErrMsg) );
 
     VMDIR_SAFE_FREE_MEMORY(pszDigest);
 
@@ -627,15 +659,15 @@ error:
 }
 
 /*
- * get default (the first) password scheme
+ * get default password scheme
  */
 PVDIR_PASSWORD_HASH_SCHEME
 VdirDefaultPasswordScheme(
     VOID)
 {
-    assert(gpVdirPasswdSchemeGlobals);
+    assert(_gpDefaultScheme);
 
-    return gpVdirPasswdSchemeGlobals;
+    return _gpDefaultScheme;
 }
 
 /*
@@ -866,7 +898,6 @@ PasswdModifyRequestCheck(
     BOOLEAN         bPasswdDelete    = FALSE;
     BOOLEAN         bPasswdAdd       = FALSE;
     BOOLEAN         bPasswdReplace   = FALSE;
-    BOOLEAN         bModifyHasOthers = FALSE;
     PVDIR_MODIFICATION   pMod          = NULL;
 
     assert(pOperation && ppModNewPasswd && ppModOldPasswd);
@@ -913,10 +944,6 @@ PasswdModifyRequestCheck(
                 break;
             }
         }
-        else
-        {
-            bModifyHasOthers = TRUE;
-        }
     }
 
     // password change: DELETE + ADD must come in pair
@@ -925,13 +952,6 @@ PasswdModifyRequestCheck(
     {
         dwError = LDAP_UNWILLING_TO_PERFORM;
         BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, pszLocalErrMsg, "Password add and delete must come in pair" );
-    }
-
-    // password change/set must be a stand alone request
-    if (bModifyHasOthers && (bPasswdAdd || bPasswdDelete || bPasswdReplace))
-    {
-        dwError = LDAP_UNWILLING_TO_PERFORM;
-        BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, pszLocalErrMsg, "Password modification must be a stand alone request" );
     }
 
 cleanup:
@@ -989,24 +1009,28 @@ PasswdModifyMetaDataCreate(
 
         pOldPasswdAttr = VmDirFindAttrByName(pEntry, ATTR_OLD_USER_PASSWORD);
 
-        // TODO, could consider cache this in Operation if multiple lookup needed
         dwError = VdirGetPasswdAndLockoutPolicy(
                         BERVAL_NORM_VAL(pOperation->request.modifyReq.dn),
                         &policy);
-        // ignore error - if no policy, use default value PASSWD_DEFAULT_RETENTION_COUNT.
+        if (dwError == 0 && policy.bEnabled && policy.iRecycleCnt > 0)
+        {   // if we have an enabled policy, do recycle related task/check
+            dwError = OldPasswdRetention(
+                            pOperation,
+                            pOldPasswdAttr ? (&(pOldPasswdAttr->vals[0])) : NULL, // current retended blob
+                            pCurrentPassValue,              // current (before modify) passwd blob
+                            policy.iRecycleCnt,
+                            &bvRetendedBlob);               // new retended blob
+            BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, pszLocalErrMsg, "Old password save failed");
 
-        dwError = OldPasswdRetention(
-                        pOperation,
-                        pOldPasswdAttr ? (&(pOldPasswdAttr->vals[0])) : NULL, // current retended blob
-                        pCurrentPassValue,              // current (befoer modify) passwd blob
-                        policy.iRecycleCnt ? policy.iRecycleCnt : PASSWD_DEFAULT_RETENTION_COUNT,
-                        &bvRetendedBlob);               // new retended blob
-        BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, pszLocalErrMsg, "Old password save failed");
-
-        dwError = OldPasswdRecycleCheck(
-                        pszNewClearPasswd,
-                        &bvRetendedBlob);
-        BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, pszLocalErrMsg, "Password recycle");
+            dwError = OldPasswdRecycleCheck(
+                            pszNewClearPasswd,
+                            &bvRetendedBlob);
+            BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, pszLocalErrMsg, "Password recycle");
+        }
+        else if (dwError)
+        {
+            dwError = 0; // ignore policy lookup error
+        }
     }
 
 cleanup:
@@ -1225,6 +1249,21 @@ hashFuncSHA512(
 
     // TODO: error handling?
     SHA512(pszPassword, uPasswordLen, pszOutBuf);
+
+    return dwError;
+}
+
+static
+DWORD
+hashFuncSHA1(
+             PCSTR     pszPassword,      // in:password string
+             uint8_t   uPasswordLen,     // in:password string length
+             PSTR      pszOutBuf         // caller supply buffer
+             )
+{
+    DWORD       dwError = 0;
+
+    SHA1(pszPassword, uPasswordLen, pszOutBuf);
 
     return dwError;
 }

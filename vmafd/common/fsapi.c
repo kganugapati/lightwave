@@ -18,12 +18,19 @@
 
 #define COPY_BUFFER_SIZE 256
 
+static
+DWORD
+VmAfdGetFilesCount(
+    DIR*    pDir,
+    PDWORD  pdwCount
+    );
+
+static
 DWORD
 VmAfdEnumFiles(
     DIR*    pDir,
-    DWORD   dwSize,
-    PSTR*   ppszFiles,
-    DWORD*  pRead
+    PSTR**  pppszFiles,
+    DWORD*  pdwCount
     );
 
 DWORD
@@ -43,7 +50,7 @@ VmAfdFindFileIndex(
     if (!(pDir = opendir(pszDirPath)))
     {
         dwError = VmAfdGetWin32ErrorCode(errno);
-        BAIL_ON_VMAFD_ERROR(dwError);
+        BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
     }
 
     len = strlen(pszFile);
@@ -98,7 +105,7 @@ VmAfdFindFileIndex(
     if (maxIndex < 0)
     {
         dwError = ERROR_FILE_NOT_FOUND;
-        BAIL_ON_VMAFD_ERROR(dwError);
+        BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
     }
 
     *pIndex = maxIndex;
@@ -122,15 +129,20 @@ error:
 DWORD
 VmAfdListFilesInDir(
     PCSTR   pszDirPath,
-    DWORD*  pCount,
+    DWORD*  pdwCount,
     PSTR**  pppszFiles
     )
 {
     DWORD   dwError = 0;
     DIR*    pDir = NULL;
-    DWORD   count = 0;
-    DWORD   dwSize = 0;
+    DWORD   dwCount = 0;
     PSTR*   ppszFiles = NULL;
+
+    if (!pdwCount || !pppszFiles || IsNullOrEmptyString(pszDirPath))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
 
     if (!(pDir = opendir(pszDirPath)))
     {
@@ -138,26 +150,10 @@ VmAfdListFilesInDir(
         BAIL_ON_VMAFD_ERROR(dwError);
     }
 
-    dwError = VmAfdEnumFiles(pDir, 0, NULL, &count);
+    dwError = VmAfdEnumFiles(pDir, &ppszFiles, &dwCount);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    if (count == 0)
-    {
-        *pCount = 0;
-        goto cleanup;
-    }
-
-    dwError = VmAfdAllocateMemory(sizeof(PSTR) * count, (PVOID*)&ppszFiles);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    dwSize = count;
-
-    rewinddir(pDir);
-
-    dwError = VmAfdEnumFiles(pDir, dwSize, ppszFiles, &count);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    *pCount = count;
+    *pdwCount = dwCount;
     *pppszFiles = ppszFiles;
 
 cleanup:
@@ -175,8 +171,10 @@ error:
     {
         *pppszFiles = NULL;
     }
-    VmAfdFreeStringArrayCountA(ppszFiles, dwSize);
-    ppszFiles = NULL;
+    if (ppszFiles)
+    {
+        VmAfdFreeStringArrayCountA(ppszFiles, dwCount);
+    }
 
     goto cleanup;
 }
@@ -207,10 +205,10 @@ VmAfdCopyFile(
     size_t cbRead = 0;
     BYTE  buf[COPY_BUFFER_SIZE];
 
-    dwError = VmAfdOpenFilePath(pszSrc, "r", &pfSrc);
+    dwError = VmAfdOpenFilePath(pszSrc, "r", &pfSrc, 0);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    dwError = VmAfdOpenFilePath(pszDest, "w", &pfDest);
+    dwError = VmAfdOpenFilePath(pszDest, "w", &pfDest, 0);
     BAIL_ON_VMAFD_ERROR(dwError);
 
     while ((cbRead = fread(buf, 1, COPY_BUFFER_SIZE, pfSrc)) > 0)
@@ -279,16 +277,15 @@ VmAfdRenameFile(
     return dwError;
 }
 
+static
 DWORD
-VmAfdEnumFiles(
-    DIR*    pDir,
-    DWORD   dwSize,
-    PSTR*   ppszFiles,
-    DWORD*  pRead
+VmAfdGetFilesCount(
+    DIR*   pDir,
+    PDWORD pdwCount
 )
 {
-    DWORD   dwError = 0;
-    DWORD   count = 0;
+    DWORD dwError = 0;
+    DWORD dwCount = 0;
     struct dirent* pDirCursor = NULL;
 
     union
@@ -296,6 +293,14 @@ VmAfdEnumFiles(
       struct dirent d;
       char b[offsetof (struct dirent, d_name) + NAME_MAX + 1];
     } u;
+
+    if (!pDir || !pdwCount)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    rewinddir(pDir);
 
     do
     {
@@ -310,39 +315,114 @@ VmAfdEnumFiles(
         if (pDirCursor &&
             (pDirCursor->d_type == DT_REG))
         {
-            if (ppszFiles)
+
+            dwCount++;
+        }
+    }
+    while (pDirCursor);
+
+cleanup:
+
+    if (pDir)
+    {
+      rewinddir(pDir);
+    }
+    return dwError;
+
+error:
+
+    if (pdwCount)
+    {
+        *pdwCount = 0;
+    }
+    goto cleanup;
+}
+
+static
+DWORD
+VmAfdEnumFiles(
+    DIR*    pDir,
+    PSTR**  pppszFiles,
+    DWORD*  pdwCount
+)
+{
+    DWORD   dwError = 0;
+    DWORD   dwCount = 0;
+    DWORD   dwSize  = 0;
+    struct dirent* pDirCursor = NULL;
+    PSTR* ppszFiles = NULL;
+
+    if (!pdwCount || !pppszFiles || !pDir)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdGetFilesCount(pDir, &dwSize);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (dwSize)
+    {
+        union
+        {
+          struct dirent d;
+          char b[offsetof (struct dirent, d_name) + NAME_MAX + 1];
+        } u;
+
+        dwError = VmAfdAllocateMemory(
+                            sizeof(PSTR) * dwSize,
+                            (PVOID*)&ppszFiles
+                            );
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        do
+        {
+            errno = 0;
+
+            if (readdir_r(pDir, &u.d, &pDirCursor) < 0)
             {
-                if (count >= dwSize)
+                dwError = VmAfdGetWin32ErrorCode(errno);
+                BAIL_ON_VMAFD_ERROR(dwError);
+            }
+
+            if (pDirCursor &&
+                (pDirCursor->d_type == DT_REG))
+            {
+                if (dwCount >= dwSize)
                 {
                     dwError = ERROR_MORE_DATA;
                     BAIL_ON_VMAFD_ERROR(dwError);
                 }
 
                 dwError = VmAfdAllocateStringA(pDirCursor->d_name,
-                    &ppszFiles[count]);
+                    &ppszFiles[dwCount]);
                 BAIL_ON_VMAFD_ERROR(dwError);
+                dwCount++;
             }
-
-            count++;
         }
+        while (pDirCursor);
     }
-    while (pDirCursor);
 
-    *pRead = count;
+    *pdwCount = dwCount;
+    *pppszFiles = ppszFiles;
 
 cleanup:
 
     return dwError;
 
 error:
+
+    if (pppszFiles)
+    {
+        *pppszFiles = 0;
+    }
+    if (pdwCount)
+    {
+        *pdwCount = 0;
+    }
     if (ppszFiles)
     {
-        VmAfdFreeStringArrayCountA(ppszFiles, dwSize);
-        ppszFiles = NULL;
-    }
-    if (pRead)
-    {
-        *pRead = 0;
+      VmAfdFreeStringArrayCountA(ppszFiles, dwCount);
     }
 
     goto cleanup;
@@ -370,7 +450,8 @@ DWORD
 VmAfdOpenFilePath(
     PCSTR   pszFileName,
     PCSTR   pszOpenMode,
-    FILE**  fp
+    FILE**  fp,
+    int mode
 )
 {
     DWORD dwError = ERROR_SUCCESS;
@@ -387,9 +468,21 @@ VmAfdOpenFilePath(
     }
 
     temp = fopen(pszFileName, pszOpenMode);
-    if (temp == NULL) {
+    if (temp == NULL) 
+    {
         dwError = VmAfdGetWin32ErrorCode(errno);
-        BAIL_ON_VMAFD_ERROR(dwError);
+        BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
+    } 
+    else 
+    {
+        if (mode != 0)
+        {
+            if(chmod(pszFileName, mode) != 0)
+            {
+                dwError = VmAfdGetWin32ErrorCode(errno);
+                BAIL_ON_VMAFD_ERROR(dwError);
+            }
+        }
     }
 
     *fp = temp;

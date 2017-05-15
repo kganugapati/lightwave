@@ -51,20 +51,11 @@
 #include <openssl/sha.h>
 #include <openssl/rand.h>
 
-#include "defines.h"
-#include "structs.h"
-#include "ml.h"
-#include "externs.h"
-
 #else
 #pragma once
 #include "targetver.h"
-#define WIN32_LEAN_AND_MEAN // Exclude rarely-used stuff from Windows headers
 #include <windows.h>
 #include <stdint.h>
-#if !defined(HAVE_DCERPC_WIN32)
-#include <rpc.h>
-#endif
 #include <assert.h>
 #include <stddef.h>
 #include <time.h>
@@ -80,10 +71,13 @@
 #include <lber_pvt.h>
 #include <lber-int.h>
 
-#include "banned.h"
-
 #include <sasl/sasl.h>
 #include <sasl/saslutil.h>
+
+#define LW_STRICT_NAMESPACE
+#include <lw/types.h>
+#include <lw/hash.h>
+#include <lw/security-types.h>
 
 #include <vmdir.h>
 #include <vmdirtypes.h>
@@ -106,10 +100,11 @@
 #include <openssl/sha.h>
 #include <openssl/rand.h>
 
-#include "defines.h"
-#include "structs.h"
-#include "ml.h"
-#include "externs.h"
-
+#include "banned.h"
 
 #endif
+
+#include "defines.h"
+#include "structs.h"
+#include "prototypes.h"
+#include "externs.h"

@@ -35,13 +35,13 @@
 #define VMDIR_SCHEMA_ERROR_BASE     600
 #define VMDIR_BACKEND_ERROR_BASE    700
 
+#define VMDIR_SUCCESS   0
+
 #define VMDIR_RANGE(n,x,y)                  (((x) <= (n)) && ((n) <= (y)))
 
 // VmDir error space 9000~9999
 #define IS_VMDIR_ERROR_SPACE(n) \
-    VMDIR_RANGE((n),(VMDIR_ERROR_BASE ) , (VMDIR_ERROR_BASE + 999) )
-
-#define VMDIR_SUCCESS   0
+    VMDIR_RANGE((n), (VMDIR_ERROR_BASE), (VMDIR_ERROR_BASE + 999)) || n == VMDIR_SUCCESS
 
 // WARNING: definitions MUST stay in sync with error-message table in client defines.h
 
@@ -52,6 +52,9 @@
 #define VMDIR_ERROR_NO_MEMORY                         (VMDIR_ERROR_BASE + VMDIR_SYSTEM_ERROR_BASE + 4 )      // 9004
 #define VMDIR_ERROR_INVALID_PARAMETER                 (VMDIR_ERROR_BASE + VMDIR_SYSTEM_ERROR_BASE + 5 )      // 9005
 #define VMDIR_ERROR_NOT_FOUND                         (VMDIR_ERROR_BASE + VMDIR_SYSTEM_ERROR_BASE + 6 )      // 9006
+#define VMDIR_ERROR_CANNOT_LOAD_LIBRARY               (VMDIR_ERROR_BASE + VMDIR_SYSTEM_ERROR_BASE + 7 )      // 9007
+#define VMDIR_ERROR_INVALID_STATE                     (VMDIR_ERROR_BASE + VMDIR_SYSTEM_ERROR_BASE + 8 )      // 9008
+#define VMDIR_ERROR_DEPRECATED_FUNCTION               (VMDIR_ERROR_BASE + VMDIR_SYSTEM_ERROR_BASE + 9 )      // 9009
 
 // generic error 9100~9599
 #define IS_VMDIR_GENERIC_ERROR_SPACE(n) \
@@ -85,6 +88,11 @@
 #define VMDIR_ERROR_ACCESS_DENIED                     (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 25)      // 9125
 #define VMDIR_ERROR_CANNOT_CONNECT_VMDIR              (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 26)      // 9126
 #define VMDIR_ERROR_SERVER_DOWN                       (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 27)      // 9127
+#define VMDIR_ERROR_NO_FUNC_LVL                       (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 28)      // 9128
+#define VMDIR_ERROR_INVALID_FUNC_LVL                  (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 29)      // 9129
+#define VMDIR_ERROR_INCOMPLETE_MAX_DFL                (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 30)      // 9130
+#define VMDIR_ERROR_RESTORE_ERROR                     (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 31)      // 9131
+#define VMDIR_ERROR_AUTH_BAD_DATA                     (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 32)      // 9132
 
 // SID/ACL 9200 ~9229
 #define VMDIR_ERROR_RID_LIMIT_EXCEEDED                (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 100 )    // 9200
@@ -118,6 +126,7 @@
 #define VMDIR_ERROR_VDCSPLIT                          (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 172 )    // 9272
 #define VMDIR_ERROR_VDCREPADMIN_GENERAL               (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 173 )    // 9273
 #define VMDIR_ERROR_VDCREPADMIN_TOO_FEW_REPLICATION_PARTNERS  (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 174 )    // 9274
+#define VMDIR_ERROR_RESTORE_PARTNERS_UNAVAILABLE      (VMDIR_ERROR_BASE + VMDIR_GENERIC_ERROR_BASE + 175 )    // 9275
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // schema error (range 9600 - 9699)
@@ -146,6 +155,10 @@
 #define VMDIR_ERROR_NAMING_VIOLATION                  (VMDIR_ERROR_BASE + VMDIR_SCHEMA_ERROR_BASE + 18 )  // 9618
 #define VMDIR_ERROR_TYPE_OR_VALUE_EXISTS              (VMDIR_ERROR_BASE + VMDIR_SCHEMA_ERROR_BASE + 19 )  // 9619
 #define VMDIR_ERROR_UNDEFINED_TYPE                    (VMDIR_ERROR_BASE + VMDIR_SCHEMA_ERROR_BASE + 20 )  // 9620
+#define VMDIR_ERROR_SCHEMA_MISMATCH                   (VMDIR_ERROR_BASE + VMDIR_SCHEMA_ERROR_BASE + 21 )  // 9621
+#define VMDIR_ERROR_SCHEMA_BAD_METADATA               (VMDIR_ERROR_BASE + VMDIR_SCHEMA_ERROR_BASE + 22 )  // 9622
+#define VMDIR_ERROR_SCHEMA_NOT_COMPATIBLE             (VMDIR_ERROR_BASE + VMDIR_SCHEMA_ERROR_BASE + 23 )  // 9623
+#define VMDIR_ERROR_SCHEMA_UPDATE_PASSTHROUGH         (VMDIR_ERROR_BASE + VMDIR_SCHEMA_ERROR_BASE + 24 )  // 9624
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // generic backend error (range 9700 - 9799)

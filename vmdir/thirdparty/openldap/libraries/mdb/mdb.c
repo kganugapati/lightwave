@@ -1158,7 +1158,7 @@ static int	mdb_page_split(MDB_cursor *mc, MDB_val *newkey, MDB_val *newdata,
 static int  mdb_env_read_header(MDB_env *env, MDB_meta *meta);
 static int  mdb_env_pick_meta(const MDB_env *env);
 static int  mdb_env_write_meta(MDB_txn *txn);
-#if (defined(_WIN32) && !(defined(HAVE_PTHREADS_WIN32))) || defined(MDB_USE_POSIX_SEM)
+#if (defined(_WIN32) && !(defined(HAVE_PTHREADS_WIN32)))
 # define mdb_env_close0(env, excl) mdb_env_close1(env)
 #endif
 static void mdb_env_close0(MDB_env *env, int excl);
@@ -8435,9 +8435,13 @@ int mdb_reader_list(MDB_env *env, MDB_msg_func *func, void *ctx)
 	for (i=0; i<rdrs; i++) {
 		if (mr[i].mr_pid) {
 			txnid_t	txnid = mr[i].mr_txnid;
-			sprintf(buf, txnid == (txnid_t)-1 ?
-				"%10d %"Z"x -\n" : "%10d %"Z"x %"Z"u\n",
-				(int)mr[i].mr_pid, mr[i].mr_tid, txnid);
+#ifndef _WIN32
+			sprintf(buf, "%10d %"Z"x %"Z"u\n",
+				(int)mr[i].mr_pid, (size_t)mr[i].mr_tid, (size_t)txnid);
+#else
+			sprintf(buf, "%10d %"Z"x %"Z"u\n",
+				(int)mr[i].mr_pid, (size_t)mr[i].mr_tid.p, (size_t)txnid);
+#endif
 			if (first) {
 				first = 0;
 				rc = func("    pid     thread     txnid\n", ctx);
@@ -8539,4 +8543,59 @@ int mdb_reader_check(MDB_env *env, int *dead)
 		*dead = count;
 	return MDB_SUCCESS;
 }
+
+/**
+ * lmdb.h mdb_env_set_state for parameters
+ */
+int
+mdb_env_set_state(MDB_env *env, int fileTransferState, unsigned long *last_xlog_num, unsigned long *dbSizeMb, unsigned long *dbMapSizeMb, char *db_path, int db_path_size)
+{
+    MDB_envinfo env_stats = {0};
+    int ret = 0;
+
+    if (env == NULL)
+        return 1; // invalid parameter
+
+    *last_xlog_num = 0; //Indicating that the backend doesn't support write-ahead-logging (WAL).
+                        //Will try to put the backend onto read-only state.
+    LOCK_MUTEX_W(env);
+
+    if (fileTransferState != 3)
+    {
+        if (((env->me_flags & MDB_RDONLY) && fileTransferState == 1) || //Already in read-only state while trying to set to read-only
+            ((env->me_flags & MDB_RDONLY) && fileTransferState == 2) || //Already in read-only state while trying to set to keep XLOGS
+            (!(env->me_flags & MDB_RDONLY) && fileTransferState == 0)) // Not in read-only state while trying to clear read-only or keep XLOGS state
+            ret = 2;
+        else if ( fileTransferState == 1 || fileTransferState == 2 )
+             env->me_flags |= MDB_RDONLY;
+        else if ( fileTransferState == 0)
+             env->me_flags &= ~MDB_RDONLY;
+        else
+            ret = 1; // invalid parameter
+
+        mdb_env_sync(env, 1);
+    }
+    mdb_env_info(env, &env_stats);
+
+    //dbSizeMb is used as a hint so that there is no need to transfer the bytes beyond this value.
+    *dbSizeMb = 1 + (unsigned long)(((unsigned long long)env_stats.me_last_pgno * (unsigned long long)env->me_psize) >> 20);
+    *dbMapSizeMb = (unsigned long)((unsigned long long)env->me_mapsize >> 20);
+    if (db_path == NULL || db_path_size <= 0 || strlen(env->me_path) >= db_path_size)
+        ret = 3;
+    else
+        strcpy(db_path, env->me_path);
+    UNLOCK_MUTEX_W(env);
+    return ret;
+}
+
+unsigned long long
+mdb_env_get_lasttid(MDB_env *env)
+{
+    if (env->me_metas[1]->mm_txnid > env->me_metas[0]->mm_txnid)
+    {
+        return env->me_metas[1]->mm_txnid;
+    }
+    return env->me_metas[0]->mm_txnid;
+}
+
 /** @} */

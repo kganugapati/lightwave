@@ -18,22 +18,13 @@
 
 static
 DWORD
-VmDirSrvSetupDomainInstance(
-    PVDIR_SCHEMA_CTX pSchemaCtx,
-    BOOLEAN          bSetupHost,
-    BOOLEAN          bFirstNodeBootstrap,
-    PCSTR            pszFQDomainName,
-    PCSTR            pszDomainDN,
-    PCSTR            pszUsername,
-    PCSTR            pszPassword
-    );
-
-static
-DWORD
 VmDirSrvInitKrb(
     PVDIR_SCHEMA_CTX pSchemaCtx,
     PCSTR            pszFQDomainName,
-    PCSTR            pszDomainDN
+    PCSTR            pszDomainDN,
+    PCSTR            pszUserSid,
+    PSTR             *ppszTgtDN,
+    PSTR             *ppszKMDN
     );
 
 static
@@ -116,6 +107,7 @@ DWORD
 _VmDirSrvCreateBuiltInGroup(
     PVDIR_SCHEMA_CTX pSchemaCtx,
     PCSTR            pszGroupName,
+    PCSTR            pszGroupSid,
     PCSTR            pszDN
     );
 
@@ -126,7 +118,8 @@ _VmDirSrvCreateBuiltInCertGroup(
     PCSTR            pszGroupName,
     PCSTR            pszDN,
     PCSTR            pszAdminDN,
-    PCSTR            pszDCGroupDN
+    PCSTR            pszDCGroupDN,
+    PCSTR            pszDCClientGroupDN
     );
 
 static
@@ -145,6 +138,45 @@ VmDirSrvCreateBuiltinContainer(
     );
 
 VMDIR_FIRST_REPL_CYCLE_MODE   gFirstReplCycleMode;
+
+//
+// Set security descriptor for objects that were created prior to the creation
+// of the various users and groups we need to exist in order to create the
+// security descriptor in the first place.
+//
+DWORD
+_VmDirAclServerObjects(
+    PVMDIR_SECURITY_DESCRIPTOR pSecDescAnonymousRead,
+    PVMDIR_SECURITY_DESCRIPTOR pSecDescNoDelete
+    )
+{
+    DWORD dwError = 0;
+
+    dwError = VmDirSetSecurityDescriptorForDn(
+                PERSISTED_DSE_ROOT_DN,
+                pSecDescAnonymousRead);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirSetRecursiveSecurityDescriptorForDn(
+                SCHEMA_NAMING_CONTEXT_DN,
+                pSecDescAnonymousRead);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirSetSecurityDescriptorForDn(
+                CFG_ROOT_DN,
+                pSecDescNoDelete);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirSetSecurityDescriptorForDn(
+                CFG_INDEX_ORGANIZATION_DN,
+                pSecDescNoDelete);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+cleanup:
+    return dwError;
+error:
+    goto cleanup;
+}
 
 DWORD
 VmDirSrvSetupHostInstance(
@@ -199,12 +231,13 @@ VmDirSrvSetupHostInstance(
     PSTR                          pszUserDN = NULL;
     PCSTR                         pszUsersContainerName    = "Users";
     PSTR                          pszUsersContainerDN   = NULL; // CN=Users,<domain DN>
-    PSTR                          pszDCGroupDN = NULL;
-    PSTR                          pszDCClientGroupDN = NULL;
-    PSTR                          pszServicesRootDN = NULL;
+    VMDIR_SECURITY_DESCRIPTOR SecDescServices = {0};
+    VMDIR_SECURITY_DESCRIPTOR SecDescAnonymousRead = {0};
+    VMDIR_SECURITY_DESCRIPTOR SecDescDeletedItems = {0};
 
-    VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Setting up a host instance (%s).",
-			               VDIR_SAFE_STRING(pszFQDomainName));
+    VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL,
+                   "Setting up a host instance (%s).",
+                   VDIR_SAFE_STRING(pszFQDomainName));
 
     if (pszSiteName)
     {
@@ -229,11 +262,11 @@ VmDirSrvSetupHostInstance(
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // Domain Controllers container DN
-    dwError = VmDirAllocateStringAVsnprintf(&pszDCsContainerDN, "%s=%s,%s", ATTR_OU, pszDCsContainerName, pszDomainDN);
+    dwError = VmDirAllocateStringPrintf(&pszDCsContainerDN, "%s=%s,%s", ATTR_OU, pszDCsContainerName, pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // Domain Computers container DN
-    dwError = VmDirAllocateStringAVsnprintf(&pszComputersContainerDN, "%s=%s,%s", ATTR_OU, pszComputersContainerName, pszDomainDN);
+    dwError = VmDirAllocateStringPrintf(&pszComputersContainerDN, "%s=%s,%s", ATTR_OU, pszComputersContainerName, pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // Sites container DN
@@ -275,7 +308,7 @@ VmDirSrvSetupHostInstance(
     dwError = VmDirAllocASCIILowerToUpper( pszFQDomainName, &pszUpperCaseFQDomainName );
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(&pszDCAccountUPN, "%s@%s", pszLowerCaseHostName, pszUpperCaseFQDomainName );
+    dwError = VmDirAllocateStringPrintf(&pszDCAccountUPN, "%s@%s", pszLowerCaseHostName, pszUpperCaseFQDomainName );
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // Computer account DN
@@ -291,7 +324,7 @@ VmDirSrvSetupHostInstance(
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // Default administrator DN
-    dwError = VmDirAllocateStringAVsnprintf( &pszDefaultAdminDN, "cn=%s,cn=%s,%s",
+    dwError = VmDirAllocateStringPrintf( &pszDefaultAdminDN, "cn=%s,cn=%s,%s",
                                              pszUsername, pszUsersContainerName, pszDomainDN );
     BAIL_ON_VMDIR_ERROR(dwError);
 
@@ -305,54 +338,51 @@ VmDirSrvSetupHostInstance(
     }
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    // BUGBUG BUGBUG
-    // following setting of gVmdirServerGlobals.XXX is UGLY.......
-
     // set gVmdirServerGlobals.bvDefaultAdminDN
-    VmDirFreeBervalContent(&bv);
-    bv.lberbv.bv_val = pszDefaultAdminDN;
-    bv.lberbv.bv_len = VmDirStringLenA( bv.lberbv.bv_val );
-    dwError = VmDirBervalContentDup( &bv, &gVmdirServerGlobals.bvDefaultAdminDN );
+    dwError = VmDirAllocateBerValueAVsnprintf(
+                &gVmdirServerGlobals.bvDefaultAdminDN,
+                "%s",
+                pszDefaultAdminDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirNormalizeDN( &gVmdirServerGlobals.bvDefaultAdminDN, pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // set systemDomainDN
-    VmDirFreeBervalContent(&bv);
-    bv.lberbv.bv_val = pszDomainDN;
-    bv.lberbv.bv_len = VmDirStringLenA( bv.lberbv.bv_val );
-    dwError = VmDirBervalContentDup( &bv, &gVmdirServerGlobals.systemDomainDN );
+    dwError = VmDirAllocateBerValueAVsnprintf(
+                &gVmdirServerGlobals.systemDomainDN,
+                "%s",
+                pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirNormalizeDN( &gVmdirServerGlobals.systemDomainDN, pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // set serverObjDN
-    VmDirFreeBervalContent(&bv);
-    bv.lberbv.bv_val = pszServerDN;
-    bv.lberbv.bv_len = VmDirStringLenA( bv.lberbv.bv_val );
-    dwError = VmDirBervalContentDup( &bv, &gVmdirServerGlobals.serverObjDN );
+    dwError = VmDirAllocateBerValueAVsnprintf(
+                &gVmdirServerGlobals.serverObjDN,
+                "%s",
+                pszServerDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirNormalizeDN( &gVmdirServerGlobals.serverObjDN, pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // set dcAccountDN
-    VmDirFreeBervalContent(&bv);
-    bv.lberbv.bv_val = pszDCAccountDN;
-    bv.lberbv.bv_len = VmDirStringLenA( bv.lberbv.bv_val );
-    dwError = VmDirBervalContentDup( &bv, &gVmdirServerGlobals.dcAccountDN );
+    dwError = VmDirAllocateBerValueAVsnprintf(
+                &gVmdirServerGlobals.dcAccountDN,
+                "%s",
+                pszDCAccountDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirNormalizeDN( &gVmdirServerGlobals.dcAccountDN, pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // set dcAccountUPN
-    VmDirFreeBervalContent(&bv);
-    bv.lberbv.bv_val = pszDCAccountUPN;
-    bv.lberbv.bv_len = VmDirStringLenA( bv.lberbv.bv_val );
-    dwError = VmDirBervalContentDup( &bv, &gVmdirServerGlobals.dcAccountUPN );
+    dwError = VmDirAllocateBerValueAVsnprintf(
+                &gVmdirServerGlobals.dcAccountUPN,
+                "%s",
+                pszDCAccountUPN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // Set replInterval and replPageSize
@@ -387,43 +417,37 @@ VmDirSrvSetupHostInstance(
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // set DomainControllerGroupDN for first,second+ host setup
-    dwError = VmDirAllocateStringAVsnprintf( &pszDCGroupDN,
-                                             "cn=%s,cn=%s,%s",
-                                             VMDIR_DC_GROUP_NAME,
-                                             VMDIR_BUILTIN_CONTAINER_NAME,
-                                             pszDomainDN);
+    dwError = VmDirAllocateBerValueAVsnprintf(
+                &gVmdirServerGlobals.bvDCGroupDN,
+                "cn=%s,cn=%s,%s",
+                VMDIR_DC_GROUP_NAME,
+                VMDIR_BUILTIN_CONTAINER_NAME,
+                pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    gVmdirServerGlobals.bvDCGroupDN.lberbv_val = pszDCGroupDN;
-    gVmdirServerGlobals.bvDCGroupDN.lberbv_len = VmDirStringLenA(pszDCGroupDN);
-    pszDCGroupDN = NULL;
     dwError = VmDirNormalizeDN( &(gVmdirServerGlobals.bvDCGroupDN), pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // set DCClientGroupDN for first,second+ host setup
-    dwError = VmDirAllocateStringAVsnprintf( &pszDCClientGroupDN,
-                                             "cn=%s,cn=%s,%s",
-                                             VMDIR_DCCLIENT_GROUP_NAME,
-                                             VMDIR_BUILTIN_CONTAINER_NAME,
-                                             pszDomainDN);
+    dwError = VmDirAllocateBerValueAVsnprintf(
+                &gVmdirServerGlobals.bvDCClientGroupDN,
+                "cn=%s,cn=%s,%s",
+                VMDIR_DCCLIENT_GROUP_NAME,
+                VMDIR_BUILTIN_CONTAINER_NAME,
+                pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    gVmdirServerGlobals.bvDCClientGroupDN.lberbv_val = pszDCClientGroupDN;
-    gVmdirServerGlobals.bvDCClientGroupDN.lberbv_len = VmDirStringLenA(pszDCClientGroupDN);
-    pszDCClientGroupDN = NULL;
     dwError = VmDirNormalizeDN( &(gVmdirServerGlobals.bvDCClientGroupDN), pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // set ServicesRootDN for first,second+ host setup
-    dwError = VmDirAllocateStringAVsnprintf( &pszServicesRootDN,
-                                             "cn=%s,%s",
-                                             VMDIR_SERVICES_CONTAINER_NAME,
-                                             pszDomainDN);
+    dwError = VmDirAllocateBerValueAVsnprintf(
+                &gVmdirServerGlobals.bvServicesRootDN,
+                "cn=%s,%s",
+                VMDIR_SERVICES_CONTAINER_NAME,
+                pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    gVmdirServerGlobals.bvServicesRootDN.lberbv_val = pszServicesRootDN;
-    gVmdirServerGlobals.bvServicesRootDN.lberbv_len = VmDirStringLenA(pszServicesRootDN);
-    pszServicesRootDN = NULL;
     dwError = VmDirNormalizeDN( &(gVmdirServerGlobals.bvServicesRootDN), pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(dwError);
 
@@ -432,13 +456,33 @@ VmDirSrvSetupHostInstance(
         // Set gVmdirServerGlobals.serverId FIRST, so that correct SID can be generated for the objects added subsequently.
         gVmdirServerGlobals.serverId = 1;
 
-        dwError = VmDirSrvSetupDomainInstance( pSchemaCtx, TRUE, TRUE, pszFQDomainName, pszDomainDN, pszUsername,
-                                               pszPassword );
+        dwError = VmDirSrvSetupDomainInstance(
+                    pSchemaCtx,
+                    TRUE,
+                    TRUE,
+                    pszFQDomainName,
+                    pszDomainDN,
+                    pszUsername,
+                    pszPassword,
+                    &SecDescServices,
+                    &SecDescAnonymousRead,
+                    &SecDescDeletedItems
+                    );
         BAIL_ON_VMDIR_ERROR(dwError);
 
         // Create Deleted Objects container
-        dwError = VmDirSrvCreateContainerWithEID( pSchemaCtx, pszDelObjsContainerDN, pszDelObjsContainerName,
-                                                 DEL_ENTRY_CONTAINER_ENTRY_ID );
+        dwError = VmDirSrvCreateContainerWithEID(
+                    pSchemaCtx,
+                    pszDelObjsContainerDN,
+                    pszDelObjsContainerName,
+                    &SecDescDeletedItems,
+                    DEL_ENTRY_CONTAINER_ENTRY_ID);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        //
+        // Go back and ACL objects that were created early.
+        //
+        dwError = _VmDirAclServerObjects(&SecDescAnonymousRead, &SecDescDeletedItems);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         // Create Domain Controllers container
@@ -450,6 +494,7 @@ VmDirSrvSetupHostInstance(
         BAIL_ON_VMDIR_ERROR(dwError);
 
         // Create Managed Service Accounts container
+
         dwError = VmDirSrvCreateContainer( pSchemaCtx, pszMSAsDN, pszMSAsContainerName );
         BAIL_ON_VMDIR_ERROR(dwError);
 
@@ -465,18 +510,16 @@ VmDirSrvSetupHostInstance(
         dwError = VmDirSrvCreateContainer( pSchemaCtx, pszSitesContainerDN, pszSitesContainerName );
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        /*
-        // Create Site-Name container
-        dwError = VmDirSrvCreateContainer( pSchemaCtx, pszSiteContainerDN, pszSiteContainerName );
-        BAIL_ON_VMDIR_ERROR(dwError);
-
-        // Create Servers container
-        dwError = VmDirSrvCreateContainer( pSchemaCtx, pszServersContainerDN, pszServersContainerName );
-        BAIL_ON_VMDIR_ERROR(dwError);
-        */
-
         // Create Site-Name container, Servers container, and THE Server object
         dwError = VmDirSrvCreateServerObj( pSchemaCtx );
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+         dwError = VmDirSrvCreateContainerWithEID(
+                        pSchemaCtx,
+                        gVmdirServerGlobals.bvServicesRootDN.lberbv.bv_val,
+                        VMDIR_SERVICES_CONTAINER_NAME,
+                        &SecDescServices,
+                        0);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         // Create Replication Agreements container
@@ -490,7 +533,7 @@ VmDirSrvSetupHostInstance(
     }
     else
     {
-        dwError = VmDirAllocateStringAVsnprintf( &pszReplAgrDN, "labeledURI=%s,%s", pszReplURI, pszReplAgrsContainerDN );
+        dwError = VmDirAllocateStringPrintf( &pszReplAgrDN, "labeledURI=%s,%s", pszReplURI, pszReplAgrsContainerDN );
         BAIL_ON_VMDIR_ERROR(dwError);
 
         dwError = VmDirConstructReplAgr( pSchemaCtx, pszReplURI,
@@ -515,9 +558,6 @@ cleanup:
         VmDirSchemaCtxRelease(pSchemaCtx);
     }
 
-    VMDIR_SAFE_FREE_MEMORY(pszDCGroupDN);
-    VMDIR_SAFE_FREE_MEMORY(pszDCClientGroupDN);
-    VMDIR_SAFE_FREE_MEMORY(pszServicesRootDN);
     VMDIR_SAFE_FREE_MEMORY(pszDomainDN);
     VMDIR_SAFE_FREE_MEMORY(pszDelObjsContainerDN);
     VMDIR_SAFE_FREE_MEMORY(pszConfigContainerDN);
@@ -539,6 +579,9 @@ cleanup:
     VMDIR_SAFE_FREE_MEMORY(pszUserDN);
     VMDIR_SAFE_FREE_MEMORY(pszDefaultAdminDN);
     VMDIR_SAFE_FREE_MEMORY(pszLowerCaseHostName);
+    VMDIR_SAFE_FREE_MEMORY(SecDescAnonymousRead.pSecDesc);
+    VMDIR_SAFE_FREE_MEMORY(SecDescServices.pSecDesc);
+    VMDIR_SAFE_FREE_MEMORY(SecDescDeletedItems.pSecDesc);
 
     VmDirFreeBervalContent(&bv);
 
@@ -550,52 +593,101 @@ error:
 }
 
 DWORD
-VmDirSrvSetupTenantInstance(
-    PCSTR pszFQDomainName,
-    PCSTR pszUsername,
-    PCSTR pszPassword
+_VmDirAclRootDomainObject(
+    PCSTR pszDn,
+    PCSTR pszUserDn,
+    PVMDIR_SECURITY_DESCRIPTOR pSecDesc
     )
 {
     DWORD dwError = 0;
-    PSTR  pszDomainDN = NULL;
-    PVDIR_SCHEMA_CTX pSchemaCtx = NULL;
+    PVDIR_ENTRY pEntry = NULL;
+    PSECURITY_DESCRIPTOR_RELATIVE pCurrentSecDesc = NULL;
+    ULONG ulLength = 0;
 
-    VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Setting up a tenant instance (%s).",
-			               VDIR_SAFE_STRING(pszFQDomainName));
-
-    dwError = VmDirSrvCreateDomainDN(pszFQDomainName, &pszDomainDN);
+    dwError = VmDirSimpleDNToEntry(pszDn, &pEntry);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirSchemaCtxAcquire(&pSchemaCtx);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    dwError = VmDirSrvSetupDomainInstance(
-                    pSchemaCtx,
-                    FALSE,
-                    FALSE,
-                    pszFQDomainName,
-                    pszDomainDN,
-                    pszUsername,
-                    pszPassword);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-cleanup:
-
-    VMDIR_SAFE_FREE_MEMORY(pszDomainDN);
-
-    if (pSchemaCtx)
+    dwError = VmDirGetSecurityDescriptorForEntry(
+                pEntry,
+                OWNER_SECURITY_INFORMATION |
+                    GROUP_SECURITY_INFORMATION |
+                    DACL_SECURITY_INFORMATION |
+                    SACL_SECURITY_INFORMATION,
+                    &pCurrentSecDesc,
+                    &ulLength);
+    if (dwError == VMDIR_ERROR_NO_SECURITY_DESCRIPTOR)
     {
-        VmDirSchemaCtxRelease(pSchemaCtx);
+        dwError = VmDirSetSecurityDescriptorForDn(pszDn, pSecDesc);
+        BAIL_ON_VMDIR_ERROR(dwError);
     }
-
+    else if (dwError == ERROR_SUCCESS)
+    {
+        dwError = VmDirAddAceToSecurityDescriptor(pEntry, pCurrentSecDesc, pszUserDn, VMDIR_RIGHT_DS_READ_PROP | VMDIR_RIGHT_DS_DELETE_OBJECT);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+    else
+    {
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+cleanup:
+    VMDIR_SAFE_FREE_MEMORY(pCurrentSecDesc);
+    VmDirFreeEntry(pEntry);
     return dwError;
-
 error:
-    VmDirLog(LDAP_DEBUG_ANY, "VmDirSrvSetupTenantInstance failed. Error(%u)", dwError);
     goto cleanup;
 }
 
-static
+//
+// Takes a DN of the form "dc=foo,dc=bar" and the respective admin DN (e.g.,
+// "cn=Administrator,cn=users,dc=foo,dc=bar") and gives that admin user read
+// access to the top-level portion of the domain. So, if "vsphere.local"
+// already exists and someone creates the tenant "secondary.local" we want
+// the secondary.local admin to be able to see "dc=local" in searches. Also,
+// we give the admin user permission to delete the top-level domain object.
+// (they'll only ever be able to do that if all domains in that TLD are gone,
+// so there's no security concern w.r.t. them deleting anything they shouldn't).
+//
+DWORD
+_VmDirAclDomainObjects(
+    PCSTR pszDomainDN,
+    PCSTR pszAdminUserDn, // DN of the admin user for the domain being created.
+    PVMDIR_SECURITY_DESCRIPTOR pSecDesc
+    )
+{
+    DWORD dwError = 0;
+    int i = 0;
+    int startOfRdnInd = 0;
+    BOOLEAN bAcledRootObject = FALSE; // Have we already ACL'ed the root domain object?
+
+    for (i = (int)VmDirStringLenA(pszDomainDN) - 1; i >= 0; --i)
+    {
+        if (i == 0 || pszDomainDN[i] == RDN_SEPARATOR_CHAR)
+        {
+            startOfRdnInd = (i == 0) ? 0 : i + 1 /* for , */;
+            if (!bAcledRootObject)
+            {
+                dwError = _VmDirAclRootDomainObject(
+                            pszDomainDN + startOfRdnInd,
+                            pszAdminUserDn,
+                            pSecDesc);
+                BAIL_ON_VMDIR_ERROR(dwError);
+
+                bAcledRootObject = TRUE;
+            }
+            else
+            {
+                dwError = VmDirSetSecurityDescriptorForDn(pszDomainDN + startOfRdnInd, pSecDesc);
+            }
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
+    }
+
+cleanup:
+    return dwError;
+error:
+    goto cleanup;
+}
+
 DWORD
 VmDirSrvSetupDomainInstance(
     PVDIR_SCHEMA_CTX pSchemaCtx,
@@ -604,7 +696,10 @@ VmDirSrvSetupDomainInstance(
     PCSTR            pszFQDomainName,
     PCSTR            pszDomainDN,
     PCSTR            pszUsername,
-    PCSTR            pszPassword
+    PCSTR            pszPassword,
+    PVMDIR_SECURITY_DESCRIPTOR pSecDescServicesOut, // OPTIONAL
+    PVMDIR_SECURITY_DESCRIPTOR pSecDescAnonymousReadOut, // OPTIONAL
+    PVMDIR_SECURITY_DESCRIPTOR pSecDescDeletedObjectsOut // OPTIONAL
     )
 {
     DWORD dwError = 0;
@@ -625,18 +720,23 @@ VmDirSrvSetupDomainInstance(
     PSTR pszDCGroupDN = NULL;
     PSTR pszDCClientGroupDN = NULL;
     PSTR pszCertGroupDN = NULL;
-
-    PSECURITY_DESCRIPTOR_RELATIVE pSecDescRel = NULL;
-    ULONG                         ulSecDescRel = 0;
-    SECURITY_INFORMATION          SecInfo = 0;
-
+    PSTR pszTenantRealmName = NULL;
+    PSTR pszTgtDN = NULL;
+    PSTR pszKMDN = NULL;
+    VMDIR_SECURITY_DESCRIPTOR SecDescFullAccess = {0};
+    VMDIR_SECURITY_DESCRIPTOR SecDescNoDelete = {0};
+    VMDIR_SECURITY_DESCRIPTOR SecDescNoDeleteChild = {0};
+    VMDIR_SECURITY_DESCRIPTOR SecDescAnonymousRead = {0};
+    VMDIR_SECURITY_DESCRIPTOR SecDescServices = {0};
+    VMDIR_SECURITY_DESCRIPTOR SecDescDomain = {0};
     PSTR pszAdminSid = NULL;
     PSTR pszBuiltInUsersGroupSid = NULL;
     PSTR pszAdminsGroupSid = NULL;
+    PSTR pszDomainAdminsGroupSid = NULL;
+    PSTR pszDomainClientsGroupSid = NULL;
+    PSTR pszUsersGroupSid = NULL;
+    PSTR pszKrbtgtSid = NULL;
     PSTR pszAdminUserKrbUPN = NULL;
-
-    int i = 0;
-    int startOfRdnInd = 0;
 
     // Create host/tenant domain
 
@@ -672,17 +772,42 @@ VmDirSrvSetupDomainInstance(
         // only do this for the very first node startup.
         if (bFirstNodeBootstrap)
         {
-            dwError = VmDirSrvInitKrb(pSchemaCtx, pszFQDomainName, pszDomainDN);
+            dwError = VmDirGenerateWellknownSid(
+                        pszDomainDN,
+                        VMDIR_DOMAIN_KRBTGT_RID,
+                        &pszKrbtgtSid);
+            BAIL_ON_VMDIR_ERROR(dwError);
+
+            dwError = VmDirSrvInitKrb(
+                        pSchemaCtx,
+                        pszFQDomainName,
+                        pszDomainDN,
+                        pszKrbtgtSid,
+                        &pszTgtDN,
+                        &pszKMDN);
             BAIL_ON_VMDIR_ERROR(dwError);
 
             // prepare administrator krb UPN for the very first node
-            dwError = VmDirAllocateStringAVsnprintf(
+            dwError = VmDirAllocateStringPrintf(
                             &pszAdminUserKrbUPN,
                             "%s@%s",
                             pszUsername,
                             gVmdirKrbGlobals.pszRealm);
             BAIL_ON_VMDIR_ERROR(dwError);
         }
+    }
+    else
+    {   // setup tenant scenario.
+        // Though we only support system domain kdc, we need UPN for SRP to function.
+        dwError = VmDirKrbRealmNameNormalize(pszFQDomainName, &pszTenantRealmName);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        dwError = VmDirAllocateStringPrintf(
+                        &pszAdminUserKrbUPN,
+                        "%s@%s",
+                        pszUsername,
+                        pszTenantRealmName);
+        BAIL_ON_VMDIR_ERROR(dwError);
     }
 
     // Create Admin user
@@ -706,7 +831,7 @@ VmDirSrvSetupDomainInstance(
 
     // Create BuiltInUsers group
 
-    dwError = VmDirAllocateStringAVsnprintf( &pszBuiltInUsersGroupDN, "cn=%s,%s", pszBuiltInUsersGroupName,
+    dwError = VmDirAllocateStringPrintf( &pszBuiltInUsersGroupDN, "cn=%s,%s", pszBuiltInUsersGroupName,
                                              pszBuiltInContainerDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
@@ -715,10 +840,10 @@ VmDirSrvSetupDomainInstance(
                                         &pszBuiltInUsersGroupSid);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    if (bSetupHost == FALSE             // create user group for tenant setup
-        ||
-        bFirstNodeBootstrap == TRUE     // create user group only for first host setup
-       )
+    //
+    // Create the user group for tenant setup or for first host setup.
+    //
+    if (bSetupHost == FALSE || bFirstNodeBootstrap == TRUE)
     {
         dwError = VmDirSrvCreateBuiltInUsersGroup( pSchemaCtx, pszBuiltInUsersGroupName,
                                                    pszBuiltInUsersGroupDN, pszUserDN,
@@ -728,7 +853,7 @@ VmDirSrvSetupDomainInstance(
 
     // Create BuiltInAdministrators group
 
-    dwError = VmDirAllocateStringAVsnprintf( &pszBuiltInAdministratorsGroupDN, "cn=%s,%s",
+    dwError = VmDirAllocateStringPrintf( &pszBuiltInAdministratorsGroupDN, "cn=%s,%s",
                                              pszBuiltInAdministratorsGroupName, pszBuiltInContainerDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
@@ -737,10 +862,25 @@ VmDirSrvSetupDomainInstance(
                                         &pszAdminsGroupSid);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    if (bSetupHost == FALSE             // create admin group for tenant setup
-        ||
-        bFirstNodeBootstrap == TRUE     // create admin group only for first host setup
-       )
+    dwError = VmDirGenerateWellknownSid(pszDomainDN,
+                                        VMDIR_DOMAIN_ADMINS_RID,
+                                        &pszDomainAdminsGroupSid);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirGenerateWellknownSid(pszDomainDN,
+                                        VMDIR_DOMAIN_CLIENTS_RID,
+                                        &pszDomainClientsGroupSid);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirGenerateWellknownSid(pszDomainDN,
+                                        VMDIR_DOMAIN_ALIAS_RID_USERS,
+                                        &pszUsersGroupSid);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    //
+    // Create the admin group for tenant setup or for first host setup.
+    //
+    if (bSetupHost == FALSE || bFirstNodeBootstrap == TRUE)
     {
         dwError = VmDirSrvCreateBuiltInAdminGroup( pSchemaCtx, pszBuiltInAdministratorsGroupName,
                                                    pszBuiltInAdministratorsGroupDN, pszUserDN,
@@ -748,11 +888,14 @@ VmDirSrvSetupDomainInstance(
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    // create DCadmins/DCClients/CERTAdmins group only for the very first host setup
+    //
+    // Create DCadmins/DCClients/CERTAdmins groups only for the very first
+    // host setup.
+    //
     if ( bSetupHost && bFirstNodeBootstrap )
     {
         // create DCAdmins Group
-        dwError = VmDirAllocateStringAVsnprintf( &pszDCGroupDN,
+        dwError = VmDirAllocateStringPrintf( &pszDCGroupDN,
                                                  "cn=%s,%s",
                                                  VMDIR_DC_GROUP_NAME,
                                                  pszBuiltInContainerDN);
@@ -760,11 +903,12 @@ VmDirSrvSetupDomainInstance(
 
         dwError = _VmDirSrvCreateBuiltInGroup( pSchemaCtx,
                                                VMDIR_DC_GROUP_NAME,
+                                               pszDomainAdminsGroupSid,
                                                pszDCGroupDN);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         // create DCClients Group
-        dwError = VmDirAllocateStringAVsnprintf( &pszDCClientGroupDN,
+        dwError = VmDirAllocateStringPrintf( &pszDCClientGroupDN,
                                                  "cn=%s,%s",
                                                  VMDIR_DCCLIENT_GROUP_NAME,
                                                  pszBuiltInContainerDN);
@@ -772,11 +916,12 @@ VmDirSrvSetupDomainInstance(
 
         dwError = _VmDirSrvCreateBuiltInGroup( pSchemaCtx,
                                                VMDIR_DCCLIENT_GROUP_NAME,
+                                               pszDomainClientsGroupSid,
                                                pszDCClientGroupDN);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         // create CertAdmins Group
-        dwError = VmDirAllocateStringAVsnprintf( &pszCertGroupDN,
+        dwError = VmDirAllocateStringPrintf( &pszCertGroupDN,
                                                  "cn=%s,%s",
                                                  VMDIR_CERT_GROUP_NAME,
                                                  pszBuiltInContainerDN);
@@ -786,92 +931,198 @@ VmDirSrvSetupDomainInstance(
                                                    VMDIR_CERT_GROUP_NAME,
                                                    pszCertGroupDN,
                                                    pszUserDN,           // member: default administrator
-                                                   pszDCGroupDN);       // member: DCAdmins group
+                                                   pszDCGroupDN,        // member: DCAdmins group
+                                                   pszDCClientGroupDN); // member: DCClients group
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    // Set up SD for the entries created during instance set up
-    // Default allows administrator VMDIR_ENTRY_ALL_ACCESS,
-    // oneself VMDIR_ENTRY_GENERIC_WRITE
-    dwError = VmDirSrvCreateDefaultSecDescRel( pszUserDN, pszAdminsGroupSid,
-                                               &pSecDescRel, &ulSecDescRel, &SecInfo);
+    //
+    // Create default security descriptor for internally-created entries.
+    //
+    dwError = VmDirSrvCreateSecurityDescriptor(
+                VMDIR_ENTRY_ALL_ACCESS_NO_DELETE_CHILD_BUT_DELETE_OBJECT,
+                pszUserDN,
+                pszAdminsGroupSid,
+                pszDomainAdminsGroupSid,
+                pszDomainClientsGroupSid,
+                pszUsersGroupSid,
+                FALSE,
+                FALSE,
+                FALSE,
+                FALSE,
+                &SecDescFullAccess);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    // add the same sd for all the objects created during instance set-up
+    //
+    // Create the default security descriptor for the builtin container, which
+    // doesn't have the DELETE_CHILD permission (as we don't want the builtin
+    // groups to be deletable by default). Note that an admin can still delete
+    // these entries if they adjust the ACL.
+    //
+    dwError = VmDirSrvCreateSecurityDescriptor(
+                VMDIR_ENTRY_ALL_ACCESS_NO_DELETE_CHILD,
+                pszUserDN,
+                pszAdminsGroupSid,
+                pszDomainAdminsGroupSid,
+                pszDomainClientsGroupSid,
+                pszUsersGroupSid,
+                TRUE,
+                FALSE,
+                FALSE,
+                FALSE,
+                &SecDescNoDelete);
+    BAIL_ON_VMDIR_ERROR(dwError);
 
-    // Set SD for the Domain objects
-    for (i = (int) VmDirStringLenA(pszDomainDN) - 1; i >= 0; i-- )
-    {
-        if (i == 0 || pszDomainDN[i] == RDN_SEPARATOR_CHAR)
-        {
-            startOfRdnInd = (i == 0) ? 0 : i + 1 /* for , */;
-            dwError = VmDirSetSecurityDescriptorForDn( (PSTR)pszDomainDN + startOfRdnInd, SecInfo, pSecDescRel, ulSecDescRel);
-            BAIL_ON_VMDIR_ERROR(dwError);
-        }
-    }
+    //
+    // Create the default security descriptor for the users container, which
+    // doesn't have the DELETE_CHILD permission (as we don't want the administrator
+    // account to be deletable by default) but does inherit the delete-object
+    // permission so that future users can be deleted. Note that an admin can
+    // still delete the administrator account if they adjust the ACL.
+    //
+    dwError = VmDirSrvCreateSecurityDescriptor(
+                VMDIR_ENTRY_ALL_ACCESS_NO_DELETE_CHILD_BUT_DELETE_OBJECT,
+                pszUserDN,
+                pszAdminsGroupSid,
+                pszDomainAdminsGroupSid,
+                pszDomainClientsGroupSid,
+                pszUsersGroupSid,
+                FALSE,
+                FALSE,
+                FALSE,
+                FALSE,
+                &SecDescNoDeleteChild);
+    BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirSetSecurityDescriptorForDn( (PSTR)pszDomainDN, SecInfo, pSecDescRel, ulSecDescRel);
+    dwError = VmDirSrvCreateSecurityDescriptor(
+                VMDIR_ENTRY_ALL_ACCESS_NO_DELETE_CHILD,
+                pszUserDN,
+                pszAdminsGroupSid,
+                pszDomainAdminsGroupSid,
+                pszDomainClientsGroupSid,
+                pszUsersGroupSid,
+                FALSE,
+                TRUE,
+                FALSE,
+                FALSE,
+                &SecDescAnonymousRead);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirSrvCreateSecurityDescriptor(
+                VMDIR_ENTRY_ALL_ACCESS,
+                pszUserDN,
+                pszAdminsGroupSid,
+                pszDomainAdminsGroupSid,
+                pszDomainClientsGroupSid,
+                pszUsersGroupSid,
+                FALSE,
+                FALSE,
+                TRUE,
+                FALSE,
+                &SecDescServices);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirSrvCreateSecurityDescriptor(
+                VMDIR_ENTRY_ALL_ACCESS,
+                pszUserDN,
+                pszAdminsGroupSid,
+                pszDomainAdminsGroupSid,
+                pszDomainClientsGroupSid,
+                pszUsersGroupSid,
+                TRUE,
+                FALSE,
+                FALSE,
+                !bSetupHost,
+                &SecDescDomain);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = _VmDirAclDomainObjects(pszDomainDN, pszUserDN, &SecDescDomain);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // Set SD for the administrator object
-
-    dwError = VmDirSetSecurityDescriptorForDn( pszUserDN, SecInfo, pSecDescRel, ulSecDescRel);
+    dwError = VmDirSetSecurityDescriptorForDn(pszUserDN, &SecDescNoDelete);
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    //
     // Set SD for Users container
-
-    dwError = VmDirSetSecurityDescriptorForDn( pszUsersContainerDN, SecInfo, pSecDescRel, ulSecDescRel);
+    //
+    dwError = VmDirSetSecurityDescriptorForDn(pszUsersContainerDN, &SecDescNoDeleteChild);
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    //
     // Set SD for Builtin container
-
-    dwError = VmDirSetSecurityDescriptorForDn( pszBuiltInContainerDN, SecInfo, pSecDescRel, ulSecDescRel);
+    //
+    dwError = VmDirSetSecurityDescriptorForDn(pszBuiltInContainerDN, &SecDescNoDelete);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // Set SD for ForeignSecurityPrincipals container
 
-    dwError = VmDirSetSecurityDescriptorForDn( pszFSPsContainerDN, SecInfo, pSecDescRel, ulSecDescRel);
+    dwError = VmDirSetSecurityDescriptorForDn(pszFSPsContainerDN, &SecDescFullAccess);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    if (bSetupHost == FALSE
-        ||
-        bFirstNodeBootstrap == TRUE
-       )
+    if (bSetupHost == FALSE || bFirstNodeBootstrap == TRUE)
     {
         // Set SD for BuiltInUsers group
 
-        dwError = VmDirSetSecurityDescriptorForDn( pszBuiltInUsersGroupDN, SecInfo, pSecDescRel, ulSecDescRel);
+        dwError = VmDirSetSecurityDescriptorForDn(pszBuiltInUsersGroupDN, &SecDescNoDelete);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         // Set SD for BuiltInAdministrators group
 
-        dwError = VmDirSetSecurityDescriptorForDn( pszBuiltInAdministratorsGroupDN, SecInfo, pSecDescRel, ulSecDescRel);
+        dwError = VmDirSetSecurityDescriptorForDn(pszBuiltInAdministratorsGroupDN, &SecDescNoDelete);
         BAIL_ON_VMDIR_ERROR(dwError);
-
     }
 
-    if ( bSetupHost && bFirstNodeBootstrap )
+    if (bSetupHost && bFirstNodeBootstrap)
     {
         // Set SD for BuiltIn DC group
-        dwError = VmDirSetSecurityDescriptorForDn( pszDCGroupDN, SecInfo, pSecDescRel, ulSecDescRel);
+        dwError = VmDirSetSecurityDescriptorForDn(pszDCGroupDN, &SecDescNoDelete);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        // Set SD for BuiltIn DCClients group
+        dwError = VmDirSetSecurityDescriptorForDn(pszDCClientGroupDN, &SecDescNoDelete);
         BAIL_ON_VMDIR_ERROR(dwError);
 
         // Set SD for BuiltIn Cert group
-        dwError = VmDirSetSecurityDescriptorForDn( pszCertGroupDN, SecInfo, pSecDescRel, ulSecDescRel);
+        dwError = VmDirSetSecurityDescriptorForDn(pszCertGroupDN, &SecDescNoDelete);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        // Set SD for kerberos users
+        dwError = VmDirSetSecurityDescriptorForDn(pszTgtDN, &SecDescFullAccess);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        dwError = VmDirSetSecurityDescriptorForDn(pszKMDN, &SecDescFullAccess);
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-
     // Create default password and lockout policy
-    dwError = VmDirSrvCreateDN( PASSWD_LOCKOUT_POLICY_DEFAULT_CN, pszDomainDN, &pszDefaultPasswdLockoutPolicyDN );
+    dwError = VmDirSrvCreateDN(PASSWD_LOCKOUT_POLICY_DEFAULT_CN, pszDomainDN, &pszDefaultPasswdLockoutPolicyDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirSrvCreateDefaultPasswdPolicy(pSchemaCtx, pszDefaultPasswdLockoutPolicyDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // Set SD for Password lockout policy object
-    dwError = VmDirSetSecurityDescriptorForDn( pszDefaultPasswdLockoutPolicyDN, SecInfo, pSecDescRel, ulSecDescRel);
+    dwError = VmDirSetSecurityDescriptorForDn(pszDefaultPasswdLockoutPolicyDN, &SecDescFullAccess);
     BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (pSecDescServicesOut != NULL)
+    {
+        *pSecDescServicesOut = SecDescServices;
+        SecDescServices.pSecDesc = NULL;
+    }
+
+    if (pSecDescAnonymousReadOut != NULL)
+    {
+        *pSecDescAnonymousReadOut = SecDescAnonymousRead;
+        SecDescAnonymousRead.pSecDesc = NULL;
+    }
+
+    if (pSecDescDeletedObjectsOut != NULL)
+    {
+        *pSecDescDeletedObjectsOut = SecDescNoDelete;
+        SecDescNoDelete.pSecDesc = NULL;
+    }
 
 cleanup:
 
@@ -885,13 +1136,25 @@ cleanup:
     VMDIR_SAFE_FREE_MEMORY(pszDCGroupDN);
     VMDIR_SAFE_FREE_MEMORY(pszDCClientGroupDN);
     VMDIR_SAFE_FREE_MEMORY(pszCertGroupDN);
+    VMDIR_SAFE_FREE_MEMORY(pszTenantRealmName);
 
-    VMDIR_SAFE_FREE_MEMORY(pSecDescRel);
+    VMDIR_SAFE_FREE_MEMORY(SecDescFullAccess.pSecDesc);
+    VMDIR_SAFE_FREE_MEMORY(SecDescNoDelete.pSecDesc);
+    VMDIR_SAFE_FREE_MEMORY(SecDescNoDeleteChild.pSecDesc);
+    VMDIR_SAFE_FREE_MEMORY(SecDescAnonymousRead.pSecDesc);
+    VMDIR_SAFE_FREE_MEMORY(SecDescServices.pSecDesc);
+    VMDIR_SAFE_FREE_MEMORY(SecDescDomain.pSecDesc);
 
     VMDIR_SAFE_FREE_MEMORY(pszAdminSid);
     VMDIR_SAFE_FREE_MEMORY(pszBuiltInUsersGroupSid);
     VMDIR_SAFE_FREE_MEMORY(pszAdminsGroupSid);
+    VMDIR_SAFE_FREE_MEMORY(pszDomainAdminsGroupSid);
+    VMDIR_SAFE_FREE_MEMORY(pszDomainClientsGroupSid);
+    VMDIR_SAFE_FREE_MEMORY(pszUsersGroupSid);
+    VMDIR_SAFE_FREE_STRINGA(pszKrbtgtSid);
     VMDIR_SAFE_FREE_MEMORY(pszAdminUserKrbUPN);
+    VMDIR_SAFE_FREE_MEMORY(pszTgtDN);
+    VMDIR_SAFE_FREE_MEMORY(pszKMDN);
 
     return dwError;
 
@@ -1094,7 +1357,7 @@ VmDirSrvCreateUserDN(
     DWORD dwError = 0;
     PSTR  pszUserDN = NULL;
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                     &pszUserDN,
                     "cn=%s,%s",
                     pszUsername,
@@ -1245,15 +1508,17 @@ DWORD
 _VmDirSrvCreateBuiltInGroup(
     PVDIR_SCHEMA_CTX pSchemaCtx,
     PCSTR            pszGroupName,
+    PCSTR            pszGroupSid,
     PCSTR            pszDN
     )
 {
     DWORD dwError = 0;
     PSTR ppszAttributes[] =
     {
-            ATTR_OBJECT_CLASS,    OC_GROUP,
-            ATTR_CN,              (PSTR)pszGroupName,
-            ATTR_SAM_ACCOUNT_NAME,(PSTR)pszGroupName,
+            ATTR_OBJECT_CLASS,     OC_GROUP,
+            ATTR_CN,               (PSTR)pszGroupName,
+            ATTR_SAM_ACCOUNT_NAME, (PSTR)pszGroupName,
+            ATTR_OBJECT_SID,       (PSTR)pszGroupSid,
             NULL
     };
 
@@ -1276,7 +1541,8 @@ _VmDirSrvCreateBuiltInCertGroup(
     PCSTR            pszGroupName,
     PCSTR            pszDN,
     PCSTR            pszAdminDN,
-    PCSTR            pszDCGroupDN
+    PCSTR            pszDCGroupDN,
+    PCSTR            pszDCClientGroupDN
     )
 {
     DWORD dwError = 0;
@@ -1287,6 +1553,7 @@ _VmDirSrvCreateBuiltInCertGroup(
             ATTR_SAM_ACCOUNT_NAME,(PSTR)pszGroupName,
             ATTR_MEMBER,          (PSTR)pszAdminDN,
             ATTR_MEMBER,          (PSTR)pszDCGroupDN,
+            ATTR_MEMBER,          (PSTR)pszDCClientGroupDN,
             NULL
     };
 
@@ -1350,8 +1617,11 @@ static
 DWORD
 VmDirSrvInitKrb(
     PVDIR_SCHEMA_CTX pSchemaCtx,
-    PCSTR            pszFQDomainName,
-    PCSTR            pszDomainDN
+    PCSTR pszFQDomainName,
+    PCSTR pszDomainDN,
+    PCSTR pszUserSid,
+    PSTR *ppszTgtDN,
+    PSTR *ppszKMDN
     )
 {
     DWORD       dwError = 0;
@@ -1362,6 +1632,7 @@ VmDirSrvInitKrb(
     DWORD       dwEncMasterKeyLen = 0;
     PSTR        pszTgtUPN = NULL;
     PSTR        pszTgtCN = NULL;
+    PSTR        pszTgtDN = NULL;
     PSTR        pszTgtPasswd = NULL;
     PSTR        pszKMUPN = NULL;
     PSTR        pszKMPasswd = NULL;
@@ -1399,14 +1670,14 @@ VmDirSrvInitKrb(
     dwError = VmDirKrbInit();
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                     &pszTgtUPN,
                     "krbtgt/%s@%s",
                     pszRealmName,
                     pszRealmName);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                     &pszTgtCN,
                     "krbtgt/%s",
                     pszRealmName);
@@ -1417,15 +1688,24 @@ VmDirSrvInitKrb(
                     &pszTgtPasswd);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    // create krbtgt principal
-    dwError = VmDirCreateAccount(
-                    pszTgtUPN,
-                    pszTgtCN,
-                    pszTgtPasswd,
-                    NULL);
+    dwError = VmDirUPNToAccountDN(pszTgtUPN, ATTR_CN, pszTgtCN, &pszTgtDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    // create krbtgt principal
+    dwError = VmDirSrvCreateUser(
+                pSchemaCtx,
+                0,
+                pszTgtCN,
+                "",
+                "",
+                pszTgtCN,
+                pszTgtPasswd,
+                pszTgtDN,
+                pszUserSid,
+                pszTgtUPN);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirAllocateStringPrintf(
                     &pszKMUPN,
                     "K/M@%s",
                     pszRealmName);
@@ -1436,19 +1716,19 @@ VmDirSrvInitKrb(
                     &pszKMPasswd);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    // create K/M principal
-    dwError = VmDirCreateAccount(
-                    pszKMUPN,
-                    "K/M",           // TODO, cn=k/M for now
-                    pszKMPasswd,
-                    NULL);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
     dwError = VmDirUPNToAccountDN(
                     pszKMUPN,
                     "cn",
                     "K/M",
                     &pszKMDN);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    // create K/M principal
+    dwError = VmDirCreateAccount(
+                    pszKMUPN,
+                    "K/M",           // TODO, cn=k/M for now
+                    pszKMPasswd,
+                    pszKMDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // K/M principal need special ATTR_KRB_PRINCIPAL - encoded master key/pEncMasterKey
@@ -1458,6 +1738,12 @@ VmDirSrvInitKrb(
                     ATTR_KRB_PRINCIPAL_KEY,
                     &bervEncMKey);
     BAIL_ON_VMDIR_ERROR(dwError);
+
+    *ppszTgtDN = pszTgtDN;
+    pszTgtDN = NULL;
+
+    *ppszKMDN = pszKMDN;
+    pszKMDN = NULL;
 
 cleanup:
 
@@ -1470,6 +1756,7 @@ cleanup:
     VMDIR_SAFE_FREE_MEMORY(pszKMPasswd);
     VMDIR_SAFE_FREE_MEMORY(pszRealmName);
     VMDIR_SAFE_FREE_MEMORY(pszKMDN);
+    VMDIR_SAFE_FREE_MEMORY(pszTgtDN);
 
     return dwError;
 

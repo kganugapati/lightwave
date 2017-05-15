@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+# Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the “License”); you may not
 # use this file except in compliance with the License.  You may obtain a copy
@@ -239,7 +239,7 @@ class CerTool:
             return os.path.normpath(PROGRAM_FILES +
                     '/VMware/CIS/Vmcad/certool.exe')
         elif (os.name == 'posix'):
-            return '/usr/lib/vmware-vmca/bin/certool'
+            return '/opt/vmware/bin/certool'
 
     def GetOpenSSLPath(self):
         if(os.name == "nt"):

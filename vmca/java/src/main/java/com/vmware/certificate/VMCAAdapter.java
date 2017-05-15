@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -56,7 +56,8 @@ public final class VMCAAdapter {
 
 
    static {
-      final String VMCA_LIB64_PATH = "/usr/lib/vmware-vmca/lib64";
+      final String VMCA_LIB64_PATH = "/opt/vmware/lib64";
+      final String VMCA_VC_LIB64_PATH = "/usr/lib/vmware-vmca/lib64";
       final String LIKEWISE_LIB64_PATH = "/opt/likewise/lib64";
       final String LIB_PATH = "/usr/lib";
       final String LIB_PATH_64 = "/usr/lib64";
@@ -70,7 +71,7 @@ public final class VMCAAdapter {
             new StringBuilder(propValue == null ? "" : propValue);
 
       String paths[] =
-            { DEV_PATH, LIB_PATH_64, LIB_PATH, LIKEWISE_LIB64_PATH, VMCA_LIB64_PATH };
+            {VMCA_VC_LIB64_PATH, DEV_PATH, LIB_PATH_64, LIB_PATH, LIKEWISE_LIB64_PATH, VMCA_LIB64_PATH};
 
       for (String path : paths) {
          File libDir = new File(path);

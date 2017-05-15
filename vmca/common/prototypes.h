@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -58,6 +58,15 @@ VmwPosixCfgReadDWORDValue(
     PDWORD              pdwValue
     );
 
+DWORD
+VmwPosixCfgSetValue(
+    PVMW_CFG_KEY    pKey,
+    PCSTR           pszValue,
+    DWORD           dwType,
+    PBYTE           pValue,
+    DWORD           dwSize
+    );
+
 VOID
 VmwPosixCfgCloseKey(
     PVMW_CFG_KEY pKey
@@ -112,6 +121,15 @@ VmwWinCfgReadDWORDValue(
     PCSTR               pszSubkey,
     PCSTR               pszName,
     PDWORD              pdwValue
+    );
+
+DWORD
+VmwWinCfgSetValue(
+    PVMW_CFG_KEY        pKey,
+    PCSTR               pszValue,
+    DWORD               dwType,
+    PBYTE               pValue,
+    DWORD               dwSize
     );
 
 VOID

@@ -16,7 +16,7 @@
 
 #include "includes.h"
 
-#define VMDIR_FQDN_SEPARATOR '.'
+#define VMDIR_FQDN_SEPARATOR    '.'
 
 static
 DWORD
@@ -193,7 +193,7 @@ VmDirQsortPEIDCmp(
     }
 }
 
-PCVOID
+void const *
 UtdVectorEntryGetKey(
     PLW_HASHTABLE_NODE  pNode,
     PVOID               pUnused
@@ -267,43 +267,41 @@ error:
 }
 
 void
-VmDirCurrentGeneralizedTime(
+VmDirCurrentGeneralizedTimeWithOffset(
     PSTR    pszTimeBuf,
-    int     iBufSize)
+    int     iBufSize,
+    DWORD dwOffset // in seconds
+    )
 {
-#ifndef _WIN32
     time_t      tNow = time(NULL);
     struct tm   tmpTm = {0};
+    struct tm   *ptm = NULL;
 
-    assert (pszTimeBuf);
+    tNow -= dwOffset;
 
-    gmtime_r(&tNow, &tmpTm);
-
-    snprintf(pszTimeBuf, iBufSize, "%04d%02d%02d%02d%02d%02d.0Z",
-            tmpTm.tm_year + 1900,
-            tmpTm.tm_mon + 1,
-            tmpTm.tm_mday,
-            tmpTm.tm_hour,
-            tmpTm.tm_min,
-            tmpTm.tm_sec);
-
-    return;
+#ifdef _WIN32
+    ptm = gmtime(&tNow);
 #else
-    SYSTEMTIME sysTime = {0};
-
-    GetSystemTime( &sysTime );
-
-    _snprintf_s(
-        pszTimeBuf,
-        iBufSize,
-        iBufSize-1,
-        "%04d%02d%02d%02d%02d%02d.0Z",
-        sysTime.wYear, sysTime.wMonth, sysTime.wDay, sysTime.wHour,
-        sysTime.wMinute, sysTime.wSecond
-        );
-
+    gmtime_r(&tNow, &tmpTm);
+    ptm = &tmpTm;
 #endif
 
+    VmDirStringPrintFA(pszTimeBuf, iBufSize, "%04d%02d%02d%02d%02d%02d.0Z",
+            ptm->tm_year + 1900,
+            ptm->tm_mon + 1,
+            ptm->tm_mday,
+            ptm->tm_hour,
+            ptm->tm_min,
+            ptm->tm_sec);
+}
+
+void
+VmDirCurrentGeneralizedTime(
+    PSTR    pszTimeBuf,
+    int     iBufSize
+    )
+{
+    VmDirCurrentGeneralizedTimeWithOffset(pszTimeBuf, iBufSize, 0);
 }
 
 VOID
@@ -362,39 +360,6 @@ error:
     return dwError;
 }
 
-uint64_t
-VmDirGetTimeInMilliSec(
-    VOID
-    )
-{
-    uint64_t            iTimeInMSec = 0;
-
-#ifdef _WIN32
-
-    FILETIME        currentFileTime = {0};
-    ULARGE_INTEGER  currentTime = {0};
-
-    GetSystemTimeAsFileTime(&currentFileTime);
-
-    currentTime.LowPart  = currentFileTime.dwLowDateTime;
-    currentTime.HighPart = currentFileTime.dwHighDateTime;
-
-    iTimeInMSec = (currentTime.QuadPart * 100) / NSECS_PER_MSEC;
-
-#else
-
-    struct timespec     timeValue = {0};
-
-    if (clock_gettime(CLOCK_MONOTONIC, &timeValue) == 0)
-    {
-        iTimeInMSec = (timeValue.tv_sec * NSECS_PER_SEC + timeValue.tv_nsec ) / NSECS_PER_MSEC;
-    }
-
-#endif
-
-    return  iTimeInMSec;
-}
-
 VOID
 VmDirLogStackFrame(
     int     logLevel
@@ -441,7 +406,7 @@ VmDirSrvCreateDN(
     DWORD dwError = 0;
     PSTR  pszContainerDN = NULL;
 
-    dwError = VmDirAllocateStringAVsnprintf(&pszContainerDN, "cn=%s,%s", pszContainerName, pszDomainDN);
+    dwError = VmDirAllocateStringPrintf(&pszContainerDN, "cn=%s,%s", pszContainerName, pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     *ppszContainerDN = pszContainerDN;
@@ -574,6 +539,7 @@ VmDirSrvCreateContainerWithEID(
     PVDIR_SCHEMA_CTX pSchemaCtx,
     PCSTR            pszContainerDN,
     PCSTR            pszContainerName,
+    PVMDIR_SECURITY_DESCRIPTOR pSecDesc, // OPTIONAL
     ENTRYID          eID
     )
 {
@@ -588,6 +554,12 @@ VmDirSrvCreateContainerWithEID(
 
     dwError = VmDirSimpleEntryCreate(pSchemaCtx, ppszAttributes, (PSTR)pszContainerDN, eID);
     BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (pSecDesc != NULL)
+    {
+        dwError = VmDirSetSecurityDescriptorForDn(pszContainerDN, pSecDesc);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
 
 cleanup:
     return dwError;
@@ -606,7 +578,7 @@ VmDirSrvCreateContainer(
 {
     DWORD dwError = 0;
 
-    dwError = VmDirSrvCreateContainerWithEID(pSchemaCtx, pszContainerDN, pszContainerName, 0);
+    dwError = VmDirSrvCreateContainerWithEID(pSchemaCtx, pszContainerDN, pszContainerName, NULL, 0);
     BAIL_ON_VMDIR_ERROR(dwError);
 
 error:
@@ -677,6 +649,54 @@ error:
     goto cleanup;
 }
 
+DWORD
+VmDirFindMemberOfAttribute(
+    PVDIR_ENTRY pEntry,
+    PVDIR_ATTRIBUTE* ppMemberOfAttr
+    )
+{
+    DWORD               dwError = ERROR_SUCCESS;
+    PVDIR_ATTRIBUTE     pMemberOfAttr = NULL;
+    VDIR_OPERATION      searchOp = {0};
+    BOOLEAN             bHasTxn = FALSE;
+
+    if ( pEntry == NULL || ppMemberOfAttr == NULL )
+    {
+        dwError =  VMDIR_ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = VmDirInitStackOperation( &searchOp, VDIR_OPERATION_TYPE_INTERNAL,
+LDAP_REQ_SEARCH, NULL );
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    searchOp.pBEIF = VmDirBackendSelect(NULL);
+
+    // start txn
+    dwError = searchOp.pBEIF->pfnBETxnBegin( searchOp.pBECtx, VDIR_BACKEND_TXN_READ );
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    bHasTxn = TRUE;
+
+    dwError = VmDirBuildMemberOfAttribute( &searchOp, pEntry, &pMemberOfAttr );
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    *ppMemberOfAttr = pMemberOfAttr;
+
+cleanup:
+    if (bHasTxn)
+    {
+        searchOp.pBEIF->pfnBETxnCommit( searchOp.pBECtx);
+    }
+    VmDirFreeOperationContent(&searchOp);
+
+    return dwError;
+
+error:
+    VmDirFreeAttribute(pMemberOfAttr);
+    goto cleanup;
+}
+
 /* BuildMemberOfAttribute: For the given DN (dn), find out to which groups it belongs (appears in the member attribute),
  * including nested memberships. Return these group DNs as memberOf attribute (memberOfAttr).
  */
@@ -727,7 +747,7 @@ VmDirBuildMemberOfAttribute(
 
         f->filtComp.ava.value = *currMemberDn;
 
-        dwError = pOperation->pBEIF->pfnBEGetCandidates( pOperation->pBECtx, f);
+        dwError = pOperation->pBEIF->pfnBEGetCandidates(pOperation->pBECtx, f, 0);
         if (dwError == VMDIR_ERROR_BACKEND_ENTRY_NOTFOUND)
         {   // no candidates found
             dwError = 0;
@@ -1054,4 +1074,308 @@ cleanup:
 error:
 
     goto cleanup;
+}
+
+DWORD
+VmDirHasSingleAttrValue(
+    PVDIR_ATTRIBUTE pAttr
+    )
+{
+    DWORD   dwError = 0;
+
+    if ( pAttr->numVals != 1 || pAttr->vals == NULL || pAttr->vals[0].lberbv_val == NULL )
+    {
+        dwError = VMDIR_ERROR_BAD_ATTRIBUTE_DATA;
+    }
+
+    return dwError;
+}
+
+DWORD
+VmDirValidatePrincipalName(
+    PVDIR_ATTRIBUTE pAttr,
+    PSTR*           ppErrMsg
+    )
+{
+    DWORD   dwError = 0;
+    PSTR    pszLocalErrMsg = NULL;
+
+    dwError = VmDirHasSingleAttrValue( pAttr );
+    BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, pszLocalErrMsg, "Invalid %s value", pAttr->type.lberbv_val);
+
+    if ( VmDirStringChrA( pAttr->vals[0].lberbv_val,'@') == NULL )
+    {
+        dwError = VMDIR_ERROR_BAD_ATTRIBUTE_DATA;
+        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, pszLocalErrMsg,
+                                      "Invalid %s value (%s), char '@' not found.",
+                                      pAttr->type.lberbv_val,
+                                      pAttr->vals[0].lberbv_val);
+    }
+
+cleanup:
+    VMDIR_SAFE_FREE_MEMORY(pszLocalErrMsg);
+
+    return dwError;
+
+error:
+    if (ppErrMsg)
+    {
+        *ppErrMsg = pszLocalErrMsg;
+        pszLocalErrMsg = NULL;
+    }
+
+    goto cleanup;
+}
+
+/*
+ * Determine domain functional level
+ */
+DWORD
+VmDirSrvGetDomainFunctionalLevel(
+    PDWORD pdwLevel
+    )
+{
+    DWORD               dwError = 0;
+    VDIR_ENTRY_ARRAY    entryArray = {0};
+    PVDIR_ATTRIBUTE     pAttrDomainLevel = NULL;
+    DWORD               dwLevel = 0;
+
+    if (gVmdirServerGlobals.systemDomainDN.bvnorm_val == NULL)
+    {
+        dwError = ERROR_NOT_JOINED;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = VmDirFilterInternalSearch(gVmdirServerGlobals.systemDomainDN.bvnorm_val, LDAP_SCOPE_BASE, "(objectclass=*)", 0, NULL, &entryArray);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if ( entryArray.iSize == 1)
+    {
+        pAttrDomainLevel = VmDirEntryFindAttribute(
+                                ATTR_DOMAIN_FUNCTIONAL_LEVEL,
+                                &entryArray.pEntry[0]);
+        if (!pAttrDomainLevel)
+        {
+            dwError = VMDIR_ERROR_NO_SUCH_ATTRIBUTE;
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
+
+        dwLevel = atoi(pAttrDomainLevel->vals[0].lberbv_val);
+    }
+    else if ( entryArray.iSize == 0)
+    {
+        dwError = VMDIR_ERROR_ENTRY_NOT_FOUND;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+    else
+    {
+        dwError = VMDIR_ERROR_DATA_CONSTRAINT_VIOLATION;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    *pdwLevel = dwLevel;
+
+cleanup:
+
+    VmDirFreeEntryArrayContent(&entryArray);
+    return dwError;
+
+error:
+    goto cleanup;
+}
+
+PCSTR
+VmDirLdapModOpTypeToName(
+    VDIR_LDAP_MOD_OP modOp
+    )
+{
+    struct
+    {
+        VDIR_LDAP_MOD_OP  modOp;
+        PCSTR             pszOpName;
+    }
+    static modTypeToNameTable[] =
+    {
+        { MOD_OP_ADD,    "add" },
+        { MOD_OP_DELETE, "del" },
+        { MOD_OP_REPLACE,"rep" },
+    };
+
+    // make sure VDIR_MOD_OPERATION_TYPE enum starts with 0
+    return modOp >= VMDIR_ARRAY_SIZE(modTypeToNameTable) ?
+             VMDIR_PCSTR_UNKNOWN :  modTypeToNameTable[modOp].pszOpName;
+}
+
+PCSTR
+VmDirLdapReqCodeToName(
+    ber_tag_t reqCode
+    )
+{
+    struct
+    {
+        ber_tag_t   reqCode;
+        PCSTR       pszOpName;
+    }
+    static regCodeToNameTable[] =
+    {
+        {LDAP_REQ_BIND,       "Bind"},
+        {LDAP_REQ_UNBIND,     "Unbind"},
+        {LDAP_REQ_SEARCH,     "Search"},
+        {LDAP_REQ_MODIFY,     "Modify"},
+        {LDAP_REQ_ADD,        "Add"},
+        {LDAP_REQ_DELETE,     "Delete"},
+        {LDAP_REQ_MODDN,      "Moddn"},
+        {LDAP_REQ_MODRDN,     "Modrdn"},
+        {LDAP_REQ_RENAME,     "Rename"},
+        {LDAP_REQ_COMPARE,    "Compare"},
+        {LDAP_REQ_ABANDON,    "Abandon"},
+        {LDAP_REQ_EXTENDED,   "Extended"},
+    };
+
+    PCSTR pszName = VMDIR_PCSTR_UNKNOWN;
+    int i=0;
+
+    for (; i< VMDIR_ARRAY_SIZE(regCodeToNameTable); i++)
+    {
+        if (reqCode == regCodeToNameTable[i].reqCode)
+        {
+            pszName = regCodeToNameTable[i].pszOpName;
+            break;
+        }
+    }
+
+    return pszName;
+}
+
+PCSTR
+VmDirOperationTypeToName(
+    VDIR_OPERATION_TYPE opType
+    )
+{
+    struct
+    {
+        VDIR_OPERATION_TYPE opType;
+        PCSTR               pszOpName;
+    }
+    static operationTypeToNameTable[] =
+    {
+        {VDIR_OPERATION_TYPE_EXTERNAL,  "Ext"},
+        {VDIR_OPERATION_TYPE_INTERNAL,  "Int"},
+        {VDIR_OPERATION_TYPE_REPL,      "Rep"},
+    };
+
+    PCSTR pszName = VMDIR_PCSTR_UNKNOWN;
+    int i=0;
+
+    for (; i< VMDIR_ARRAY_SIZE(operationTypeToNameTable); i++)
+    {
+        if (opType == operationTypeToNameTable[i].opType)
+        {
+            pszName = operationTypeToNameTable[i].pszOpName;
+            break;
+        }
+    }
+
+    return pszName;
+}
+
+/*
+ * Compare Attribute lberbv value only, no attribute normalization is done.
+ * Used in replication conflict resolution to suppress benign warning log.
+ *
+ * Should NOT be used as attribute semantics comparison.
+ */
+BOOLEAN
+VmDirIsSameConsumerSupplierEntryAttr(
+    PVDIR_ATTRIBUTE pAttr,
+    PVDIR_ENTRY     pSrcEntry,
+    PVDIR_ENTRY     pDstEntry
+    )
+{
+    BOOLEAN         bIsSameAttr = TRUE;
+    DWORD           dwError = 0;
+    PVDIR_ATTRIBUTE pSrcAttr = NULL;
+    PVDIR_ATTRIBUTE pDstAttr = NULL;
+    unsigned        i = 0;
+    unsigned        j = 0;
+
+    if (!pAttr || !pSrcEntry || !pDstEntry)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
+    }
+
+    pSrcAttr = VmDirFindAttrByName(pSrcEntry, pAttr->type.lberbv_val);
+    pDstAttr = VmDirFindAttrByName(pDstEntry, pAttr->type.lberbv_val);
+
+    if (pSrcAttr && pDstAttr && pSrcAttr->numVals == pDstAttr->numVals)
+    {
+        for (i=0; bIsSameAttr && i < pSrcAttr->numVals; i++)
+        {
+             for (j = 0; j < pDstAttr->numVals; j++)
+             {
+                 if (pSrcAttr->vals[i].lberbv_len == pDstAttr->vals[j].lberbv_len &&
+                     memcmp( pSrcAttr->vals[i].lberbv_val, pDstAttr->vals[j].lberbv_val, pSrcAttr->vals[i].lberbv_len) == 0
+                    )
+                 {
+                     break;
+                 }
+             }
+
+             if (j == pDstAttr->numVals)
+             {
+                 bIsSameAttr = FALSE;
+             }
+        }
+    }
+    else
+    {
+        bIsSameAttr = FALSE;
+    }
+
+error:
+    return bIsSameAttr && dwError==0;
+}
+
+/*
+ * Sort function -
+ * Array of PVDIR_BERVALUE
+ */
+int
+VmDirPVdirBValCmp(
+    const void *p1,
+    const void *p2
+    )
+{
+
+    PVDIR_BERVALUE* ppBV1 = (PVDIR_BERVALUE*) p1;
+    PVDIR_BERVALUE* ppBV2 = (PVDIR_BERVALUE*) p2;
+
+    if ((ppBV1 == NULL || *ppBV1 == NULL) &&
+        (ppBV2 == NULL || *ppBV2 == NULL))
+    {
+        return 0;
+    }
+
+    if (ppBV1 == NULL || *ppBV1 == NULL)
+    {
+        return -1;
+    }
+
+    if (ppBV2 == NULL || *ppBV2 == NULL)
+    {
+        return 1;
+    }
+
+    if ( (*ppBV1)->lberbv_len > (*ppBV2)->lberbv_len )
+    {
+        return -1;
+    }
+    else if ( (*ppBV1)->lberbv_len < (*ppBV2)->lberbv_len )
+    {
+        return 1;
+    }
+    else
+    {
+        return memcmp((*ppBV1)->lberbv_val, (*ppBV2)->lberbv_val, (*ppBV1)->lberbv_len);
+    }
 }

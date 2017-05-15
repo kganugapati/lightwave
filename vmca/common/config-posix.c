@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -183,6 +183,10 @@ VmwPosixCfgReadStringValue(
                     NULL,
                     szValue,
                     &dwszValueSize);
+    if (dwError == LWREG_ERROR_NO_SUCH_KEY_OR_VALUE)
+    {
+        dwError = ERROR_FILE_NOT_FOUND;
+    }
     BAIL_ON_VMCA_ERROR(dwError);
 
     dwError = VMCAAllocateStringA(szValue, &pszValue);
@@ -227,6 +231,10 @@ VmwPosixCfgReadDWORDValue(
                     NULL,
                     (PVOID)&dwValue,
                     &dwValueSize);
+    if (dwError == LWREG_ERROR_NO_SUCH_KEY_OR_VALUE)
+    {
+        dwError = ERROR_FILE_NOT_FOUND;
+    }
     BAIL_ON_VMCA_ERROR(dwError);
 
     *pdwValue = dwValue;
@@ -240,6 +248,38 @@ error:
     *pdwValue = 0;
 
     goto cleanup;
+}
+
+DWORD
+VmwPosixCfgSetValue(
+    PVMW_CFG_KEY    pKey,
+    PCSTR           pszValue,
+    DWORD           dwType,
+    PBYTE           pValue,
+    DWORD           dwSize
+    )
+{
+    DWORD dwError = 0;
+
+    if (!pKey || IsNullOrEmptyString(pszValue))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMCA_ERROR(dwError);
+    }
+
+    dwError = RegSetValueExA(
+                    pKey->pConnection->hConnection,
+                    pKey->hKey,
+                    pszValue,
+                    0,
+                    dwType,
+                    pValue,
+                    dwSize);
+    BAIL_ON_VMCA_ERROR(dwError);
+
+error:
+
+    return dwError;
 }
 
 VOID

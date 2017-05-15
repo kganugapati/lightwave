@@ -45,7 +45,6 @@
 #pragma once
 
 #include "targetver.h"
-#define WIN32_LEAN_AND_MEAN // Exclude rarely-used stuff from Windows headers
 
 #include <windows.h>
 #include <stdio.h>
@@ -57,6 +56,9 @@
 #include "lutil_ldap.h"
 #include "ldap-int.h"
 #define LDAP_UNICODE 0
+
+#define LW_STRICT_NAMESPACE
+#include <lw/types.h>
 
 #include "banned.h"
 #include <vmdir.h>

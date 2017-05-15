@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -20,16 +20,17 @@
 
 #define VMDIR_STOP_SERVICE "/opt/likewise/bin/lwsm stop vmdir"
 #define VMDIR_START_SERVICE "/opt/likewise/bin/lwsm start vmdir"
-#define VMDIR_CLEANUP_DATA "rm /storage/db/vmware-vmdir/*"
+// in embedded VCHA, snapshot database live under vmware-vmdir/
+#define VMDIR_CLEANUP_DATA "rm -rf /storage/db/vmware-vmdir/*"
 
 #define VMKDC_STOP_SERVICE "/opt/likewise/bin/lwsm stop vmkdc"
 #define VMKDC_START_SERVICE "/opt/likewise/bin/lwsm start vmkdc"
 #else
-#define VMDIR_STOP_SERVICE "net stop vmwaredirectoryservice"
+#define VMDIR_STOP_SERVICE "net stop vmwaredirectoryservice /y"
 #define VMDIR_START_SERVICE "net start vmwaredirectoryservice"
 #define VMDIR_CLEANUP_DATA "del /q \"%allusersprofile%\\application data\\vmware\\cis\\data\\vmdird\\*\""
 
-#define VMKDC_STOP_SERVICE "net stop vmwarekdcservice"
+#define VMKDC_STOP_SERVICE "net stop vmwarekdcservice /y"
 #define VMKDC_START_SERVICE "net start vmwarekdcservice"
 #endif
 
@@ -169,7 +170,7 @@ VmDirGetSiteGuidInternal(
     );
 
 DWORD
-VmDirGetSiteName(
+VmDirGetSiteNameInternal(
     LDAP* pLd,
     PSTR* ppszSiteName
     );
@@ -207,23 +208,9 @@ VmDirCreateCMSubtree(
     PCSTR pszLduGuid);
 
 DWORD
-VmDirCopyLDAPSubTree(
-    LDAP    *pLdSource,
-    LDAP    *pLdTarget,
-    PCSTR   pszSourceBase,
-    PCSTR   pszTargetBase,
-    PCSTR   pszSourceDomainDN,
-    PCSTR   pszTargetDomainDN);
-
-DWORD
 VmDirGetDomainName(
     PCSTR pszHostName,
     PSTR* ppszDomainName);
-
-DWORD
-VmDirGetServerName(
-    PCSTR pszHostName,
-    PSTR* ppszServerName);
 
 DWORD
 VmDirGetLocalLduGuid(
@@ -249,7 +236,8 @@ VmDirLdapSetupRemoteHostRA(
     PCSTR pszHostName,
     PCSTR pszUsername,
     PCSTR pszPassword,
-    PCSTR pszReplHostName
+    PCSTR pszReplHostName,
+    DWORD dwHighWatermark
     );
 
 DWORD
@@ -271,12 +259,32 @@ VmDirLdapSetupDCAccountOnPartner(
     );
 
 DWORD
+VmDirLdapCreateComputerOUContainer(
+    LDAP* pLd,
+    PCSTR pszDomainName,
+    PCSTR pszOUContainer
+    );
+
+DWORD
+VmDirLdapConfigureComputerAccount(
+    LDAP* pLd,
+    PCSTR pszDomainName,
+    PCSTR pszPassword,
+    PCSTR pszComputerHostName
+    );
+
+DWORD
 VmDirLdapSetupComputerAccount(
+    LDAP* pLd,
     PCSTR pszDomainName,
     PCSTR pszHostName,
     PCSTR pszUsername,
     PCSTR pszPassword,
-    PCSTR pszComputerHostName
+    PCSTR pszComputerOU,
+    PCSTR pszComputerHostName,
+    BOOLEAN bStoreInRegistry,
+    PBYTE* ppByteOutPassword,
+    PDWORD pdwOutPasswordSize
     );
 
 DWORD
@@ -303,11 +311,13 @@ VmDirLdapDeleteDCAccount(
     LDAP*   pLd,
     PCSTR   pszDomainName,
     PCSTR   pszDCHostName,           // Self host name
+    BOOLEAN bSuccessOnMissing,
     BOOLEAN bActuallyDelete
     );
 
 DWORD
 VmDirLdapSetupServiceAccount(
+    LDAP* pLd,
     PCSTR pszDomainName,
     PCSTR pszHostName,
     PCSTR pszUsername,
@@ -357,6 +367,16 @@ VmDirIfDNExist(
     PCSTR pszDN);
 
 DWORD
+VmDirGetServerObjectDN(
+    PCSTR pszServerName,
+    PCSTR pszDomainName,
+    PCSTR pszUserName,
+    PCSTR pszPassword,
+    PCSTR pszLotusServerObjectName,
+    PSTR* ppszCurrentServerObjectDN
+    );
+
+DWORD
 VmDirConnectLDAPServerByDN(
     LDAP**  pLd,
     PCSTR    pszLdapURI,
@@ -382,11 +402,6 @@ VmDirConnectLDAPServer(
     PCSTR       pszPassword
     );
 
-VOID
-VmDirLdapUnbind(
-    LDAP** ppLd
-    );
-
 DWORD
 VmDirAddVmIdentityContainer(
     LDAP* pLd,
@@ -398,14 +413,6 @@ DWORD
 VmDirGetAdminName(
     PCSTR pszHostName,
     PSTR* ppszAdminName
-    );
-
-DWORD
-VmDirLdapGetMasterKey(
-    LDAP* pLd,
-    PCSTR pszDomainDN,
-    PBYTE* ppMasterKey,
-    DWORD* pLen
     );
 
 DWORD
@@ -425,6 +432,7 @@ VmDirGetAllRAToHost(
 DWORD
 VmDirIsPartnerReplicationUpToDate(
     LDAP *pLD,
+    PCSTR pszPartnerName,
     PCSTR pszDomain,
     PCSTR pszServerName,
     PCSTR pszUserName,
@@ -452,15 +460,6 @@ VmDirDnLastRDNToCn(
     );
 
 DWORD
-VmDirLdapGetSingleAttribute(
-    LDAP*   pLD,
-    PCSTR   pszDN,
-    PCSTR   pszAttr,
-    PBYTE*  ppByte,
-    DWORD*  pdwLen
-    );
-
-DWORD
 VmDirLdapModReplaceAttribute(
     LDAP*   pLd,
     PCSTR   pszDN,
@@ -469,10 +468,16 @@ VmDirLdapModReplaceAttribute(
     );
 
 DWORD
-VmDirGetServerAccountDN(
+VmDirLdapModReplAttributesValue(
+    LDAP*   pLd,
+    PCSTR   pszDN,
+    PCSTR*  ppszAttValPair
+    );
+
+DWORD
+VmDirGetDCContainerDN(
     PCSTR pszDomain,
-    PCSTR pszMachineName,
-    PSTR* ppszServerDN
+    PSTR* ppszContainerDN
     );
 
 DWORD
@@ -493,6 +498,7 @@ VmDirSetServerGuidInternal(
 
 DWORD
 VmDirGetComputerAccountDN(
+    LDAP* pLd,
     PCSTR pszDomain,
     PCSTR pszMachineName,
     PSTR* ppszAccountDN
@@ -528,6 +534,12 @@ VmDirIsLocalHost(
     PCSTR pszHostname
     );
 
+DWORD
+VmDirGetReplicateCycleCountInternal(
+    PVMDIR_CONNECTION   pConnection,
+    DWORD* pdwCycleCount
+    );
+
 /* localclient.c */
 
 DWORD
@@ -550,11 +562,40 @@ VmDirLocalInitializeHost(
 );
 
 DWORD
+VmDirLocalGetServerState(
+    UINT32  *pServerState
+    );
+
+DWORD
 VmDirLocalInitializeTenant(
     PWSTR   pwszNamingContext,
     PWSTR   pwszUserName,
     PWSTR   pwszPassword
-);
+    );
+
+DWORD
+VmDirLocalCreateTenant(
+    PCSTR pszUserUPN,
+    PCSTR pszPassword,
+    PCSTR pszDomainName,
+    PCSTR pszNewUserName,
+    PCSTR pszNewUserPassword
+    );
+
+DWORD
+VmDirLocalDeleteTenant(
+    PCSTR pszUserUPN,
+    PCSTR pszPassword,
+    PCSTR pwszDomain
+    );
+
+DWORD
+VmDirLocalEnumerateTenants(
+    PCSTR pszUserUPN,
+    PCSTR pszPassword,
+    PSTR **pppszTenants,
+    PDWORD pdwNumTenants
+    );
 
 DWORD
 VmDirLocalForceResetPassword(
@@ -581,17 +622,6 @@ VmDirGetLastLocalUsnProcessedForHostFromRADN(
     );
 
 DWORD
-VmDirGetUsnFromPartners(
-    PCSTR pszHostName,
-    USN   *pUsn
-    );
-
-DWORD VmDirCreateLdAtHostViaMachineAccount(
-    PCSTR  pszHostName,
-    LDAP** ppLd
-);
-
-DWORD
 VmDirLdapCreateReplHostNameDN(
     PSTR* ppszReplHostNameDN,
     LDAP* pLd,
@@ -605,3 +635,102 @@ VmDirDCEGetErrorCode(
     );
 
 #endif
+
+DWORD
+VmDirGetAllDCInternal(
+    LDAP*   pLd,
+    PCSTR   pszDomainName,
+    PVMDIR_STRING_LIST* ppStrList
+    );
+
+DWORD
+VmDirGetPSCVersionInternal(
+    LDAP* pLd,
+    PSTR* ppszPSCVer
+    );
+
+DWORD
+VmDirPSCVersion(
+    PCSTR       pszHostName,
+    PCSTR       pszUserName,
+    PCSTR       pszPassword,
+    PCSTR       pszDomainName,
+    PSTR*       ppszVersion
+    );
+
+DWORD
+VmDirGetObjectAttribute(
+    LDAP*   pLd,
+    PCSTR   pszDomain,
+    PCSTR   pszSearchDNPrefix,
+    PCSTR   pszObjectClass,
+    PCSTR   pszAttribute,
+    int     scope,
+    PSTR**  pppszValues,
+    DWORD*  pdwNumValues
+    );
+
+DWORD
+VmDirGetReplicationStateInternal(
+    LDAP*               pLd,
+    PVMDIR_REPL_STATE*  ppReplState
+    );
+
+VOID
+VmDirFreeReplicationStateInternal(
+    PVMDIR_REPL_STATE   pReplState
+    );
+
+DWORD
+VmDirParseMetadata(
+    PCSTR  pszMetadata,
+    PVMDIR_METADATA *ppMetadata
+    );
+
+VOID
+VmDirFreeMetadataInternal(
+    PVMDIR_METADATA pMetadata
+    );
+
+VOID
+VmDirFreeMetadataListInternal(
+    PVMDIR_METADATA_LIST pMetadataList
+    );
+
+DWORD
+VmDirGetAttributeMetadataInternal(
+    PVMDIR_CONNECTION   pConnection,
+    PCSTR               pszEntryDn,
+    PCSTR               pszAttribute,
+    PVMDIR_METADATA_LIST*    ppMetadataList
+    );
+
+DWORD
+VmDirLdapGetHighWatermark(
+    LDAP*      pLocalLd,
+    PCSTR      pszLocalHost,
+    PCSTR      pszPartnerHost,
+    PCSTR      pszDomainName,
+    PCSTR      pszUsername,
+    PCSTR      pszPassword,
+    USN*       pLastLocalUsn
+    );
+
+DWORD
+VmDirSetupDefaultAccount(
+    PCSTR pszDomainName,
+    PCSTR pszPartnerServerName,
+    PCSTR pszLdapHostName,
+    PCSTR pszBindUserName,
+    PCSTR pszBindPassword
+    );
+
+DWORD
+VmDirUpdateKeytabFile(
+    PCSTR pszServerName,
+    PCSTR pszDomainName,
+    PCSTR pszHostName,
+    PCSTR pszUserName,
+    PCSTR pszPassword,
+    BOOLEAN bIsServer
+    );

@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -32,12 +32,6 @@ _VmDirSASLSRPInteraction(
     unsigned    flags,
     void *      pDefaults,
     void *      pIn
-    );
-
-static
-DWORD
-VmDirMapLdapError(
-    int retVal
     );
 
 DWORD
@@ -111,7 +105,9 @@ VmDirSASLSRPBind(
     PSTR        pszLowerCaseUPN = NULL;
     LDAP*       pLd = NULL;
     const int   ldapVer = LDAP_VERSION3;
+    const int   iSaslNoCanon = 1;
     VMDIR_SASL_INTERACTIVE_DEFAULT srpDefault = {0};
+    int         iCnt = 0;
 
     if ( ppLd == NULL || pszURI == NULL || pszUPN == NULL || pszPass == NULL )
     {
@@ -125,21 +121,42 @@ VmDirSASLSRPBind(
     srpDefault.pszAuthName = pszLowerCaseUPN;
     srpDefault.pszPass     = pszPass;
 
-    retVal = ldap_initialize( &pLd, pszURI);
-    BAIL_ON_SIMPLE_LDAP_ERROR(retVal);
+    for (iCnt=0; iCnt<2; iCnt++)
+    {
+        retVal = ldap_initialize( &pLd, pszURI);
+        BAIL_ON_SIMPLE_LDAP_ERROR(retVal);
 
-    retVal = ldap_set_option(pLd, LDAP_OPT_PROTOCOL_VERSION, &ldapVer);
-    BAIL_ON_SIMPLE_LDAP_ERROR(retVal);
+        retVal = ldap_set_option(pLd, LDAP_OPT_PROTOCOL_VERSION, &ldapVer);
+        BAIL_ON_SIMPLE_LDAP_ERROR(retVal);
 
-    retVal = ldap_sasl_interactive_bind_s( pLd,
-                                            NULL,
-                                            "SRP",
-                                            NULL,
-                                            NULL,
-                                            LDAP_SASL_QUIET,
-                                            _VmDirSASLSRPInteraction,
-                                            &srpDefault);
-    BAIL_ON_SIMPLE_LDAP_ERROR(retVal);
+        // turn off SASL hostname canonicalization for SRP mech
+        retVal = ldap_set_option(pLd, LDAP_OPT_X_SASL_NOCANON, &iSaslNoCanon);
+        BAIL_ON_SIMPLE_LDAP_ERROR(retVal);
+
+        retVal = ldap_sasl_interactive_bind_s( pLd,
+                                                NULL,
+                                                "SRP",
+                                                NULL,
+                                                NULL,
+                                                LDAP_SASL_QUIET,
+                                                _VmDirSASLSRPInteraction,
+                                                &srpDefault);
+        if (retVal == LDAP_SERVER_DOWN)
+        {
+            VmDirSleep(50); // pause 50 ms
+            if ( pLd )
+            {
+                ldap_unbind_ext_s(pLd, NULL, NULL);
+                pLd = NULL;
+            }
+            continue;   // if transient network error, retry once.
+        }
+        else
+        {
+            break;
+        }
+    }
+    BAIL_ON_SIMPLE_LDAP_ERROR(retVal);  // bail ldap_sasl_interactive_bind_s failure.
 
     *ppLd = pLd;
 
@@ -272,25 +289,22 @@ error:
 }
 
 /*
- * Two binding mechanisms are supported ["SRP","GSSAPI"]
- * This function will try to bind to LDAP server via supported mechanisms in the order above.
+ * Bind to partner via "SRP" mechanism.
  */
 DWORD
 VmDirSafeLDAPBind(
     LDAP**      ppLd,
     PCSTR       pszHost,
-    PCSTR       pszUPN,         // opt, if exists, will try SRP mech
-    PCSTR       pszPassword     // opt, if exists, will try SRP mech
+    PCSTR       pszUPN,
+    PCSTR       pszPassword
     )
 {
     DWORD       dwError = 0;
-    DWORD       dwSRPError = 0;
-    DWORD       dwGSSError = 0;
-    BOOLEAN     bDoneSRPBind = FALSE;
+
     LDAP*       pLd = NULL;
     char        ldapURI[VMDIR_MAX_LDAP_URI_LEN + 1] = {0};
 
-    if (ppLd == NULL || pszHost == NULL)
+    if (ppLd == NULL || pszHost == NULL || pszUPN == NULL || pszPassword == NULL)
     {
         dwError = VMDIR_ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -308,35 +322,19 @@ VmDirSafeLDAPBind(
     }
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    // try SRP if we have UPN/password
-    if (pszUPN != NULL && pszPassword != NULL)
-    {
-        bDoneSRPBind = TRUE;
-        dwError = dwSRPError = VmDirSASLSRPBind( &pLd, &(ldapURI[0]), pszUPN, pszPassword);
-    }
-    // fall back to GSSAPI/KRB if no credentials for SRP or SRP failed.
-    if ( bDoneSRPBind == FALSE || dwSRPError != 0 )
-    {
-        dwError = dwGSSError = VmDirSASLGSSAPIBind( &pLd, &(ldapURI[0]) );
-    }
+    dwError = VmDirSASLSRPBind( &pLd, &(ldapURI[0]), pszUPN, pszPassword);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     *ppLd = pLd;
 
 cleanup:
 
-    if (dwSRPError && dwGSSError)
-    {
-        // We can only return one error code. SRP is the preferred mechanism,
-        // so we will return its error (if there was an error from both mechs).
-        dwError = dwSRPError;
-    }
     return dwError;
 
 error:
 
-    VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "VmDirSafeLDAPBind to (%s) failed. SRP(%d), GSSAPI(%d)",
-                     ldapURI, dwSRPError, dwGSSError );
+    VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "VmDirSafeLDAPBind to (%s) failed. SRP(%d)",
+                     ldapURI, dwError );
 
     if ( pLd )
     {
@@ -548,13 +546,12 @@ VmDirDeleteSyncRequestControl(
     }
 }
 
-static
 DWORD
 VmDirMapLdapError(
-    int retVal
+    int ldapErrorCode
     )
 {
-    switch(retVal)
+    switch(ldapErrorCode)
     {
         case LDAP_SUCCESS:
             return VMDIR_SUCCESS;
@@ -600,5 +597,61 @@ VmDirMapLdapError(
             return VMDIR_ERROR_BUSY;
         default:
             return VMDIR_ERROR_GENERIC;
+    }
+}
+
+/*
+ *  Bind to a host with the handle to be used later
+ */
+DWORD
+VmDirConnectLDAPServerWithMachineAccount(
+    PCSTR  pszHostName,
+    PCSTR  pszDomain,
+    LDAP** ppLd
+    )
+{
+    DWORD dwError = 0;
+    PSTR pszDCAccount = NULL;
+    PSTR pszDCAccountPassword = NULL;
+    PSTR pszServerName = NULL;
+    char bufUPN[VMDIR_MAX_UPN_LEN] = {0};
+    LDAP* pLd = NULL;
+
+    dwError = VmDirRegReadDCAccount( &pszDCAccount);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirReadDCAccountPassword( &pszDCAccountPassword);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirStringPrintFA( bufUPN, sizeof(bufUPN)-1,  "%s@%s", pszDCAccount, pszDomain);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirGetServerName( pszHostName, &pszServerName);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirSafeLDAPBind( &pLd, pszServerName, bufUPN, pszDCAccountPassword);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    *ppLd = pLd;
+
+cleanup:
+    VMDIR_SAFE_FREE_STRINGA(pszDCAccount);
+    VMDIR_SECURE_FREE_STRINGA(pszDCAccountPassword);
+    VMDIR_SAFE_FREE_STRINGA(pszServerName);
+    return dwError;
+
+error:
+    goto cleanup;
+}
+
+VOID
+VmDirLdapUnbind(
+    LDAP** ppLd
+    )
+{
+    if (ppLd && *ppLd)
+    {
+        ldap_unbind_ext_s(*ppLd, NULL, NULL);
+        *ppLd = NULL;
     }
 }

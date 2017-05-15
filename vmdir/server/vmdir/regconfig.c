@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -78,6 +78,13 @@ VmDirRegConfigMultiStringToDwords(
     DWORD*  pdwValues
     );
 
+static
+DWORD
+VmDirRegConfigMultiStringToStrList(
+    PCSTR               pszValues,
+    PVMDIR_STRING_LIST* ppStrList
+    );
+
 DWORD
 VmDirSrvUpdateConfig(
     VOID
@@ -105,6 +112,13 @@ VmDirSrvUpdateConfig(
                      TRUE))
         {
             gVmdirGlobals.bAllowInsecureAuth = pEntry->dwValue ? TRUE : FALSE;
+        }
+        else if (!VmDirStringCompareA(
+                     pEntry->pszName,
+                     VMDIR_REG_KEY_DISABLE_VECS,
+                     TRUE))
+        {
+            gVmdirGlobals.bDisableVECSIntegration = pEntry->dwValue ? TRUE : FALSE;
         }
         else if (!VmDirStringCompareA(
                     pEntry->pszName,
@@ -152,6 +166,16 @@ VmDirSrvUpdateConfig(
         }
         else if (!VmDirStringCompareA(
                     pEntry->pszName,
+                    VMDIR_REG_KEY_REST_LISTEN_PORT,
+                    TRUE))
+        {
+            dwError = VmDirAllocateStringA(
+                        pEntry->pszValue,
+                        &gVmdirGlobals.pszRestListenPort);
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
                     VMDIR_REG_KEY_LDAP_RECV_TIMEOUT_SEC,
                     TRUE))
         {
@@ -166,10 +190,94 @@ VmDirSrvUpdateConfig(
         }
         else if (!VmDirStringCompareA(
                     pEntry->pszName,
+                    VMDIR_REG_KEY_MAX_INDEX_SCAN,
+                    TRUE))
+        {
+            gVmdirGlobals.dwMaxIndexScan = VMDIR_MAX(pEntry->dwValue, 512);
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_SMALL_CANDIDATE_SET,
+                    TRUE))
+        {
+            gVmdirGlobals.dwSmallCandidateSet = VMDIR_MAX(pEntry->dwValue, 32);
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
                     VMDIR_REG_KEY_ALLOW_ADMIN_LOCKOUT,
                     TRUE))
         {
             gVmdirGlobals.bAllowAdminLockout = pEntry->dwValue ? TRUE : FALSE;
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_MAX_SIZELIMIT_SCAN,
+                    TRUE))
+        {
+            gVmdirGlobals.dwMaxSizelimitScan = VMDIR_MAX(pEntry->dwValue, 0);
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_ALLOW_IMPORT_OP_ATTR,
+                    TRUE))
+        {
+            gVmdirGlobals.bAllowImportOpAttrs = pEntry->dwValue ? TRUE : FALSE;
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_LDAP_SEARCH_TIMEOUT_SEC,
+                    TRUE))
+        {
+            gVmdirGlobals.dwLdapSearchTimeoutSec = pEntry->dwValue;
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_TRACK_LAST_LOGIN_TIME,
+                    TRUE))
+        {
+            gVmdirGlobals.bTrackLastLoginTime = pEntry->dwValue ? TRUE : FALSE;
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_PAGED_SEARCH_READ_AHEAD,
+                    TRUE))
+        {
+            gVmdirGlobals.bPagedSearchReadAhead = !!pEntry->dwValue;
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_COPY_DB_WRITES_MIN,
+                    TRUE))
+        {
+            gVmdirGlobals.dwCopyDbWritesMin = pEntry->dwValue;
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_COPY_DB_INTERVAL_IN_SEC,
+                    TRUE))
+        {
+            gVmdirGlobals.dwCopyDbIntervalInSec = pEntry->dwValue;
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_COPY_DB_BLOCK_WRITE_IN_SEC,
+                    TRUE))
+        {
+            gVmdirGlobals.dwCopyDbBlockWriteInSec = pEntry->dwValue;
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_TOMBSTONE_EXPIRATION_IN_SEC,
+                    TRUE))
+        {
+            gVmdirServerGlobals.dwTombstoneExpirationPeriod = pEntry->dwValue;
+        }
+        else if (!VmDirStringCompareA(
+                    pEntry->pszName,
+                    VMDIR_REG_KEY_TOMBSTONE_REAPING_FREQ_IN_SEC,
+                    TRUE))
+        {
+            gVmdirServerGlobals.dwTombstoneThreadFrequency = pEntry->dwValue;
         }
     }
 
@@ -202,6 +310,63 @@ VmDirSrvFreeConfig(
 
     VMDIR_SAFE_FREE_MEMORY(gVmdirGlobals.pdwLdapsConnectPorts);
     gVmdirGlobals.dwLdapsConnectPorts = 0;
+}
+
+DWORD
+VmDirRegGetMultiSZ(
+    PCSTR   pszKeyPath,
+    PCSTR   pszKeyName,
+    PVMDIR_STRING_LIST* ppStrList
+    )
+{
+    DWORD               dwError = 0;
+    PSTR                pszValue = NULL;
+    PVMDIR_STRING_LIST  pStrList = NULL;
+
+    PVMDIR_CONFIG_CONNECTION_HANDLE pCfgHandle = NULL;
+
+    if (!pszKeyPath || !pszKeyName || !ppStrList)
+    {
+        dwError = VMDIR_ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = VmDirRegConfigHandleOpen(&pCfgHandle);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirRegConfigGetMultiString(
+                            pCfgHandle,
+                            pszKeyPath,
+                            pszKeyName,
+                            &pszValue);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirRegConfigMultiStringToStrList(pszValue, &pStrList);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    // bail if there is no content in pStrList
+    if (!pStrList || pStrList->dwCount == 0)
+    {
+        dwError = VMDIR_ERROR_INVALID_CONFIGURATION;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    *ppStrList = pStrList; pStrList = NULL;
+
+cleanup:
+    if (pCfgHandle)
+    {
+        VmDirRegConfigHandleClose(pCfgHandle);
+    }
+    if (pStrList)
+    {
+        VmDirStringListFree(pStrList);
+    }
+    VMDIR_SAFE_FREE_MEMORY(pszValue);
+
+    return dwError;
+error:
+    goto cleanup;
 }
 
 static
@@ -639,6 +804,54 @@ error:
     goto cleanup;
 }
 
+static
+DWORD
+VmDirRegConfigMultiStringToStrList(
+    PCSTR               pszValues,
+    PVMDIR_STRING_LIST* ppStrList
+    )
+{
+    DWORD               dwError = 0;
+    DWORD               dwValuesLen = 0;
+    PCSTR               pszIter = NULL;
+    PVMDIR_STRING_LIST  pStrList = NULL;
+
+    if (pszValues)
+    {
+        pszIter = pszValues;
+        while (pszIter != NULL && *pszIter != '\0')
+        {
+            dwValuesLen++;
+
+            pszIter += VmDirStringLenA(pszIter) + 1;
+        }
+
+        dwError = VmDirStringListInitialize(&pStrList, dwValuesLen);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        pszIter = pszValues;
+        while (pszIter != NULL && *pszIter != '\0')
+        {
+            dwError = VmDirStringListAddStrClone(pszIter, pStrList);
+            BAIL_ON_VMDIR_ERROR(dwError);
+
+            pszIter += VmDirStringLenA(pszIter) + 1;
+        }
+
+        *ppStrList = pStrList; pStrList = NULL;
+    }
+
+cleanup:
+    if (pStrList)
+    {
+        VmDirStringListFree(pStrList);
+    }
+    return dwError;
+
+error:
+    goto cleanup;
+}
+
 DWORD
 VmDirGetMaxDbSizeMb(
     PDWORD pMaxDbSizeMb
@@ -669,4 +882,79 @@ cleanup:
     return dwError;
 error:
     goto cleanup;
+}
+
+DWORD
+_VmDirDbCpReadRegistry(
+    PDWORD pdwCopyDbWritesMin,
+    PDWORD pdwCopyDbIntervalInSec,
+    PDWORD pdwCopyDbBlockWriteInSec
+    )
+{
+#ifndef WIN32
+    DWORD dwError = 0;
+    DWORD dwValue = 0;
+    PSTR  pszLocalErrorMsg = NULL;
+    PVMDIR_CONFIG_CONNECTION_HANDLE pCfgHandle = NULL;
+
+    dwError = VmDirRegConfigHandleOpen(&pCfgHandle);
+    BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pszLocalErrorMsg),
+      "_VmDirDbCpReadRegistry: VmDirRegConfigHandleOpen error %d", dwError);
+
+    dwError = VmDirRegConfigGetDword(pCfgHandle, VMDIR_CONFIG_PARAMETER_PARAMS_KEY_PATH,
+            VMDIR_REG_KEY_COPY_DB_INTERVAL_IN_SEC, &dwValue);
+    if (dwError)
+    {
+        if (dwError != LWREG_ERROR_NO_SUCH_KEY_OR_VALUE)
+        {
+            VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL, "_VmDirDbCpReadRegistry %s error %d",
+                  VMDIR_REG_KEY_COPY_DB_INTERVAL_IN_SEC, dwError);
+        }
+    } else
+    {
+        *pdwCopyDbIntervalInSec = dwValue;
+    }
+
+    dwError = VmDirRegConfigGetDword(pCfgHandle, VMDIR_CONFIG_PARAMETER_PARAMS_KEY_PATH,
+                VMDIR_REG_KEY_COPY_DB_WRITES_MIN, &dwValue);
+    if (dwError)
+    {
+        if (dwError != LWREG_ERROR_NO_SUCH_KEY_OR_VALUE)
+        {
+            VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL, "_VmDirDbCpReadRegistry %s error %d",
+                  VMDIR_REG_KEY_COPY_DB_WRITES_MIN, dwError);
+        }
+    } else
+    {
+        *pdwCopyDbWritesMin = dwValue;
+    }
+
+    dwError = VmDirRegConfigGetDword(pCfgHandle, VMDIR_CONFIG_PARAMETER_PARAMS_KEY_PATH,
+            VMDIR_REG_KEY_COPY_DB_BLOCK_WRITE_IN_SEC, &dwValue);
+    if (dwError)
+    {
+        if (dwError != LWREG_ERROR_NO_SUCH_KEY_OR_VALUE)
+        {
+            VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL, "_VmDirDbCpReadRegistry %s error %d",
+                  VMDIR_REG_KEY_COPY_DB_BLOCK_WRITE_IN_SEC, dwError);
+        }
+    } else
+    {
+        *pdwCopyDbBlockWriteInSec = dwValue;
+    }
+
+cleanup:
+    if (pCfgHandle)
+    {
+        VmDirRegConfigHandleClose(pCfgHandle);
+    }
+    VMDIR_SAFE_FREE_MEMORY(pszLocalErrorMsg);
+    return dwError;
+
+error:
+    VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL, "%s", VDIR_SAFE_STRING(pszLocalErrorMsg));
+    goto cleanup;
+#else
+    return 0;
+#endif
 }

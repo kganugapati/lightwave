@@ -24,11 +24,14 @@
 #include "srp_util.h"
 #include <lber.h>
 
+#include <vmdirdefines.h>
 #include "includes.h"
 #include "srprpc.h"
 #include <client/structs.h>
 
+#ifndef _WIN32
 #include <config.h>
+#endif
 
 #ifdef _WIN32
 
@@ -144,18 +147,22 @@ srp_gss_validate_oid_header(
     len--, ptr++;
     token_len++;
 
-    if (len < oid_len || len < (int) GSS_SRP_MECH_OID_LEN)
+    if (len < oid_len ||
+        (len < (int) GSS_SRP_MECH_OID_LEN_ST) ||
+        (len < (int) GSSAPI_SRP_MECH_OID_LEN_ST))
     {
         maj = GSS_S_CALL_BAD_STRUCTURE;
         goto error;
     }
 
-    if (memcmp(ptr, SRP_OID, GSS_SRP_MECH_OID_LEN) != 0)
+    if ((oid_len != GSS_SRP_MECH_OID_LEN_ST && oid_len != GSSAPI_SRP_MECH_OID_LEN_ST) ||
+        (memcmp(ptr, GSS_SRP_MECH_OID_ST, oid_len) != 0 &&
+         memcmp(ptr, GSSAPI_SRP_MECH_OID_ST, oid_len) != 0))
     {
         maj = GSS_S_BAD_MECH;
         goto error;
     }
-    token_len += GSS_SRP_MECH_OID_LEN;
+    token_len += oid_len;
 
     if (token_len != enc_token_len)
     {
@@ -185,6 +192,7 @@ _srp_gss_auth_create_machine_acct_binding(
     char *hostname = NULL;
     void *hRegistry = NULL;
     PVMDIR_SERVER_CONTEXT hServer = NULL;
+    PSTR pEnv = NULL;
 
     dwError = srp_reg_get_handle((void **) &hRegistry);
     if (dwError)
@@ -194,13 +202,23 @@ _srp_gss_auth_create_machine_acct_binding(
         goto error;
     }
 
-    /* Determine if this system is a management node */
-    dwError = srp_reg_get_domain_state(hRegistry, &domainState);
-    if (dwError)
+    /* If invoked by lwraft or other server, it can override domain state
+     * (to value 1) since it could obtain peer's credential from its database
+     */
+    pEnv = getenv(VMDIR_ENV_OVERRIDE_AFD_DOMAIN_STATE);
+    if (pEnv)
     {
-        maj = GSS_S_FAILURE;
-        min = dwError;
-        goto error;
+        domainState = atoi(pEnv);
+    } else
+    {
+        /* Determine if this system is a management node */
+        dwError = srp_reg_get_domain_state(hRegistry, &domainState);
+        if (dwError)
+        {
+            maj = GSS_S_FAILURE;
+            min = dwError;
+            goto error;
+        }
     }
 
     /* Value "2" is a management node: Perform SRP pass-through */
@@ -310,9 +328,6 @@ _srp_gss_auth_init(
     gss_buffer_t disp_name = NULL;
     gss_OID disp_name_OID = NULL;
     char *srp_upn_name = NULL;
-    char *srp_secret = NULL;
-    unsigned char *srp_secret_str = NULL;
-    unsigned int srp_secret_str_len = 0;
     int srp_decode_mda_len = 0;
     int srp_decode_salt_len = 0;
     const unsigned char *srp_mda = NULL;
@@ -323,11 +338,12 @@ _srp_gss_auth_init(
     const unsigned char *srp_bytes_B = NULL;
     int srp_bytes_B_len = 0;
     const unsigned char *srp_session_key = NULL;
+    unsigned char *ret_srp_session_key = NULL;
     int srp_session_key_len = 0;
     ber_int_t gss_srp_version_maj = 0;
     ber_int_t gss_srp_version_min = 0;
     PVMDIR_SERVER_CONTEXT hServer = NULL;
-    srp_verifier_handle_t hSrp = NULL;
+    srp_verifier_handle_t hSrp = NULL; /* aliased / cast to "ver" variable */
 
     ber_ctx.bv_val = (void *) input_token->value;
     ber_ctx.bv_len = input_token->length;
@@ -410,9 +426,6 @@ _srp_gss_auth_init(
              (int) disp_name_buf.length,
              (char *) disp_name_buf.value);
 
-    /* Used in generating Kerberos keyblock salt value */
-    srp_context_handle->upn_name = srp_upn_name;
-    srp_upn_name = NULL;
 
     maj = _srp_gss_auth_create_machine_acct_binding(
               &min,
@@ -422,13 +435,12 @@ _srp_gss_auth_init(
         maj = GSS_S_FAILURE;
         goto error;
     }
-    srp_context_handle->hServer = hServer;
 
     sts = cli_rpc_srp_verifier_new(
             hServer ? hServer->hBinding : NULL,
             hash_alg,
             ng_type,
-            srp_context_handle->upn_name,
+            srp_upn_name,
             ber_bytes_A->bv_val, (int) ber_bytes_A->bv_len,
             &srp_bytes_B, &srp_bytes_B_len,
             &srp_salt, &srp_decode_salt_len,
@@ -441,7 +453,7 @@ _srp_gss_auth_init(
         min = sts;
         goto error;
     }
-    ver = (struct SRPVerifier *) hSrp;
+    ver = (struct SRPVerifier *) hSrp, hSrp = NULL;
 
     if (!srp_bytes_B)
     {
@@ -460,8 +472,7 @@ _srp_gss_auth_init(
     ber_salt.bv_val = (unsigned char *) srp_salt;
     ber_salt.bv_len = srp_decode_salt_len;
     /*
-     * TBD: B is computed: (kv + g**b) % N
-     * char *srp_v = NULL;
+     * B is computed: (kv + g**b) % N
      */
     ber_B.bv_val = (void *) srp_bytes_B;
     ber_B.bv_len = srp_bytes_B_len;
@@ -504,11 +515,10 @@ _srp_gss_auth_init(
     }
     output_token->length = flatten->bv_len;
     memcpy(output_token->value, flatten->bv_val, flatten->bv_len);
-    srp_context_handle->srp_ver = ver;
 
     sts = cli_rpc_srp_verifier_get_session_key(
         hServer ? hServer->hBinding : NULL,
-        srp_context_handle->srp_ver,
+        ver,
         &srp_session_key,
         &srp_session_key_len);
     if (sts)
@@ -520,26 +530,46 @@ _srp_gss_auth_init(
 
     if (srp_session_key && srp_session_key_len > 0)
     {
-        srp_context_handle->srp_session_key =
+        ret_srp_session_key =
             calloc(srp_session_key_len, sizeof(unsigned char));
-        if (!srp_context_handle->srp_session_key)
+        if (!ret_srp_session_key)
         {
             maj = GSS_S_FAILURE;
             min = ENOMEM;
             goto error;
         }
-        memcpy(srp_context_handle->srp_session_key,
-               srp_session_key,
-               srp_session_key_len);
-        srp_context_handle->srp_session_key_len = srp_session_key_len;
-
-        srp_print_hex(srp_session_key, srp_session_key_len,
-                      "_srp_gss_auth_init(accept_sec_ctx) got session key");
     }
+    memcpy(ret_srp_session_key,
+           srp_session_key,
+           srp_session_key_len);
 
+    /* Set context handle/return values here; all previous calls succeeded */
     maj = GSS_S_CONTINUE_NEEDED;
+    srp_context_handle->hServer = hServer, hServer = NULL;
+
+    /* Used in generating Kerberos keyblock salt value */
+    srp_context_handle->upn_name = srp_upn_name, srp_upn_name = NULL;
+    srp_context_handle->srp_ver = ver, ver = NULL;
+
+    /* Return the SRP session key in the context handle */
+    srp_context_handle->srp_session_key_len = srp_session_key_len;
+    srp_context_handle->srp_session_key = ret_srp_session_key, ret_srp_session_key = NULL;
+
+    srp_print_hex(srp_session_key, srp_session_key_len,
+                  "_srp_gss_auth_init(accept_sec_ctx) got session key");
 
 error:
+    if (ver)
+    {
+        cli_rpc_srp_verifier_delete(
+            hServer ? hServer->hBinding : NULL,
+            (void **) &ver);
+    }
+    VmDirCloseServer(hServer);
+    if (srp_upn_name)
+    {
+        free(srp_upn_name);
+    }
     if (ber_upn)
     {
         ber_bvfree(ber_upn);
@@ -556,16 +586,6 @@ error:
     {
         gss_release_buffer(&min_tmp, disp_name);
     }
-    if (srp_secret)
-    {
-        free(srp_secret);
-    }
-    if (srp_secret_str)
-    {
-        /* Allocated by VmDirGetSRPSecret, not GSSAPI, so safe to call free */
-        memset(srp_secret_str, 0, srp_secret_str_len);
-        free(srp_secret_str);
-    }
     if (srp_bytes_B)
     {
         free((void *) srp_bytes_B);
@@ -581,6 +601,10 @@ error:
     if (srp_session_key)
     {
         free((void *) srp_session_key);
+    }
+    if (ret_srp_session_key)
+    {
+        free((void *) ret_srp_session_key);
     }
 
     if (maj)
@@ -636,7 +660,7 @@ _srp_gss_validate_client(
     if (berror == -1)
     {
         maj = GSS_S_FAILURE;
-        min = EINVAL; /* TBD: Adam, return a real error code here */
+        min = GSS_S_DEFECTIVE_TOKEN;
         goto error;
     }
 
@@ -816,7 +840,6 @@ error:
     return maj;
 }
 
-/*ARGSUSED*/
 OM_uint32
 srp_gss_accept_sec_context(
                 OM_uint32 *minor_status,
@@ -844,9 +867,6 @@ srp_gss_accept_sec_context(
     srp_gss_ctx_id_t srp_context_handle = NULL;
     krb5_error_code krb5_err = 0;
     gss_cred_id_t srp_cred_handle = NULL;
-    gss_OID_set_desc desired_mech;
-    gss_OID_desc mech_srp_desc = {SRP_OID_LENGTH, (void *) SRP_OID};
-    gss_OID mech_srp = &mech_srp_desc;
 
     if (minor_status == NULL ||
         output_token == GSS_C_NO_BUFFER ||
@@ -902,18 +922,11 @@ srp_gss_accept_sec_context(
             min = krb5_err;
             goto error;
         }
-#if 1
-        /*
-         * Hard code desired mech OID to SRP
-         */
-        desired_mech.elements = (gss_OID) mech_srp;
-        desired_mech.count = 1;
-
         maj = srp_gss_acquire_cred(
                   &min,
                   GSS_C_NO_NAME,
                   0,
-                  &desired_mech,
+                  NULL,
                   GSS_C_ACCEPT,
                   &srp_cred_handle,
                   NULL,
@@ -923,15 +936,6 @@ srp_gss_accept_sec_context(
             goto error;
         }
         srp_cred = (srp_gss_cred_id_t) srp_cred_handle;
-
-#else
-        if (!verifier_cred_handle || !context_handle)
-        {
-            maj = GSS_S_FAILURE;
-            goto error;
-        }
-        srp_cred = (srp_gss_cred_id_t) verifier_cred_handle;
-#endif
         srp_context_handle->magic_num = SRP_MAGIC_ID;
 
         maj = srp_gss_duplicate_oid(&min,
@@ -969,13 +973,11 @@ srp_gss_accept_sec_context(
     /* Verify state machine is consistent with expected state */
     state = SRP_AUTH_STATE_VALUE(ptr[0]);
 
-#if 0 /* TBD: FIXME, need spengo to fix this */
     if (state != srp_context_handle->state)
     {
         maj = GSS_S_FAILURE;
         goto error;
     }
-#endif
 
     switch(state)
     {
@@ -988,9 +990,12 @@ srp_gss_accept_sec_context(
                                  output_token);
         if (maj)
         {
+            if (maj == GSS_S_CONTINUE_NEEDED)
+            {
+                srp_context_handle->state = SRP_AUTH_CLIENT_VALIDATE;
+            }
             goto error;
         }
-        srp_context_handle->state = SRP_AUTH_CLIENT_VALIDATE;
         break;
 
       case SRP_AUTH_CLIENT_VALIDATE:
@@ -1053,7 +1058,11 @@ srp_gss_accept_sec_context(
     {
         PVMDIR_SERVER_CONTEXT hServer = srp_context_handle->hServer;
 
+#ifdef SRP_FIPS_ENABLED
+        krb5_err = srp_make_enc_keyblock_FIPS(srp_context_handle);
+#else
         krb5_err = srp_make_enc_keyblock(srp_context_handle);
+#endif
         if (krb5_err)
         {
             maj = GSS_S_FAILURE;

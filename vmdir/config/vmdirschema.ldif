@@ -72,6 +72,7 @@ objectClasses: (
         $ invocationId
         $ msDS-SiteName
         $ vmwPlatformServicesControllerVersion
+        $ vmwMaximumDomainFunctionalLevel
         )
     )
 
@@ -238,7 +239,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.9
     NAME 'vmwServerGUID'
     DESC 'A GUID identifying a vmware directory server and the associated DB'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.44{36}
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -267,7 +267,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.12
     NAME 'replBindPassword'
     DESC 'Attribute containing the bind password to be used to bind to a replication partner.'
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40{128}
     )
 
@@ -275,7 +274,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.13
     NAME 'lastLocalUsnProcessed'
     DESC 'Last local update sequence number, corresponding to this replication partner, processed by the current server.'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -288,7 +286,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.14
     NAME 'upToDateVector'
     DESC 'Up-to-date vector data structure used in multi-master replication.'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.44
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -299,7 +296,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.15
     NAME 'replPageSize'
     DESC 'Number of changes requested in seach replication search request'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -308,7 +304,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.17
     NAME 'vmwRidSequenceNumber'
     DESC 'An integer uniquely identifying the current rid sequence number used to generate next RID'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -319,7 +314,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.18
     NAME 'vmwNodeSequenceNumber'
     DESC 'An integer uniquely identifying the current node sequence number used to generate next RID'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -347,7 +341,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.21
     NAME 'oldUserPassword'
     DESC 'Old passwords in digest form to prevent password recycle per policy'
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -358,7 +351,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.22
     NAME 'attributeMetaData'
     DESC 'An internal computed attribute used to store info for replication'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.44
     )
 
@@ -366,7 +358,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.23
     NAME 'vmwEntryIdSequenceNumber'
     DESC 'Entry ID sequence number generator key prefix, not used in any objectclass'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -377,7 +368,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.24
     NAME 'vmwUSNSequenceNumber'
     DESC 'USN sequence number generator key prefix, not used in any objectclass'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -388,7 +378,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.25
     NAME 'parentid'
     DESC 'VMW internal usage to represent sudo parent id attribute, not used in any objectclass'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -399,7 +388,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.26
     NAME 'passwordHashScheme'
     DESC 'Name of the password hashing scheme'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.44
     SINGLE-VALUE
     )
@@ -408,7 +396,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.27
     NAME 'serverId'
     DESC 'An ID used in SID allocation relative to this server'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -429,7 +416,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.30
     NAME 'vmwDomainFunctionalLevel'
     DESC 'Domain functional level supported by a Lotus domain'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -440,7 +426,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.31
     NAME 'vmwForestFunctionalLevel'
     DESC 'Forest functional level supported by the Lotus forest'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -451,7 +436,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.32
     NAME 'vmwServerVersion'
     DESC 'Lotus server version'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.44
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -462,7 +446,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.33
     NAME 'vmwServerRunTimeStatus'
     DESC 'Server runtime status'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.44
     NO-USER-MODIFICATION
     USAGE directoryOperation
@@ -472,7 +455,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.34
     NAME 'vmwPasswordProhibitedPreviousCount'
     DESC 'VMWare - prohibited previous passwords count'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -481,7 +463,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.35
     NAME 'vmwPasswordLifetimeDays'
     DESC 'VMWare - password expiration in days'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -490,7 +471,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.36
     NAME 'vmwPasswordMaxLength'
     DESC 'VMWare- password max length'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -499,7 +479,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.37
     NAME 'vmwPasswordMinLength'
     DESC 'VMWare - password min length'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -508,7 +487,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.38
     NAME 'vmwPasswordMinAlphabeticCount'
     DESC 'VMWare i- password min alphabetic count'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -517,7 +495,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.39
     NAME 'vmwPasswordMinUpperCaseCount'
     DESC 'VMWare - password min upper case count'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -526,7 +503,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.40
     NAME 'vmwPasswordMinNumericCount'
     DESC 'VMWare - password min numeric count'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -535,7 +511,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.41
     NAME 'vmwPasswordMinSpecialCharCount'
     DESC 'VMWare - password min special char @#$%&^* count'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -544,7 +519,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.42
     NAME 'vmwPasswordMaxIdenticalAdjacentChars'
     DESC 'VMWare - password max identical adjacent char'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -553,7 +527,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.43
     NAME 'vmwPasswordChangeMaxFailedAttempts'
     DESC 'VMWare - password change max failed attempts'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -562,7 +535,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.43
     NAME 'vmwPasswordChangeFailedAttemptIntervalSec'
     DESC 'VMWare - password change failed attempt interval in second'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -571,7 +543,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.45
     NAME 'vmwPasswordChangeAutoUnlockIntervalSec'
     DESC 'VMWare - password change unlock interval in second'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -580,7 +551,6 @@ attributetypes: (
     VMWare.DIR.attribute.0.46
     NAME 'vmwPasswordMinLowerCaseCount'
     DESC 'VMWare - password min lower case count'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -603,7 +573,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.48
     NAME 'vmwMaxServerId'
     DESC 'Maximum server id allocated to servers in this forest so far.'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -623,7 +592,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.50
     NAME 'vmwLDUGuid'
     DESC 'A GUID identifying an LDU associated with this vmware directory server'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.44{36}
     SINGLE-VALUE
     USAGE directoryOperation
@@ -633,7 +601,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.51
     NAME 'vmwPasswordNeverExpires'
     DESC 'Attribute to indicate if the password ever expires for the object'
-    EQUALITY booleanMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
     SINGLE-VALUE
     )
@@ -652,7 +619,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.53
     NAME 'vmwSRPSecret'
     DESC 'SRP secret'
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -663,7 +629,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.54
     NAME 'vmwAclString'
     DESC 'ACL in string format'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     USAGE directoryOperation
@@ -673,7 +638,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.55
     NAME 'vmwPasswordSpecialChars'
     DESC 'List of special characters'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{32}
     SINGLE-VALUE
     )
@@ -682,7 +646,6 @@ attributeTypes: (
     VMWare.DIR.attribute.0.56
     NAME 'vmwMachineGUID'
     DESC 'A GUID identifying a machine'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.44{36}
     SINGLE-VALUE
     )
@@ -691,10 +654,38 @@ attributeTypes: (
     VMWare.DIR.attribute.0.57
     NAME 'vmwPlatformServicesControllerVersion'
     DESC 'Platform Services Controller version'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     NO-USER-MODIFICATION
+    )
+
+attributeTypes: (
+    VMWare.DIR.attribute.0.58
+    NAME 'vmwAttributeUsage'
+    DESC 'VMware extension - flag to represent NO-USER-MODIFICATION and USAGE values'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    NO-USER-MODIFICATION
+    )
+
+attributeTypes: (
+    VMWare.DIR.attribute.0.59
+    NAME 'attributeValueMetaData'
+    DESC 'An internal computed attribute used to store info for replication'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
+    NO-USER-MODIFICATION
+    USAGE directoryOperation
+    )
+
+attributeTypes: (
+    VMWare.DIR.attribute.0.60
+    NAME 'vmwMaximumDomainFunctionalLevel'
+    DESC 'Maximum domain functional level supported by the domain controller'
+    EQUALITY integerMatch
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    NO-USER-MODIFICATION
+    USAGE directoryOperation
     )
 
 ##############################################################
@@ -705,7 +696,6 @@ attributeTypes: (
     VMWare.DIR.attribute.1.1
     NAME 'uSNCreated'
     DESC 'Update sequence number identifying the transaction that created the object'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -716,8 +706,6 @@ attributeTypes: (
     VMWare.DIR.attribute.1.2
     NAME 'uSNChanged'
     DESC 'Update sequence number identifying the transaction that last modified the object'
-    EQUALITY integerMatch
-    ORDERING integerOrderingMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -728,7 +716,6 @@ attributeTypes: (
     VMWare.DIR.attribute.1.3
     NAME 'isDeleted'
     DESC 'Value of the attribute determines if an object is in the DELETED state'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -739,7 +726,6 @@ attributeTypes: (
     VMWare.DIR.attribute.1.4
     NAME 'objectGUID'
     DESC 'GUID'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{36}
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -760,7 +746,6 @@ attributeTypes: (
     VMWare.DIR.attribute.1.6
     NAME 'highestCommittedUSN'
     DESC 'Highest committed USN on this vmware directory server'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -775,7 +760,6 @@ attributeTypes: (
     2.5.18.3
     NAME 'creatorsName'
     DESC 'RFC4512: name of creator'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -786,9 +770,8 @@ attributeTypes: (
     2.5.18.4
     NAME 'modifiersName'
     DESC 'RFC4512: name of last modifier'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
-     SINGLE-VALUE
+    SINGLE-VALUE
     NO-USER-MODIFICATION
     USAGE directoryOperation
     )
@@ -797,7 +780,6 @@ attributeTypes: (
     2.5.18.9
     NAME 'hasSubordinates'
     DESC 'X.501: entry has children'
-    EQUALITY booleanMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -808,8 +790,6 @@ attributeTypes: (
     1.3.6.1.1.16.4
     NAME 'entryUUID'
     DESC 'UUID of the entry'
-    EQUALITY UUIDMatch
-    ORDERING UUIDOrderingMatch
     SYNTAX 1.3.6.1.1.16.1
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -829,7 +809,6 @@ attributeTypes: (
     NAME 'namingContexts'
     DESC 'RFC4512: naming contexts'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     USAGE dSAOperation
     )
@@ -870,7 +849,6 @@ attributeTypes: (
     1.3.6.1.4.1.4203.1.3.5
     NAME 'supportedFeatures'
     DESC 'RFC4512: features supported by the server'
-    EQUALITY objectIdentifierMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.38
     USAGE dSAOperation
     )
@@ -879,7 +857,6 @@ attributeTypes: (
     1.3.6.1.1.4
     NAME 'vendorName'
     DESC 'RFC3045: name of implementation vendor'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -890,7 +867,6 @@ attributeTypes: (
     1.3.6.1.1.5
     NAME 'vendorVersion'
     DESC 'RFC3045: version of implementation'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -899,14 +875,12 @@ attributeTypes: (
 
 attributeTypes: (
     2.5.21.1 NAME 'dITStructureRules'
-    EQUALITY integerFirstComponentMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.17
     USAGE directoryOperation
     )
 
 attributeTypes: (
     2.5.21.7 NAME 'nameForms'
-    EQUALITY objectIdentifierFirstComponentMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.35
     USAGE directoryOperation
     )
@@ -915,7 +889,6 @@ attributeTypes: (
     2.5.4.1
     NAME ( 'aliasedObjectName' 'aliasedEntryName' )
     DESC 'RFC4512: name of aliased object'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -924,7 +897,6 @@ attributeTypes: (
     2.16.840.1.113730.3.1.34
     NAME 'ref'
     DESC 'RFC3296: subordinate referral URL'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     USAGE distributedOperation
     )
@@ -934,7 +906,6 @@ attributeTypes: (
     NAME 'dynamicSubtrees'
     DESC 'RFC2589: dynamic subtrees'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     USAGE dSAOperation
@@ -944,9 +915,6 @@ attributeTypes: (
     2.5.4.46
     NAME 'dnQualifier'
     DESC 'RFC2256: DN qualifier'
-    EQUALITY caseIgnoreMatch
-    ORDERING caseIgnoreOrderingMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.44
     )
 
@@ -961,7 +929,6 @@ attributeTypes: (
     2.5.4.48
     NAME 'protocolInformation'
     DESC 'RFC2256: protocol information'
-    EQUALITY protocolInformationMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.42
     )
 
@@ -983,8 +950,6 @@ attributeTypes: (
     1.2.840.113549.1.9.1
     NAME ( 'email' 'emailAddress' 'pkcs9email' )
     DESC 'RFC3280: legacy attribute for email addresses in DNs'
-    EQUALITY caseIgnoreIA5Match
-    SUBSTR caseIgnoreIA5SubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.26{128}
     )
 
@@ -1124,17 +1089,11 @@ attributeTypes: (
     0.9.2342.19200300.100.1.1
     NAME 'uid'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
-# vmw
-    EQUALITY caseIgnoreMatch
-# vmw
-    SUBSTR caseIgnoreSubstringsMatch
     )
 
 attributeTypes: (
     0.9.2342.19200300.100.1.10
     NAME 'manager'
-#vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -1161,7 +1120,6 @@ attributeTypes: (
     0.9.2342.19200300.100.1.14
     NAME 'documentAuthor'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -1188,18 +1146,12 @@ attributeTypes: (
 attributeTypes: (
     0.9.2342.19200300.100.1.21
     NAME 'secretary'
-#vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
 attributeTypes: (
     0.9.2342.19200300.100.1.25
     NAME 'dc'
-# vmw
-    EQUALITY caseIgnoreIA5Match
-# vmw
-    SUBSTR caseIgnoreIA5SubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -1207,10 +1159,6 @@ attributeTypes: (
 attributeTypes: (
     0.9.2342.19200300.100.1.3
     NAME 'mail'
-# vmw
-    EQUALITY caseIgnoreIA5Match
-# vmw
-    SUBSTR caseIgnoreIA5SubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -1225,7 +1173,6 @@ attributeTypes: (
     0.9.2342.19200300.100.1.38
     NAME 'associatedName'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -1335,7 +1282,6 @@ attributeTypes: (
     1.2.840.113556.1.2.102
     NAME 'memberOf'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -1344,7 +1290,6 @@ attributeTypes: (
     1.2.840.113556.1.2.104
     NAME 'ownerBL'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -1404,7 +1349,6 @@ attributeTypes: (
     1.2.840.113556.1.2.14
     NAME 'hasMasterNCs'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -1427,7 +1371,6 @@ attributeTypes: (
     1.2.840.113556.1.2.15
     NAME 'hasPartialReplicaNCs'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -1436,7 +1379,6 @@ attributeTypes: (
     1.2.840.113556.1.2.16
     NAME 'nCName'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -1673,6 +1615,12 @@ attributeTypes: (
     )
 
 attributeTypes: (
+    VMWare.DIR.attribute.1.7
+    NAME 'vmwAttrUniquenessScope'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
+    )
+
+attributeTypes: (
     1.2.840.113556.1.2.34
     NAME 'rangeLower'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
@@ -1710,7 +1658,6 @@ attributeTypes: (
     1.2.840.113556.1.2.36
     NAME 'dMDLocation'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -1749,7 +1696,6 @@ attributeTypes: (
     1.2.840.113556.1.2.436
     NAME 'directReports'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -1862,7 +1808,6 @@ attributeTypes: (
 attributeTypes: (
     1.2.840.113556.1.2.598
     NAME 'dmdName'
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -1899,7 +1844,6 @@ attributeTypes: (
     1.2.840.113556.1.2.7
     NAME 'subRefs'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -1956,10 +1900,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1
     NAME 'name'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
-# vmw
-    EQUALITY caseIgnoreMatch
-# vmw
-    SUBSTR caseIgnoreSubstringsMatch
     SINGLE-VALUE
     NO-USER-MODIFICATION
     )
@@ -2194,7 +2134,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1225
     NAME 'mSMQPrevSiteGates'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -2262,7 +2201,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1242
     NAME 'dNReferenceUpdate'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -2278,7 +2216,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1244
     NAME 'addressBookRoots'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -2286,7 +2223,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1245
     NAME 'globalAddressList'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -2294,7 +2230,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1246
     NAME 'interSiteTopologyGenerator'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -2396,7 +2331,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1310
     NAME 'mSMQSiteGatesMig'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -2553,7 +2487,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1336
     NAME 'replInterval'
     DESC 'Replication interval in seconds.'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -2597,7 +2530,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1346
     NAME 'templateRoots'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -3048,7 +2980,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1409
     NAME 'masteredBy'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -3127,7 +3058,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1423
     NAME 'msCOM-PartitionLink'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -3135,7 +3065,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1424
     NAME 'msCOM-PartitionSetLink'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -3144,7 +3073,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1425
     NAME 'msCOM-UserLink'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -3153,7 +3081,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1426
     NAME 'msCOM-UserPartitionSetLink'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -3162,7 +3089,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1427
     NAME 'msCOM-DefaultPartitionLink'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -3286,7 +3212,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1444
     NAME 'msDS-Preferred-GC-Site'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -3316,7 +3241,6 @@ attributeTypes: (
 attributeTypes: (
     1.2.840.113556.1.4.146
     NAME 'objectSid'
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -3644,7 +3568,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1661
     NAME 'msDS-NC-Replica-Locations'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -3827,7 +3750,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1693
     NAME 'msFRS-Hub-Member'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -3954,7 +3876,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1711
     NAME 'msDS-SDReferenceDomain'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -4110,7 +4031,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1793
     NAME 'msDS-NonMembers'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -4118,7 +4038,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1794
     NAME 'msDS-NonMembersBL'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4197,7 +4116,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1806
     NAME 'msDS-MembersForAzRole'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -4205,7 +4123,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1807
     NAME 'msDS-MembersForAzRoleBL'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4214,7 +4131,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1808
     NAME 'msDS-OperationsForAzTask'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -4222,7 +4138,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1809
     NAME 'msDS-OperationsForAzTaskBL'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4231,7 +4146,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1810
     NAME 'msDS-TasksForAzTask'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -4239,7 +4153,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1811
     NAME 'msDS-TasksForAzTaskBL'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4248,7 +4161,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1812
     NAME 'msDS-OperationsForAzRole'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -4256,7 +4168,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1813
     NAME 'msDS-OperationsForAzRoleBL'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4265,7 +4176,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1814
     NAME 'msDS-TasksForAzRole'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -4273,7 +4183,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1815
     NAME 'msDS-TasksForAzRoleBL'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4310,7 +4219,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1820
     NAME 'msDS-HasDomainNCs'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4392,7 +4300,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1836
     NAME 'msDS-hasMasterNCs'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4401,7 +4308,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1837
     NAME 'msDs-masteredBy'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4410,7 +4316,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1840
     NAME 'msDS-ObjectReference'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -4418,7 +4323,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1841
     NAME 'msDS-ObjectReferenceBL'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4573,7 +4477,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1923
     NAME 'msDS-KrbTgtLink'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -4589,7 +4492,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1925
     NAME 'msDS-hasFullReplicaNCs'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4598,7 +4500,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1926
     NAME 'msDS-NeverRevealGroup'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -4606,7 +4507,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1928
     NAME 'msDS-RevealOnDemandGroup'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -4622,7 +4522,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1930
     NAME 'msDS-RevealedDSAs'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4631,7 +4530,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1931
     NAME 'msDS-KrbTgtLinkBl'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4640,7 +4538,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1932
     NAME 'msDS-IsFullReplicaFor'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4649,7 +4546,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1933
     NAME 'msDS-IsDomainFor'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -4658,7 +4554,6 @@ attributeTypes: (
     1.2.840.113556.1.4.1934
     NAME 'msDS-IsPartialReplicaFor'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     NO-USER-MODIFICATION
     )
@@ -5668,8 +5563,6 @@ attributeTypes: (
 attributeTypes: (
     1.2.840.113556.1.4.221
     NAME 'sAMAccountName'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -7409,7 +7302,6 @@ attributeTypes: (
 attributeTypes: (
     1.2.840.113556.1.4.656
     NAME 'userPrincipalName'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -8047,7 +7939,6 @@ attributeTypes: (
 attributeTypes: (
     1.2.840.113556.1.4.771
     NAME 'servicePrincipalName'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -9059,7 +8950,7 @@ attributeTypes: (
 attributeTypes: (
     1.2.840.113556.1.4.96
     NAME 'pwdLastSet'
-#    SYNTAX 1.2.840.113556.1.4.906
+# vmw use INTEGER instead of SYNTAX 1.2.840.113556.1.4.906 (MSFT LargeInteger)
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -9600,8 +9491,6 @@ attributeTypes: (
     1.3.6.1.1.1.1.0
     NAME 'uidNumber'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
-# vmw
-    EQUALITY integerMatch
     SINGLE-VALUE
     )
 
@@ -9609,8 +9498,6 @@ attributeTypes: (
     1.3.6.1.1.1.1.1
     NAME 'gidNumber'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
-# vmw
-    EQUALITY integerMatch
     SINGLE-VALUE
     )
 
@@ -9785,7 +9672,6 @@ attributeTypes: (
     1.3.6.1.1.20
     NAME 'entryDN'
     DESC 'DN of the entry'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     NO-USER-MODIFICATION
@@ -9803,7 +9689,6 @@ attributeTypes: (
     1.3.6.1.4.1.1466.101.120.16
     NAME 'ldapSyntaxes'
     DESC 'RFC4512: LDAP syntaxes'
-    EQUALITY objectIdentifierFirstComponentMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.5
     USAGE directoryOperation
     )
@@ -9811,8 +9696,6 @@ attributeTypes: (
 attributeTypes: (
     1.3.6.1.4.1.250.1.57
     NAME 'labeledURI'
-# vmw
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -9898,7 +9781,6 @@ attributeTypes: (
 attributeTypes: (
     2.5.21.2
     NAME 'dITContentRules'
-    EQUALITY objectIdentifierFirstComponentMatch
 #  AD use following, RFC use different (need consolidate?)
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     USAGE directoryOperation
@@ -9908,7 +9790,6 @@ attributeTypes: (
     2.5.21.4
     NAME 'matchingRules'
     DESC 'RFC4512: matching rules'
-    EQUALITY objectIdentifierFirstComponentMatch
 #  AD use DirectoryString syntax, RFC use following
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.5
     USAGE directoryOperation
@@ -9917,7 +9798,6 @@ attributeTypes: (
 attributeTypes: (
     2.5.21.5
     NAME 'attributeTypes'
-    EQUALITY objectIdentifierFirstComponentMatch
 #  AD use following , RFC use different
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     USAGE directoryOperation
@@ -9926,7 +9806,6 @@ attributeTypes: (
 attributeTypes: (
     2.5.21.6
     NAME 'objectClasses'
-    EQUALITY objectIdentifierFirstComponentMatch
 #  AD use following, RFC use different
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     USAGE directoryOperation
@@ -9936,7 +9815,6 @@ attributeTypes: (
     2.5.21.8
     NAME 'matchingRuleUse'
     DESC 'RFC4512: matching rule uses'
-    EQUALITY objectIdentifierFirstComponentMatch
 #  AD use following, RFC use different
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.5
     USAGE directoryOperation
@@ -9951,38 +9829,24 @@ attributeTypes: (
 attributeTypes: (
     2.5.4.0
     NAME 'objectClass'
-# vmw tmp work in adsi test
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.38
     )
 
 attributeTypes: (
     2.5.4.10
     NAME 'o'
-# vmw
-    EQUALITY caseIgnoreMatch
-# vmw
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
 attributeTypes: (
     2.5.4.11
     NAME 'ou'
-# vmw
-    EQUALITY caseIgnoreMatch
-# vmw
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
 attributeTypes: (
     2.5.4.12
     NAME 'title'
-# vmw
-    EQUALITY caseIgnoreMatch
-# vmw
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -10040,10 +9904,6 @@ attributeTypes: (
 attributeTypes: (
     2.5.4.20
     NAME 'telephoneNumber'
-# vmw
-    EQUALITY caseIgnoreMatch
-# vmw
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -10108,10 +9968,6 @@ attributeTypes: (
     2.5.4.3
     NAME 'cn'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
-# vmw
-    EQUALITY caseIgnoreMatch
-# vmw
-    SUBSTR caseIgnoreSubstringsMatch
     SINGLE-VALUE
     )
 
@@ -10127,7 +9983,6 @@ attributeTypes: (
     2.5.4.31
     NAME 'member'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -10135,7 +9990,6 @@ attributeTypes: (
     2.5.4.32
     NAME 'owner'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -10144,7 +9998,6 @@ attributeTypes: (
     2.5.4.33
     NAME 'roleOccupant'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -10152,15 +10005,12 @@ attributeTypes: (
     2.5.4.34
     NAME 'seeAlso'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
 attributeTypes: (
     2.5.4.35
     NAME 'userPassword'
-# vmw
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
     SINGLE-VALUE
     )
@@ -10194,10 +10044,6 @@ attributeTypes: (
     2.5.4.4
     NAME 'sn'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
-# vmw
-    EQUALITY caseIgnoreMatch
-# vmw
-    SUBSTR caseIgnoreSubstringsMatch
     SINGLE-VALUE
     )
 
@@ -10239,7 +10085,6 @@ attributeTypes: (
     NAME 'distinguishedName'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
 #vmw
-    EQUALITY distinguishedNameMatch
     SINGLE-VALUE
     NO-USER-MODIFICATION
     )
@@ -10247,10 +10092,6 @@ attributeTypes: (
 attributeTypes: (
     2.5.4.5
     NAME 'serialNumber'
-# vmw
-    EQUALITY caseIgnoreMatch
-# vmw
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.44
     )
 
@@ -10258,7 +10099,6 @@ attributeTypes: (
     2.5.4.50
     NAME 'uniqueMember'
 #vmw
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
@@ -10305,10 +10145,6 @@ attributeTypes: (
     2.5.4.9
     NAME 'street'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
-# vmw
-    EQUALITY caseIgnoreMatch
-# vmw
-    SUBSTR caseIgnoreSubstringsMatch
     SINGLE-VALUE
     )
 
@@ -10505,6 +10341,7 @@ objectClasses: (
         $ linkID
         $ oMObjectClass
         $ searchFlags
+        $ vmwAttrUniquenessScope
         $ extendedCharsAllowed
         $ schemaFlagsEx
         $ attributeSecurityGUID
@@ -10519,6 +10356,7 @@ objectClasses: (
         $ attributeID
         $ oMSyntax
         $ schemaIDGUID
+        $ vmwAttributeUsage
         )
     )
 
@@ -10591,6 +10429,8 @@ objectClasses: (
         $ msSFU30NisDomain
         $ nisMapName
         $ vmwMachineGUID
+        $ vmwPlatformServicesControllerVersion
+        $ vmwMaximumDomainFunctionalLevel
         )
     )
 
@@ -14181,8 +14021,6 @@ objectClasses: (
         $ seeAlso
         $ userPassword
         $ attributeCertificateAttribute
-# vmw to make existing test scripts works,  should remove after scripts changes.
-        $ pwdLastSet
         $ vmwPasswordNeverExpires
         )
     )
@@ -14310,16 +14148,12 @@ objectClasses: (
 attributetypes: (
     VMWare.Kerberos.attribute.1
     NAME 'krbPrincipalName'
-    EQUALITY caseExactIA5Match
-    SUBSTR caseExactSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.2
     NAME 'krbCanonicalName'
-    EQUALITY caseExactIA5Match
-    SUBSTR caseExactSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
     SINGLE-VALUE
     )
@@ -14327,7 +14161,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.3
     NAME 'krbPrincipalType'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14343,7 +14176,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.5
     NAME 'krbPrincipalExpiration'
-    EQUALITY generalizedTimeMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.24
     SINGLE-VALUE
     )
@@ -14351,7 +14183,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.6
     NAME 'krbTicketFlags'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14359,7 +14190,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.7
     NAME 'krbMaxTicketLife'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14367,7 +14197,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.8
     NAME 'krbMaxRenewableAge'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14375,42 +14204,36 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.9
     NAME 'krbRealmReferences'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.10
     NAME 'krbLdapServers'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.11
     NAME 'krbKdcServers'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.12
     NAME 'krbPwdServers'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.13
     NAME 'krbHostServer'
-    EQUALITY caseExactIA5Match
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.14
     NAME 'krbSearchScope'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14418,14 +14241,12 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.15
     NAME 'krbPrincipalReferences'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.16
     NAME 'krbPrincNamingAttr'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -14433,14 +14254,12 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.17
     NAME 'krbAdmServers'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.18
     NAME 'krbMaxPwdLife'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14448,7 +14267,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.19
     NAME 'krbMinPwdLife'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14456,7 +14274,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.20
     NAME 'krbPwdMinDiffChars'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14464,7 +14281,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.21
     NAME 'krbPwdMinLength'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14472,7 +14288,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.22
     NAME 'krbPwdHistoryLength'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14480,7 +14295,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.23
     NAME 'krbPwdMaxFailure'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14489,7 +14303,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.24
     NAME 'krbPwdFailureCountInterval'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14497,7 +14310,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.25
     NAME 'krbPwdLockoutDuration'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14505,7 +14317,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.26
     NAME 'krbPwdPolicyReference'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -14513,7 +14324,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.27
     NAME 'krbPasswordExpiration'
-    EQUALITY generalizedTimeMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.24
     SINGLE-VALUE
     )
@@ -14521,14 +14331,12 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.28
     NAME 'krbPrincipalKey'
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.29
     NAME 'krbTicketPolicyReference'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     SINGLE-VALUE
     )
@@ -14536,35 +14344,30 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.30
     NAME 'krbSubTrees'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.31
     NAME 'krbDefaultEncSaltTypes'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.32
     NAME 'krbSupportedEncSaltTypes'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.33
     NAME 'krbPwdHistory'
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.34
     NAME 'krbLastPwdChange'
-    EQUALITY generalizedTimeMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.24
     SINGLE-VALUE
     )
@@ -14572,7 +14375,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.35
     NAME 'krbLastAdminUnlock'
-    EQUALITY generalizedTimeMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.24
     SINGLE-VALUE
     )
@@ -14580,21 +14382,18 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.36
     NAME 'krbMKey'
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.37
     NAME 'krbPrincipalAliases'
-    EQUALITY caseExactIA5Match
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.38
     NAME 'krbLastSuccessfulAuth'
-    EQUALITY generalizedTimeMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.24
     SINGLE-VALUE
     )
@@ -14602,7 +14401,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.39
     NAME 'krbLastFailedAuth'
-    EQUALITY generalizedTimeMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.24
     SINGLE-VALUE
     )
@@ -14610,7 +14408,6 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.40
     NAME 'krbLoginFailedCount'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -14618,29 +14415,24 @@ attributetypes: (
 attributetypes: (
     VMWare.Kerberos.attribute.41
     NAME 'krbExtraData'
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.42
     NAME 'krbObjectReferences'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.43
     NAME 'krbPrincContainerRef'
-    EQUALITY distinguishedNameMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.12
     )
 
 attributetypes: (
     VMWare.Kerberos.attribute.44
     NAME 'krbAllowedToDelegateTo'
-    EQUALITY caseExactIA5Match
-    SUBSTR caseExactSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
     )
 
@@ -14834,12 +14626,6 @@ dITContentRules:  (
         )
     )
 
-# vmw
-#dITContentRules:  (
-#    1.3.6.1.1.1.2.1
-#    NAME  'shadowAccount'
-#    )
-
 dITContentRules:  (
     1.2.840.113556.1.5.259
     NAME  'msDFS-Linkv2'
@@ -14857,12 +14643,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw
-#dITContentRules:  (
-#    1.3.6.1.1.1.2.2
-#    NAME  'posixGroup'
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.5.178
@@ -15060,12 +14840,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw applicationSettings is ABSTRACT
-#dITContentRules:  (
-#    1.2.840.113556.1.5.7000.49
-#    NAME  'applicationSettings'
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.5.216
@@ -15828,12 +15602,6 @@ dITContentRules:  (
         )
     )
 
-# vmw
-#dITContentRules:  (
-#    1.2.840.113556.1.5.2
-#    NAME  'samDomainBase'
-#    )
-
 dITContentRules:  (
     1.2.840.113556.1.5.92
     NAME  'linkTrackVolEntry'
@@ -15905,12 +15673,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw
-#dITContentRules:  (
-#    1.2.840.113556.1.5.6
-#    NAME  'securityPrincipal'
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.5.129
@@ -16001,12 +15763,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw ABSTRACT
-#dITContentRules:  (
-#    1.2.840.113556.1.5.14
-#    NAME  'connectionPoint'
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.3.13
@@ -16172,12 +15928,6 @@ dITContentRules:  (
         )
     )
 
-# vmw ABSTRACT
-#dITContentRules:  (
-#    1.2.840.113556.1.5.66
-#    NAME  'domain'
-#    )
-
 dITContentRules:  (
     1.2.840.113556.1.5.217
     NAME  'msWMI-ObjectEncoding'
@@ -16320,6 +16070,7 @@ dITContentRules:  (
         $ posixGroup
         $ shadowAccount
         $ vmwServicePrincipal
+        $ vmwExternalIdpUser
         )
     MUST ( objectSid
          )
@@ -16487,12 +16238,6 @@ dITContentRules:  (
         )
     )
 
-# vmw
-#dITContentRules:  (
-#    1.2.840.113556.1.5.1
-#    NAME  'securityObject'
-#    )
-
 dITContentRules:  (
     0.9.2342.19200300.100.4.14
     NAME  'rFC822LocalPart'
@@ -16528,20 +16273,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw TODO - mv may to oc def?
-#dITContentRules:  (
-#    1.2.840.113556.1.5.3
-#    NAME  'samDomain'
-#    MAY ( objectSid
-#        $ oEMInformation
-#        $ serverState
-#        $ uASCompat
-#        $ serverRole
-#        $ domainReplica
-#        $ modifiedCount
-#        )
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.5.262
@@ -16614,12 +16345,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw
-#dITContentRules:  (
-#    0.9.2342.19200300.100.4.19
-#    NAME  'simpleSecurityObject'
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.5.148
@@ -16747,12 +16472,6 @@ dITContentRules:  (
         )
     )
 
-# vmw AUX
-#dITContentRules:  (
-#    1.3.6.1.4.1.1466.101.119.2
-#    NAME  'dynamicObject'
-#    )
-
 dITContentRules:  (
     2.5.6.4
     NAME  'organization'
@@ -16790,12 +16509,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw
-#dITContentRules:  (
-#    1.2.840.113556.1.5.20
-#    NAME  'leaf'
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.6.18.2.216
@@ -16989,12 +16702,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw
-#dITContentRules:  (
-#    1.2.840.113556.1.5.27
-#    NAME  'rpcEntry'
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.5.78
@@ -17230,12 +16937,6 @@ dITContentRules:  (
         )
     )
 
-# vmw
-#dITContentRules:  (
-#    1.2.840.113556.1.5.7000.56
-#    NAME  'ipsecBase'
-#    )
-
 dITContentRules:  (
     1.2.840.113556.1.6.13.4.6
     NAME  'msDFSR-Content'
@@ -17289,12 +16990,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw
-#dITContentRules:  (
-#    1.3.6.1.1.1.2.6
-#    NAME  'ipHost'
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.5.36
@@ -17385,12 +17080,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw
-#dITContentRules:  (
-#    1.3.6.1.1.1.2.11
-#    NAME  'ieee802Device'
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.5.196
@@ -18112,12 +17801,6 @@ dITContentRules:  (
         )
     )
 
-# vmw ABSTRACT
-#dITContentRules:  (
-#    1.3.6.1.1.1.2.12
-#    NAME  'bootableDevice'
-#    )
-
 dITContentRules:  (
     2.5.6.17
     NAME  'groupOfUniqueNames'
@@ -18189,25 +17872,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw
-#dITContentRules:  (
-#    2.5.20.1
-#    NAME  'subSchema'
-#    AUX ( mailRecipient
-#        $ domainRelatedObject
-#        $ bootableDevice
-#        $ ieee802Device
-#        $ ipHost
-#        $ dynamicObject
-#        $ simpleSecurityObject
-#        $ samDomain
-#        $ securityPrincipal
-#        $ samDomainBase
-#        $ posixGroup
-#        $ shadowAccount
-#        )
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.5.206
@@ -18316,12 +17980,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw
-#dITContentRules:  (
-#    2.5.6.0
-#    NAME  'top'
-#    )
 
 dITContentRules:  (
     2.5.6.5
@@ -18701,12 +18359,6 @@ dITContentRules:  (
         )
     )
 
-# vmw  AUX
-#dITContentRules:  (
-#    0.9.2342.19200300.100.4.17
-#    NAME  'domainRelatedObject'
-#    )
-
 dITContentRules:  (
     1.2.840.113556.1.5.118
     NAME  'ipsecFilter'
@@ -18742,12 +18394,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw ABSTRACT
-#dITContentRules:  (
-#    1.2.840.113556.1.5.68
-#    NAME  'applicationSiteSettings'
-#    )
 
 dITContentRules:  (
     0.9.2342.19200300.100.4.5
@@ -18929,12 +18575,6 @@ dITContentRules:  (
         )
     )
 
-# vmw
-#dITContentRules:  (
-#    1.2.840.113556.1.3.46
-#    NAME  'mailRecipient'
-#    )
-
 dITContentRules:  (
     1.2.840.113556.1.5.85
     NAME  'dnsZone'
@@ -18952,12 +18592,6 @@ dITContentRules:  (
         $ shadowAccount
         )
     )
-
-# vmw
-#dITContentRules:  (
-#    1.3.6.1.1.1.2.0
-#    NAME  'posixAccount'
-#    )
 
 dITContentRules:  (
     1.2.840.113556.1.5.15
@@ -19073,7 +18707,6 @@ attributetypes: (
     VMWare.STS.attribute.1
     NAME 'vmwSTSGuidIdentity'
     DESC 'VMWare identity Service - GuidIdentity'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19082,7 +18715,6 @@ attributetypes: (
     VMWare.STS.attribute.2
     NAME 'vmwSTSName'
     DESC 'VMWare identity Service - Name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19091,7 +18723,6 @@ attributetypes: (
     VMWare.STS.attribute.3
     NAME 'vmwSTSNameFormat'
     DESC 'VMWare identity Service - NameFormat'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19100,7 +18731,6 @@ attributetypes: (
     VMWare.STS.attribute.5
     NAME 'vmwSTSPrivateKey'
     DESC 'VMWare identity Service - PrivateKey'
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
     SINGLE-VALUE
     )
@@ -19109,7 +18739,6 @@ attributetypes: (
     VMWare.STS.attribute.6
     NAME 'vmwSTSDomainName'
     DESC 'VMWare identity Service - DomainName'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19118,7 +18747,6 @@ attributetypes: (
     VMWare.STS.attribute.7
     NAME 'vmwSTSPassword'
     DESC 'VMWare identity Service - Password'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19127,7 +18755,6 @@ attributetypes: (
     VMWare.STS.attribute.8
     NAME 'vmwSTSProviderType'
     DESC 'VMWare identity Service - ProviderType'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19136,7 +18763,6 @@ attributetypes: (
     VMWare.STS.attribute.9
     NAME 'vmwSTSServicePrincipalName'
     DESC 'VMWare identity Service - ServicePrincipalName'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19145,7 +18771,6 @@ attributetypes: (
     VMWare.STS.attribute.10
     NAME 'vmwSTSUserName'
     DESC 'VMWare identity Service - UserName'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19154,7 +18779,6 @@ attributetypes: (
     VMWare.STS.attribute.11
     NAME 'vmwSTSDigestMethods'
     DESC 'VMWare identity Service - DigestMethods'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -19162,7 +18786,6 @@ attributetypes: (
     VMWare.STS.attribute.12
     NAME 'vmwSTSEntityId'
     DESC 'VMWare identity Service - EntityId'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19171,7 +18794,6 @@ attributetypes: (
     VMWare.STS.attribute.13
     NAME 'vmwSTSNameIDFormat'
     DESC 'VMWare identity Service - NameIDFormat'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -19179,7 +18801,6 @@ attributetypes: (
     VMWare.STS.attribute.14
     NAME 'vmwSTSOneTimeUse'
     DESC 'VMWare identity Service - OneTimeUse'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19188,7 +18809,6 @@ attributetypes: (
     VMWare.STS.attribute.15
     NAME 'vmwSTSFingerprint'
     DESC 'VMWare identity Service - Certificate Fingerprint'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19197,7 +18817,6 @@ attributetypes: (
     VMWare.STS.attribute.16
     NAME 'vmwSTSBinding'
     DESC 'VMWare identity Service - Binding'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19206,7 +18825,6 @@ attributetypes: (
     VMWare.STS.attribute.17
     NAME 'vmwSTSIndex'
     DESC 'VMWare identity Service - Index'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19215,7 +18833,6 @@ attributetypes: (
     VMWare.STS.attribute.18
     NAME 'vmwSTSCertificateType'
     DESC 'VMWare identity Service - Certificate Type'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19224,7 +18841,6 @@ attributetypes: (
     VMWare.STS.attribute.19
     NAME 'vmwSTSMaximumKeySize'
     DESC 'VMWare identity Service - MaximumKeySize'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19233,7 +18849,6 @@ attributetypes: (
     VMWare.STS.attribute.20
     NAME 'vmwSTSMinimumKeySize'
     DESC 'VMWare identity Service - MinimumKeySize'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19242,7 +18857,6 @@ attributetypes: (
     VMWare.STS.attribute.21
     NAME 'vmwSTSPriority'
     DESC 'VMWare identity Service - Priority'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19251,7 +18865,6 @@ attributetypes: (
     VMWare.STS.attribute.22
     NAME 'vmwSTSAlias'
     DESC 'VMWare identity Service - Alias'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19260,7 +18873,6 @@ attributetypes: (
     VMWare.STS.attribute.23
     NAME 'vmwSTSSubjectDN'
     DESC 'VMWare identity Service - SubjectDN'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19269,7 +18881,6 @@ attributetypes: (
     VMWare.STS.attribute.26
     NAME 'vmwSTSClockTolerance'
     DESC 'VMWare identity Service - Clock Tolerance'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19278,7 +18889,6 @@ attributetypes: (
     VMWare.STS.attribute.27
     NAME 'vmwSTSIssuerName'
     DESC 'VMWare identity Service - Issuer Name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19287,7 +18897,6 @@ attributetypes: (
     VMWare.STS.attribute.28
     NAME 'vmwSTSDelegationCount'
     DESC 'VMWare identity Service - Delegation Count'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19296,7 +18905,6 @@ attributetypes: (
     VMWare.STS.attribute.29
     NAME 'vmwSTSRenewCount'
     DESC 'VMWare identity Service - Renew Count'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19305,7 +18913,6 @@ attributetypes: (
     VMWare.STS.attribute.30
     NAME 'vmwSTSMaxBearerTokenLifetime'
     DESC 'VMWare identity Service - Max Bearer Token Lifetime'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19314,7 +18921,6 @@ attributetypes: (
     VMWare.STS.attribute.31
     NAME 'vmwSTSMaxHolderOfKeyTokenLifetime'
     DESC 'VMWare identity Service - Max Holder of Key Token Lifetime'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19323,7 +18929,6 @@ attributetypes: (
     VMWare.STS.attribute.32
     NAME 'vmwSTSEndpoint'
     DESC 'VMWare identity Service - Endpoint'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19332,7 +18937,6 @@ attributetypes: (
     VMWare.STS.attribute.33
     NAME 'vmwSTSDefaultTenant'
     DESC 'VMWare identity Service - Default Tenant'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19341,7 +18945,6 @@ attributetypes: (
     VMWare.STS.attribute.34
     NAME 'vmwSTSDefaultAssertionConsumerService'
     DESC 'VMWare identity Service - Default Assertion Consumer Service'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19350,7 +18953,6 @@ attributetypes: (
     VMWare.STS.attribute.35
     NAME 'vmwSTSDefaultAttributeConsumerService'
     DESC 'VMWare identity Service - Default Attribute Consumer Service'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19359,7 +18961,6 @@ attributetypes: (
     VMWare.STS.attribute.36
     NAME 'vmwSTSMapKey'
     DESC 'VMWare identity Service - Attribute Map Key'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19368,7 +18969,6 @@ attributetypes: (
     VMWare.STS.attribute.37
     NAME 'vmwSTSMapValue'
     DESC 'VMWare identity Service - Attribute Map Value'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19377,7 +18977,6 @@ attributetypes: (
     VMWare.STS.attribute.38
     NAME 'vmwSTSTimeout'
     DESC 'VMWare identity Service - Timeout'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19386,7 +18985,6 @@ attributetypes: (
     VMWare.STS.attribute.39
     NAME 'vmwSTSUserBaseDN'
     DESC 'VMWare identity Service - User Search Base DN'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19395,7 +18993,6 @@ attributetypes: (
     VMWare.STS.attribute.40
     NAME 'vmwSTSGroupBaseDN'
     DESC 'VMWare identity Service - Group Search Base DN'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19404,7 +19001,6 @@ attributetypes: (
     VMWare.STS.attribute.41
     NAME 'vmwSTSConnectionStrings'
     DESC 'VMWare identity Service - Connection Strings'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -19412,7 +19008,6 @@ attributetypes: (
     VMWare.STS.attribute.42
     NAME 'vmwSTSPasswordExpirationNotificationDays'
     DESC 'VMWare identity Service - Password Expiration Notification Days'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     )
 
@@ -19420,7 +19015,6 @@ attributetypes: (
     VMWare.STS.attribute.43
     NAME 'vmwSTSEnablePasswordExpirationEmailNotification'
     DESC 'VMWare identity Service - Enable Password Expiration Email Notification'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19429,7 +19023,6 @@ attributetypes: (
     VMWare.STS.attribute.44
     NAME 'vmwSTSPasswordExpirationEmailSubject'
     DESC 'VMWare identity Service - Password Expiration Email Subject'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19438,7 +19031,6 @@ attributetypes: (
     VMWare.STS.attribute.45
     NAME 'vmwSTSPasswordExpirationFromEmail'
     DESC 'VMWare identity Service - Password Expiration From Email'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19447,7 +19039,6 @@ attributetypes: (
     VMWare.STS.attribute.46
     NAME 'vmwSTSDefaultIdentityProvider'
     DESC 'VMWare identity Service - Default Identity Provider'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19456,7 +19047,6 @@ attributetypes: (
     VMWare.STS.attribute.47
     NAME 'vmwSTSRelyingPartyURL'
     DESC 'VMWare identity Service - Relying Party URL'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19465,7 +19055,6 @@ attributetypes: (
     VMWare.STS.attribute.48
     NAME 'vmwSTSDomainType'
     DESC 'VMWare identity Service - Domain Type'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19474,7 +19063,6 @@ attributetypes: (
     VMWare.STS.attribute.49
     NAME 'vmwSTSAuthenticationType'
     DESC 'VMWare identity Service - Authentication Type'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19483,7 +19071,6 @@ attributetypes: (
     VMWare.STS.attribute.50
     NAME 'vmwSTSAuthnRequestsSigned'
     DESC 'VMWare identity Service - Authenticate request signed boolean'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19492,7 +19079,6 @@ attributetypes: (
     VMWare.STS.attribute.64
     NAME 'vmwSTSSignatureAlgorithmIdentifier'
     DESC 'VMWare identity Service - Signature Algorithm Identifier'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19501,7 +19087,6 @@ attributetypes: (
     VMWare.STS.attribute.65
     NAME 'vmwSTSSystemTenant'
     DESC 'VMWare identity Service - System Tenant'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19510,7 +19095,6 @@ attributetypes: (
     VMWare.STS.attribute.66
     NAME 'vmwSTSBrandName'
     DESC 'VMWare identity Service - Brand Name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19519,7 +19103,6 @@ attributetypes: (
     VMWare.STS.attribute.67
     NAME 'vmwSTSUpnSuffixes'
     DESC 'VMWare identity Service - allowed Userprincipalname suffixes'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -19535,7 +19118,6 @@ attributetypes: (
     VMWare.STS.attribute.69
     NAME 'vmwSTSServiceUseMachineAccount'
     DESC 'VMWare identity Service - Machine Account Usage Indicator'
-    EQUALITY booleanMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
     SINGLE-VALUE
     )
@@ -19544,7 +19126,6 @@ attributetypes: (
     VMWare.STS.attribute.70
     NAME 'vmwSTSLogonBanner'
     DESC 'VMWare identity Service - Logon Banner'
-    EQUALITY caseExactMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19553,8 +19134,276 @@ attributeTypes: (
     VMWare.STS.attribute.71
     NAME 'vmwSTSIdentityStoreFlags'
     DESC 'VMWare identity Service - Identity Store Behavior Flags'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.72
+    NAME 'vmwSTSExternalIdpEnableJit'
+    DESC 'VMWare identity Service - Allow Just In Time Provisioning'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.73
+    NAME 'vmwSTSExternalIdpUpnSuffix'
+    DESC 'VMWare identity Service - UPN Suffix for Just In Time Provisioning'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.74
+    NAME 'vmwSTSExternalIdpUserId'
+    DESC 'VMWare identity Service - SubjectName string in external token'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.75
+    NAME 'vmwSTSAuthnTypes'
+    DESC 'VMWare identity Service - Client Authn types allowed'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.76
+    NAME 'vmwSTSClientCertRevocationCheckEnabled'
+    DESC 'VMWare identity Service - Client Cert Revocation Check Enabled'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.77
+    NAME 'vmwSTSClientCertOCSPEnabled'
+    DESC 'VMWare identity Service - Use OCSP whenever possible, Applicable only when vmwSTSClientCertRevocationCheckEnabled is true'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.78
+    NAME 'vmwSTSClientCertUseCRLAsFailOver'
+    DESC 'VMWare identity Service - Client Cert Use CRL as Fail Over'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.79
+    NAME 'vmwSTSClientCertSendOCSPNounce'
+    DESC 'VMWare identity Service - Client Cert Send OCSP Nounce'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.80
+    NAME 'vmwSTSClientCertOCSPUrl'
+    DESC 'VMWare identity Service - Client Cert OCSP address'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.81
+    NAME 'vmwSTSClientCertUseCertCRL'
+    DESC 'VMWare identity Service - Check user certificate CRL distribution point'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.82
+    NAME 'vmwSTSClientCertCRLUrl'
+    DESC 'VMWare identity Service - Client Cert Revocation check CRL address'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.83
+    NAME 'vmwSTSClientCertCRLCacheSize'
+    DESC 'VMWare identity Service - Client Cert CRL Check Cache Size'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.84
+    NAME 'vmwSTSClientCertCustomCertPolicyOid'
+    DESC 'VMWare identity Service - Custom certificate policy OID filters'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.85
+    NAME 'vmwSTSMaxBearerRefreshTokenLifetime'
+    DESC 'VMWare identity Service - Max Bearer Refresh Token Lifetime'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.86
+    NAME 'vmwSTSMaxHolderOfKeyRefreshTokenLifetime'
+    DESC 'VMWare identity Service - Max Holder of Key Refresh Token Lifetime'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.87
+    NAME 'vmwSTSLogonBannerTitle'
+    DESC 'VMWare identity Service - Logon Banner Title'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.88
+    NAME 'vmwSTSLogonBannerEnableCheckbox'
+    DESC 'VMWare identity Service - Enable checkbox for logon banner'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.89
+    NAME 'vmwSTSEnableIdpSelection'
+    DESC 'VMWare identity Service - Enable IDP Selection per tenant'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.90
+    NAME 'vmwSTSResponseEndpoint'
+    DESC 'VMWare identity Service - Response Endpoint'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.91
+    NAME 'vmwSTSRsaSiteID'
+    DESC 'VMWare identity Service - Cluster site ID where the agent is associated'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.92
+    NAME 'vmwSTSRsaAgentName'
+    DESC 'VMWare identity Service - RSA agent name'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.93
+    NAME 'vmwSTSRsaSDConfigRec'
+    DESC 'VMWare identity Service - RSA agent sdconfig.rec file'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.94
+    NAME 'vmwSTSRsaSDOptsRec'
+    DESC 'VMWare identity Service - RSA agent sdopts.rec file'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.95
+    NAME 'vmwSTSRsaLogLevel'
+    DESC 'VMWare identity Service - RSA agent log level'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.96
+    NAME 'vmwSTSRsaLogFileSize'
+    DESC 'VMWare identity Service - RSA agent log file size in number of MB'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.97
+    NAME 'vmwSTSRsaMaxLogFileCount'
+    DESC 'VMWare identity Service - RSA agent maximum number of log files to keep'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.98
+    NAME 'vmwSTSRsaConnectionTimeOut'
+    DESC 'VMWare identity Service - RSA agent connection time out in seconds'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.99
+    NAME 'vmwSTSRsaReadTimeOut'
+    DESC 'VMWare identity Service - RSA agent read time out in seconds'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.100
+    NAME 'vmwSTSRsaEncryptionAlg'
+    DESC 'VMWare identity Service - RSA default encryption key wrapping algorithm'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.101
+    NAME 'vmwSTSRsaLoginGuidence'
+    DESC 'VMWare identity Service - RSA securID login guidence string'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.102
+    NAME 'vmwSTSPscSiteID'
+    DESC 'VMWare identity Service - Cluster site ID where the agent is associated'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.26
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.103
+    NAME 'vmwSTSCertificateAccountLinkingUseUPN'
+    DESC 'VMWare identity Service - Account linking using certificate principal name in SAN'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.104
+    NAME 'vmwSTSUserHintAttributeName'
+    DESC 'VMWare identity Service - Name of Attribute that maps to User name hint for user account linking'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributetypes: (
+    VMWare.STS.attribute.105
+    NAME 'vmwSTSClientCertEnableUserNameHint'
+    DESC 'VMWare identity Service - SSL client certificate authentication enable user name hint'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.7
     SINGLE-VALUE
     )
 
@@ -19569,6 +19418,7 @@ objectClasses: (
          )
     MAY  ( name
          $ vmwSTSEntityId
+         $ vmwSTSAlias
          $ vmwSTSClockTolerance
          $ vmwSTSIssuerName
          $ vmwSTSDelegationCount
@@ -19582,8 +19432,14 @@ objectClasses: (
          $ vmwSTSDefaultIdentityProvider
          $ vmwSTSSignatureAlgorithmIdentifier
          $ vmwSTSBrandName
+         $ vmwSTSLogonBannerTitle
          $ vmwSTSLogonBanner
+         $ vmwSTSLogonBannerEnableCheckbox
+         $ vmwSTSEnableIdpSelection
          $ vmwSTSTenantKey
+         $ vmwSTSAuthnTypes
+         $ vmwSTSMaxBearerRefreshTokenLifetime
+         $ vmwSTSMaxHolderOfKeyRefreshTokenLifetime
          )
     )
 
@@ -19609,7 +19465,11 @@ objectClasses: (
          $ vmwSTSUserBaseDN
          $ vmwSTSGroupBaseDN
          $ vmwSTSConnectionStrings
+         $ vmwSTSAuthnTypes
+         $ userCertificate
          $ vmwSTSUpnSuffixes
+         $ vmwSTSUserHintAttributeName
+         $ vmwSTSCertificateAccountLinkingUseUPN
          $ vmwSTSIdentityStoreFlags
          )
     )
@@ -19759,6 +19619,7 @@ objectClasses: (
     MUST ( cn )
     MAY ( vmwSTSBinding
         $ vmwSTSEndpoint
+        $ vmwSTSResponseEndpoint
         )
     )
 
@@ -19795,8 +19656,212 @@ objectClasses: (
          $ vmwSTSEntityId
         )
    MAY ( vmwSTSNameIDFormat
+         $ vmwSTSExternalIdpEnableJit
+         $ vmwSTSExternalIdpUpnSuffix
+         $ vmwSTSAlias
        )
    )
+
+objectClasses: (
+    VMWare.STS.objectclass.25
+    NAME 'vmwExternalIdpUser'
+    DESC 'VMWare external idp user'
+    AUXILIARY
+    MUST ( vmwSTSEntityId
+         $ vmwSTSExternalIdpUserId
+        )
+    )
+
+objectClasses: (
+   VMWare.STS.objectclass.26
+   NAME 'vmwSTSTenantClientCertificatePolicy'
+   DESC 'VMware Identity Service - Client Certificate Policy'
+   SUP top
+   STRUCTURAL
+   MUST ( cn )
+   MAY ( vmwSTSClientCertRevocationCheckEnabled
+         $ vmwSTSClientCertOCSPEnabled
+         $ vmwSTSClientCertUseCRLAsFailOver
+         $ vmwSTSClientCertSendOCSPNounce
+         $ vmwSTSClientCertOCSPUrl
+         $ userCertificate
+         $ vmwSTSClientCertUseCertCRL
+         $ vmwSTSClientCertCRLUrl
+         $ vmwSTSClientCertCRLCacheSize
+         $ vmwSTSClientCertCustomCertPolicyOid
+         $ vmwSTSClientCertEnableUserNameHint
+       )
+   )
+
+objectClasses: (
+   VMWare.STS.objectclass.27
+   NAME 'vmwSTSTenantRsaAgentConfiguration'
+   DESC 'VMware Identity Service - RSA secureID agent configuration'
+   SUP top
+   STRUCTURAL
+   MUST ( cn )
+   MAY ( vmwSTSRsaLoginGuidence
+         $ vmwSTSRsaLogLevel
+         $ vmwSTSRsaLogFileSize
+         $ vmwSTSRsaMaxLogFileCount
+         $ vmwSTSRsaConnectionTimeOut
+         $ vmwSTSRsaReadTimeOut
+         $ vmwSTSRsaEncryptionAlg
+       )
+   )
+
+
+objectClasses: (
+   VMWare.STS.objectclass.28
+   NAME 'vmwSTSTenantRsaAgentInstance'
+   DESC 'VMware Identity Service - RSA secureID site configuration'
+   SUP top
+   STRUCTURAL
+   MUST ( cn
+         $ vmwSTSRsaSiteID
+         $ vmwSTSRsaAgentName
+         $ vmwSTSRsaSDConfigRec
+       )
+   MAY ( vmwSTSRsaSDOptsRec
+       )
+   )
+
+objectClasses: (
+   VMWare.STS.objectclass.29
+   NAME 'vmwSTSTenantAltOCSPRespondersSite'
+   DESC 'VMware Identity Service - Alternative OCSP responders info for the PSC site'
+   SUP top
+   STRUCTURAL
+   MUST ( cn
+         $ vmwSTSPscSiteID
+       )
+   )
+
+objectClasses: (
+   VMWare.STS.objectclass.30
+   NAME 'vmwSTSTenantAltOCSPResponder'
+   DESC 'VMware Identity Service - Alternative OCSP responder info'
+   SUP top
+   STRUCTURAL
+   MUST ( cn
+         $ vmwSTSClientCertOCSPUrl
+       )
+   MAY ( userCertificate
+       )
+   )
+############################################################
+# VMware OIDC
+############################################################
+
+attributeTypes: (
+    VMWare.OIDC.attribute.1
+    NAME 'vmwOidcClientID'
+    DESC 'Client identifier'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributeTypes: (
+    VMWare.OIDC.attribute.2
+    NAME 'vmwOidcRedirectURIs'
+    DESC 'Redirection URIs'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    )
+
+attributeTypes: (
+    VMWare.OIDC.attribute.3
+    NAME 'vmwOidcTokenEndpointAuthMethod'
+    DESC 'Token endpoint authentication method'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributeTypes: (
+    VMWare.OIDC.attribute.4
+    NAME 'vmwOidcTokenEndpointJWSAlg'
+    DESC 'Token endpoint JWS algorithm for JWT client authentication'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributeTypes: (
+    VMWare.OIDC.attribute.5
+    NAME 'vmwOidcIDTokenJWSAlg'
+    DESC 'ID Token JWS algorithm'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributeTypes: (
+    VMWare.OIDC.attribute.6
+    NAME 'vmwOidcPostLogoutRedirectURI'
+    DESC 'Post logout redirect URI'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    )
+
+attributeTypes: (
+    VMWare.OIDC.attribute.7
+    NAME 'vmwOidcLogoutURI'
+    DESC 'Logout URI'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributeTypes: (
+    VMWare.OIDC.attribute.8
+    NAME 'vmwOidcCertSubDN'
+    DESC 'Certificate Subject DN'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributeTypes: (
+    VMWare.OIDC.attribute.9
+    NAME 'vmwOidcResourceServerName'
+    DESC 'Resource Server Name'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    SINGLE-VALUE
+    )
+
+attributeTypes: (
+    VMWare.OIDC.attribute.10
+    NAME 'vmwOidcResourceServerGroupFilter'
+    DESC 'Resource Server Group Filter'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
+    )
+
+attributeTypes: (
+    VMWare.OIDC.attribute.11
+    NAME 'vmwOidcAuthnRequestClientAssertionLifetimeMS'
+    DESC 'Authentication Request Client Assertion Lifetime MS'
+    SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
+    SINGLE-VALUE
+    )
+
+objectClasses: (
+    VMWare.OIDC.objectclass.1
+    NAME 'vmwOidcRelyingParty'
+    DESC 'OpenID Connect 1.0 Relying Party (RP)'
+    STRUCTURAL
+    MUST ( vmwOidcClientID $
+           vmwOidcRedirectURIs )
+    MAY ( vmwOidcTokenEndpointAuthMethod $
+          vmwOidcTokenEndpointJWSAlg $
+          vmwOidcIDTokenJWSAlg $
+          vmwOidcPostLogoutRedirectURI $
+          vmwOidcLogoutURI $
+          vmwOidcCertSubDN $
+          vmwOidcAuthnRequestClientAssertionLifetimeMS )
+    )
+
+objectClasses: (
+    VMWare.OIDC.objectclass.2
+    NAME 'vmwOidcResourceServer'
+    DESC 'Resource Server'
+    STRUCTURAL
+    MUST ( vmwOidcResourceServerName )
+    MAY ( vmwOidcResourceServerGroupFilter )
+    )
 
 ############################################################
 # VMware Lookup Service
@@ -19806,7 +19871,6 @@ attributetypes: (
     VMWare.LKUP.attribute.1
     NAME 'vmwLKUPOwnerId'
     DESC 'VMWare Lookup Service - OwnerId'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19815,7 +19879,6 @@ attributetypes: (
     VMWare.LKUP.attribute.2
     NAME 'vmwLKUPVersion'
     DESC 'VMWare Lookup Service - Version'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19824,7 +19887,6 @@ attributetypes: (
     VMWare.LKUP.attribute.3
     NAME 'vmwLKUPDescription'
     DESC 'VMWare Lookup Service - Description'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{2048}
     SINGLE-VALUE
     )
@@ -19833,7 +19895,6 @@ attributetypes: (
     VMWare.LKUP.attribute.4
     NAME 'vmwLKUPFriendlyName'
     DESC 'VMWare Lookup Service - FriendlyName'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19842,7 +19903,6 @@ attributetypes: (
     VMWare.LKUP.attribute.5
     NAME 'vmwLKUPServiceType'
     DESC 'VMWare Lookup Service - ServiceType'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19851,7 +19911,6 @@ attributetypes: (
     VMWare.LKUP.attribute.6
     NAME 'vmwLKUPProductId'
     DESC 'VMWare Lookup Service - ProductId'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{1024}
     SINGLE-VALUE
     )
@@ -19860,7 +19919,6 @@ attributetypes: (
     VMWare.LKUP.attribute.7
     NAME 'vmwLKUPURI'
     DESC 'VMWare Lookup Service - URI'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{2048}
     SINGLE-VALUE
     )
@@ -19869,7 +19927,6 @@ attributetypes: (
     VMWare.LKUP.attribute.8
     NAME 'vmwLKUPSslTrustAnchor'
     DESC 'VMWare Lookup Service - SslTrustAnchor'
-    EQUALITY octetStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.40
     )
 
@@ -19877,7 +19934,6 @@ attributetypes: (
     VMWare.LKUP.attribute.9
     NAME 'vmwLKUPProtocol'
     DESC 'VMWare Lookup Service - Protocol'
-    EQUALITY integerMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.27
     SINGLE-VALUE
     )
@@ -19886,7 +19942,6 @@ attributetypes: (
     VMWare.LKUP.attribute.10
     NAME 'vmwLKUPConfigKey'
     DESC 'VMWare Lookup Service - ConfigKey'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     )
 
@@ -19894,7 +19949,6 @@ attributetypes: (
     VMWare.LKUP.attribute.11
     NAME 'vmwLKUPConfigValue'
     DESC 'VMWare Lookup Service - ConfigValue'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19903,7 +19957,6 @@ attributetypes: (
     VMWare.LKUP.attribute.12
     NAME 'vmwLKUPLegacyId'
     DESC 'VMWare Lookup Service - LegacyId'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -19912,7 +19965,6 @@ attributetypes: (
     VMWare.LKUP.attribute.13
     NAME 'vmwLKUPProduct'
     DESC 'VMWare Lookup Service - Product identifier of the service'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19921,7 +19973,6 @@ attributetypes: (
     VMWare.LKUP.attribute.14
     NAME 'vmwLKUPType'
     DESC 'VMWare Lookup Service - Type of the service'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19930,7 +19981,6 @@ attributetypes: (
     VMWare.LKUP.attribute.15
     NAME 'vmwLKUPDeploymentNodeId'
     DESC 'VMWare Lookup Service - Service deployment node identifier'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19939,7 +19989,6 @@ attributetypes: (
     VMWare.LKUP.attribute.16
     NAME 'vmwLKUPFriendlyNameResourceKey'
     DESC 'VMWare Lookup Service - resource key of the service name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19948,7 +19997,6 @@ attributetypes: (
     VMWare.LKUP.attribute.17
     NAME 'vmwLKUPFriendlyNameDefault'
     DESC 'VMWare Lookup Service - service name text to use in absence of resource'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19957,7 +20005,6 @@ attributetypes: (
     VMWare.LKUP.attribute.18
     NAME 'vmwLKUPDescriptionResourceKey'
     DESC 'VMWare Lookup Service - resource key of the service description'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19966,7 +20013,6 @@ attributetypes: (
     VMWare.LKUP.attribute.19
     NAME 'vmwLKUPDescriptionDefault'
     DESC 'VMWare Lookup Service - text of the service description to use in absence of resource'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{512}
     SINGLE-VALUE
     )
@@ -19975,7 +20021,6 @@ attributetypes: (
     VMWare.LKUP.attribute.20
     NAME 'vmwLKUPVendorNameResourceKey'
     DESC 'VMWare Lookup Service - resource key of the vendor name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -19984,7 +20029,6 @@ attributetypes: (
     VMWare.LKUP.attribute.21
     NAME 'vmwLKUPVendorNameDefault'
     DESC 'VMWare Lookup Service - text of the vendor name to use in absence of resource'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{512}
     SINGLE-VALUE
     )
@@ -19993,7 +20037,6 @@ attributetypes: (
     VMWare.LKUP.attribute.22
     NAME 'vmwLKUPProductInfoResourceKey'
     DESC 'VMWare Lookup Service - resource key of the service product info'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -20002,7 +20045,6 @@ attributetypes: (
     VMWare.LKUP.attribute.23
     NAME 'vmwLKUPProductInfoDefault'
     DESC 'VMWare Lookup Service - text of the product info to use in absence of resource'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{512}
     SINGLE-VALUE
     )
@@ -20011,7 +20053,6 @@ attributetypes: (
     VMWare.LKUP.attribute.24
     NAME 'vmwLKUPEndpointProtocol'
     DESC 'VMware Lookup Service - endpoint protocol ("vmomi", "rest", "wsTrust", "http", etc.)'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{32}
     SINGLE-VALUE
     )
@@ -20020,7 +20061,6 @@ attributetypes: (
     VMWare.LKUP.attribute.25
     NAME 'vmwLKUPEndpointType'
     DESC 'VMware Lookup Service - endpoint type'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -20029,15 +20069,13 @@ attributetypes: (
     VMWare.LKUP.attribute.26
     NAME 'vmwLKUPEndpointSslTrust'
     DESC 'VMware Lookup Service - endpoint SSL trust anchor'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
 attributetypes: (
     VMWare.LKUP.attribute.27
-    NAME vmwLKUPLegacyIds
+    NAME 'vmwLKUPLegacyIds'
     DESC 'VMware Lookup Service - service identifier'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     )
 
@@ -20045,7 +20083,6 @@ attributetypes: (
     VMWare.LKUP.attribute.28
     NAME 'vmwLKUPPropertyName'
     DESC 'VMWare Lookup Service - property name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15{256}
     SINGLE-VALUE
     )
@@ -20054,7 +20091,6 @@ attributetypes: (
     VMWare.LKUP.attribute.29
     NAME 'vmwLKUPPropertyValue'
     DESC 'VMWare Lookup Service - property value'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20159,7 +20195,6 @@ attributetypes: (
     VMWare.CIS.attribute.1
     NAME 'vmwCISVersion'
     DESC 'VMware CIS - service version'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20168,7 +20203,6 @@ attributetypes: (
     VMWare.CIS.attribute.2
     NAME 'vmwCISOwner'
     DESC 'VMware CIS - SSO principal which is the owner of the service'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20177,7 +20211,6 @@ attributetypes: (
     VMWare.CIS.attribute.3
     NAME 'vmwCISGroup'
     DESC 'VMware CIS - identifier of a group a service may belong to'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20186,7 +20219,6 @@ attributetypes: (
     VMWare.CIS.attribute.4
     NAME 'vmwCISProduct'
     DESC 'VMware CIS - product identifier of a service'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20195,7 +20227,6 @@ attributetypes: (
     VMWare.CIS.attribute.5
     NAME 'vmwCISType'
     DESC 'VMware CIS - type of a service'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20204,7 +20235,6 @@ attributetypes: (
     VMWare.CIS.attribute.6
     NAME 'vmwCISHost'
     DESC 'VMware CIS - host id of the virtual machine on which the service is hosted'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20213,7 +20243,6 @@ attributetypes: (
     VMWare.CIS.attribute.7
     NAME 'vmwCISName'
     DESC 'VMware CIS - resource key for service name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20221,8 +20250,7 @@ attributetypes: (
 attributetypes: (
     VMWare.CIS.attribute.8
     NAME 'vmwCISDescription'
-    DESC 'VMware CIS -  resource key for service description'
-    EQUALITY caseIgnoreMatch
+    DESC 'VMware CIS - resource key for service description'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20231,7 +20259,6 @@ attributetypes: (
     VMWare.CIS.attribute.9
     NAME 'vmwCISGroupName'
     DESC 'VMware CIS - resource key for service group name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20240,7 +20267,6 @@ attributetypes: (
     VMWare.CIS.attribute.10
     NAME 'vmwCISEndpoints'
     DESC 'VMware CIS - List of service endpoints'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -20248,7 +20274,6 @@ attributetypes: (
     VMWare.CIS.attribute.11
     NAME 'vmwCISEndpointTypes'
     DESC 'VMware CIS - List of types of service endpoints - to facilitate search by endpoint types'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -20256,7 +20281,6 @@ attributetypes: (
     VMWare.CIS.attribute.12
     NAME 'vmwCISAuxAttributes'
     DESC 'VMware CIS - List of auxiliary service attributes'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20265,7 +20289,6 @@ attributetypes: (
     VMWare.CIS.attribute.13
     NAME 'vmwCISSiteId'
     DESC 'VMware CIS - site id'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20274,7 +20297,6 @@ attributetypes: (
     VMWare.CIS.attribute.14
     NAME 'vmwCISLduId'
     DESC 'VMware CIS - ldu id'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20283,7 +20305,6 @@ attributetypes: (
     VMWare.CIS.attribute.15
     NAME 'vmwCISServiceControlScript'
     DESC 'VMware CIS Component Manager - Service Control Script'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20292,7 +20313,6 @@ attributetypes: (
     VMWare.CIS.attribute.16
     NAME 'vmwCISServiceConfigDefinitions'
     DESC 'VMware CIS Component Manager - List of service config definitions'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -20352,156 +20372,132 @@ attributetypes: (
     VMWare.authz.attribute.1
     NAME 'vmwAuthzRoleIdBeforeUpgrade'
     DESC 'Unique Role Id'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.2
     NAME 'vmwAuthzRoleName'
     DESC 'Unique Role Name'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.3
     NAME 'vmwAuthzRoleDescription'
     DESC 'Authz description of a Role'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.4
     NAME 'vmwAuthzRoleVersion'
     DESC 'Authz Role Version - higher verson indicates more recent role details'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.5
     NAME 'vmwAuthzTenantUri'
     DESC 'Tenant URI'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.6
     NAME 'vmwAuthzRolePrivilegeId'
     DESC 'privilege id for a role single or multiple per role'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.7
     NAME 'vmwAuthzPrivilegeId'
     DESC 'unique privilege id for a Privilege object'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.8
     NAME 'vmwAuthzPrivilegeDescription'
     DESC 'Descrription of Privilege'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.9
     NAME 'vmwAuthzPrivilegeGroupName'
     DESC 'Name of the group of the privilege'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.10
     NAME 'vmwAuthzPrivilegeVersion'
     DESC 'Privilege version. Higher number represent more recent privilege details'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.11
     NAME 'vmwAuthzPrivilegeIsOnParent'
     DESC 'Indicator if the privilege needs to apply to object parent'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.12
     NAME 'vmwAuthzPrincipalName'
     DESC 'Unique Principal Name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.13
     NAME 'vmwAuthzPrincipalGroup'
     DESC 'Is Group'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.14
     NAME 'vmwAuthzPermissionVersion'
     DESC 'Version of Permission'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.15
     NAME 'vmwAuthzPermissionPropagate'
     DESC 'Authz Permission propagate flag'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.16
     NAME 'vmwAuthzPermissionRoleId'
     DESC 'Role id for permission'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
- 
+
 attributetypes: (
     VMWare.authz.attribute.17
     NAME 'vmwAuthzDocUri'
     DESC 'uri'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -20537,7 +20533,7 @@ objectClasses: (
     MAY ( vmwAuthzPrivilegeIsOnParent
         )
     )
- 
+
 objectClasses: (
     VMWare.authz.objectclass.3
     NAME 'vmwAuthzRoleModel'
@@ -20547,7 +20543,7 @@ objectClasses: (
     MUST ( cn
          )
     )
- 
+
 objectClasses: (
     VMWare.authz.objectclass.4
     NAME 'vmwAuthzPrivModel'
@@ -20557,7 +20553,7 @@ objectClasses: (
     MUST ( cn
          )
     )
- 
+
 objectClasses: (
     VMWare.authz.objectclass.5
     NAME 'vmwAuthzAcl'
@@ -20573,7 +20569,7 @@ objectClasses: (
     MAY ( vmwAuthzPermissionRoleId
         )
     )
- 
+
 objectClasses: (
     VMWare.authz.objectclass.6
     NAME 'vmwAuthzAclMap'
@@ -20589,7 +20585,7 @@ objectClasses: (
     MAY  ( vmwAuthzPermissionRoleId
          )
     )
- 
+
 objectClasses: (
     VMWare.authz.objectclass.7
     NAME 'vmwAuthzAclModel'
@@ -20608,7 +20604,6 @@ attributetypes: (
     VMWare.tagging.attribute.1
     NAME 'vmwTaggingIsSystemScope'
     DESC 'VMware Tagging - indicates whether the tagging scope is a system scope'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20617,7 +20612,6 @@ attributetypes: (
     VMWare.tagging.attribute.2
     NAME 'vmwTaggingSystemScopeFlag'
     DESC 'VMware Tagging - indicates the system scope bucket that the concerned tagging scope falls in'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20626,7 +20620,6 @@ attributetypes: (
     VMWare.tagging.attribute.3
     NAME 'vmwTaggingAuthzUri'
     DESC 'VMware Tagging - indicates the scope URI that is used to create Authz permission on this scope'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20635,8 +20628,6 @@ attributetypes: (
     VMWare.tagging.attribute.4
     NAME 'vmwTaggingCategoryName'
     DESC 'VMware Tagging - tag-category name'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20645,7 +20636,6 @@ attributetypes: (
     VMWare.tagging.attribute.5
     NAME 'vmwTaggingCategoryCardinality'
     DESC 'VMware Tagging - tag-category Cardinality. It can either be SINGLE or MULTIPLE'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20654,8 +20644,6 @@ attributetypes: (
     VMWare.tagging.attribute.6
     NAME 'vmwTaggingCategoryDescription'
     DESC 'VMware Tagging - tag-category description'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20664,8 +20652,6 @@ attributetypes: (
     VMWare.tagging.attribute.7
     NAME 'vmwTaggingCategoryAssociableType'
     DESC 'VMware Tagging - tag-category associable type, tells you the valid object-types that can be attached'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -20673,8 +20659,6 @@ attributetypes: (
     VMWare.tagging.attribute.8
     NAME 'vmwTaggingCategoryUsedBy'
     DESC 'VMware Tagging - tag-category used-by field indicates the users of this field'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -20682,8 +20666,6 @@ attributetypes: (
     VMWare.tagging.attribute.9
     NAME 'vmwTaggingTagName'
     DESC 'VMware Tagging - tag name'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20692,8 +20674,6 @@ attributetypes: (
     VMWare.tagging.attribute.10
     NAME 'vmwTaggingTagDescription'
     DESC 'VMware Tagging - tag description'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20702,8 +20682,6 @@ attributetypes: (
     VMWare.tagging.attribute.11
     NAME 'vmwTaggingTagUsedBy'
     DESC 'VMware Tagging - tag used-by field that indicates the users of this tag'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -20711,7 +20689,6 @@ attributetypes: (
     VMWare.tagging.attribute.12
     NAME 'vmwTaggingScopeVersion'
     DESC 'VMware Tagging - indicates the scope version'
-    EQUALITY numericStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.36
     SINGLE-VALUE
     )
@@ -20720,7 +20697,6 @@ attributetypes: (
     VMWare.tagging.attribute.13
     NAME 'vmwTaggingCategoryVersion'
     DESC 'VMware Tagging - indicates the scope version'
-    EQUALITY numericStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.36
     SINGLE-VALUE
     )
@@ -20729,7 +20705,6 @@ attributetypes: (
     VMWare.tagging.attribute.14
     NAME 'vmwTaggingTagVersion'
     DESC 'VMware Tagging - indicates the tag version'
-    EQUALITY numericStringMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.36
     SINGLE-VALUE
     )
@@ -20738,8 +20713,6 @@ attributetypes: (
     VMWare.tagging.attribute.15
     NAME 'vmwTaggingObjectState'
     DESC 'VMware Tagging - tag object state'
-    EQUALITY caseIgnoreMatch
-    SUBSTR caseIgnoreSubstringsMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
@@ -20802,7 +20775,6 @@ attributetypes: (
     VMWare.DNS.attribute.1
     NAME 'vmwDNSForwarders'
     DESC 'VMware DNS Forwarder'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     )
 
@@ -20847,272 +20819,242 @@ attributeTypes: (
     VMWare.LicSvc.attribute.1
     NAME 'vmwLicSvcObjectClass'
     DESC 'VMware License Service -ObjectClass'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.101
     NAME 'vmwLicSvcLicenseId'
     DESC 'VMware License Service - License Id'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.102
     NAME 'vmwLicSvcLicenseName'
     DESC 'VMware License Service - License Name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.103
     NAME 'vmwLicSvcLicenseType'
     DESC 'VMware License Service - License Type'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.104
     NAME 'vmwLicSvcLicenseProperties'
     DESC 'VMware License Service - License Properties'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.105
     NAME 'vmwLicSvcLicenseSerialKeys'
     DESC 'VMware License Service - License Serial Keys'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.201
     NAME 'vmwLicSvcLicenseDescriptionId'
     DESC 'VMware License Service - License Description Id'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.202
     NAME 'vmwLicSvcLicenseDescriptionType'
     DESC 'VMware License Service - License Description Type'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.203
     NAME 'vmwLicSvcLicenseDescriptionName'
     DESC 'VMware License Service - License Description Name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.204
     NAME 'vmwLicSvcLicenseDescriptionContent'
     DESC 'VMware License Service - License Description Content'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.205
     NAME 'vmwLicSvcLicenseDescriptionProperties'
     DESC 'VMware License Service - License Description Properties'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.301
     NAME 'vmwLicSvcLicenseLabelSerialKey'
     DESC 'VMware License Service - License Label Serial Key'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.302
     NAME 'vmwLicSvcLicenseLabelKey'
     DESC 'VMware License Service - License Label Key'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.303
     NAME 'vmwLicSvcLicenseLabelValue'
     DESC 'VMware License Service - License Label Value'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.401
     NAME 'vmwLicSvcAssetId'
     DESC 'VMware License Service - Asset Id'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.402
     NAME 'vmwLicSvcAssetInstanceId'
     DESC 'VMware License Service - Asset Instance Id'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.403
     NAME 'vmwLicSvcAssetScopeId'
     DESC 'VMware License Service - Asset Scope Id'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.404
     NAME 'vmwLicSvcAssetOwnerId'
     DESC 'VMware License Service - Asset Owner Service Id'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.405
     NAME 'vmwLicSvcAssetName'
     DESC 'VMware License Service - Asset Name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.406
     NAME 'vmwLicSvcAssetVersion'
     DESC 'VMware License Service - Asset Version'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.407
     NAME 'vmwLicSvcAssetProductName'
     DESC 'VMware License Service - Asset Product Name'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.408
     NAME 'vmwLicSvcAssetProductVersion'
     DESC 'VMware License Service - Asset Product Version'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.409
     NAME 'vmwLicSvcAssetEvalExpiry'
     DESC 'VMware License Service - Asset Eval Expiry'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.410
     NAME 'vmwLicSvcAssetEvalType'
     DESC 'VMware License Service - Asset Eval Type'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.411
     NAME 'vmwLicSvcAssetEvalSerialKey'
     DESC 'VMware License Service - Asset Eval Serial Key'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.412
     NAME 'vmwLicSvcAssetLicenseId'
     DESC 'VMware License Service - Asset License Id'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.413
     NAME 'vmwLicSvcAssetIsInEvaluation'
-    DESC 'VMware License Service - Asset Is In Eval '
-    EQUALITY caseIgnoreMatch
+    DESC 'VMware License Service - Asset Is In Eval'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.414
     NAME 'vmwLicSvcAssetCostUnitUsageList'
     DESC 'VMware License Service - Asset Cost Unit Usage List'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.415
     NAME 'vmwLicSvcAssetFeaturesInUseList'
-    DESC 'VMware License Service - Asset Features In Use List '
-    EQUALITY caseIgnoreMatch
+    DESC 'VMware License Service - Asset Features In Use List'
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 attributeTypes: (
     VMWare.LicSvc.attribute.416
     NAME 'vmwLicSvcAssetPropertiesList'
     DESC 'VMware License Service - Asset Properties List'
-    EQUALITY caseIgnoreMatch
     SYNTAX 1.3.6.1.4.1.1466.115.121.1.15
     SINGLE-VALUE
     )
-#
+
 objectClasses: (
     VMWare.LicSvc.objectclass.1
     NAME 'vmwLicSvcLicenseEntity'
@@ -21129,7 +21071,7 @@ objectClasses: (
         $ vmwLicSvcLicenseProperties
         )
     )
-#
+
 objectClasses: (
     VMWare.LicSvc.objectclass.2
     NAME 'vmwLicSvcLicenseDescriptionEntity'
@@ -21146,7 +21088,7 @@ objectClasses: (
          $ vmwLicSvcLicenseDescriptionProperties
          )
     )
-#
+
 objectClasses: (
     VMWare.LicSvc.objectclass.3
     NAME 'vmwLicSvcLicenseLabelEntity'
@@ -21160,7 +21102,7 @@ objectClasses: (
          $ vmwLicSvcLicenseLabelValue
          )
     )
-#
+
 objectClasses: (
     VMWare.LicSvc.objectclass.4
     NAME 'vmwLicSvcAssetEntity'

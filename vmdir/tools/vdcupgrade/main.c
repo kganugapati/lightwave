@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -27,7 +27,6 @@
 
 #include "includes.h"
 
-#define VMDIR_MAX_PWD_LEN 127
 static
 DWORD
 AddComputersContainer(
@@ -86,10 +85,8 @@ UpdateDCAccountSRPSecret(
 
 static
 DWORD
-UpdateEntriesACL(
-    LDAP*   pLd,
-    PCSTR pszServerName,
-    PCSTR pszAdminUPN
+_UpdateMaxDfl(
+    LDAP* pLd
     );
 
 static
@@ -98,8 +95,94 @@ _UpdatePSCVersion(
     LDAP* pLd
     );
 
+static
 int
-main(
+VmDirMain(
+    int argc,
+    char* argv[]
+    );
+
+static
+DWORD
+ReplaceSamAccountOnDn(
+    LDAP* pLd,
+    PCSTR pszAccountDn,
+    PCSTR pszNewSamAccount
+    );
+
+static
+DWORD
+getPSCVersion(
+    LDAP* pLd,
+    PSTR* ppszPSCVer
+    );
+
+#ifndef LIGHTWAVE_BUILD
+
+static
+DWORD
+UpdateEntriesACL(
+    LDAP*   pLd,
+    PCSTR pszServerName,
+    PCSTR pszAdminUPN
+    );
+
+static
+DWORD
+UpdatePartnerCertFiles(
+    LDAP* pLd,
+    PSTR pszServerName,
+    PSTR pszAdminUPN,
+    PSTR pszPassword
+    );
+
+#endif
+
+#ifdef _WIN32
+
+int wmain(int argc, wchar_t* argv[])
+{
+    DWORD dwError = 0;
+    PSTR* ppszArgs = NULL;
+    int   iArg = 0;
+
+    dwError = VmDirAllocateMemory(sizeof(PSTR) * argc, (PVOID*)&ppszArgs);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    for (; iArg < argc; iArg++)
+    {
+        dwError = VmDirAllocateStringAFromW(argv[iArg], &ppszArgs[iArg]);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = VmDirMain(argc, ppszArgs);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+error:
+
+    if (ppszArgs)
+    {
+        for (iArg = 0; iArg < argc; iArg++)
+        {
+            VMDIR_SAFE_FREE_MEMORY(ppszArgs[iArg]);
+        }
+        VmDirFreeMemory(ppszArgs);
+    }
+
+    return dwError;
+}
+#else
+
+int main(int argc, char* argv[])
+{
+    return VmDirMain(argc, argv);
+}
+
+#endif
+
+static
+int
+VmDirMain(
     int argc,
     char* argv[]
     )
@@ -109,7 +192,10 @@ main(
     PSTR    pszAdminUPN = NULL;
     PSTR    pszPassword = NULL;
     PSTR    pszPasswordFile = NULL;
+    PSTR    pszPnidFixAccountDn = NULL;
+    PSTR    pszPnidFixSamAccount = NULL;
     PSTR    pszErrorMessage = NULL;
+    PSTR    pszVersion = NULL;
     LDAP*   pLd = NULL;
     CHAR    pszPasswordBuf[VMDIR_MAX_PWD_LEN + 1];
     BOOLEAN bAclOnly = FALSE;
@@ -124,7 +210,9 @@ main(
                         &pszAdminUPN,
                         &pszPassword,
                         &pszPasswordFile,
-                        &bAclOnly);
+                        &bAclOnly,
+                        &pszPnidFixAccountDn,
+                        &pszPnidFixSamAccount);
     if (dwError != ERROR_SUCCESS)
     {
         ShowUsage();
@@ -158,9 +246,24 @@ main(
     dwError = VmDirSafeLDAPBind(&pLd, pszServerName, pszAdminUPN, pszPasswordBuf);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    // do ACL patch first, so newly added entry will have correct ACL.
-    dwError = UpdateEntriesACL( pLd, pszServerName, pszAdminUPN);
+    dwError = getPSCVersion(
+		pLd,
+		&pszVersion);
     BAIL_ON_VMDIR_ERROR(dwError);
+
+#ifndef LIGHTWAVE_BUILD
+    // Only patch ACL from 5.5
+    if (VmDirStringNCompareA(pszVersion, "5.5", 3, FALSE) == 0)
+    {
+        // For upgrade from 5.5, create partner cert files
+        dwError = UpdatePartnerCertFiles(pLd, pszServerName, pszAdminUPN, pszPasswordBuf);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        // do ACL patch first, so newly added entry will have correct ACL.
+        dwError = UpdateEntriesACL( pLd, pszServerName, pszAdminUPN);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+#endif
 
     if (!bAclOnly)
     {
@@ -170,10 +273,17 @@ main(
 
         dwError = UpdateDCAccountSRPSecret( pLd );
         BAIL_ON_VMDIR_ERROR(dwError);
+
+        if (pszPnidFixAccountDn && pszPnidFixSamAccount)
+        {
+            dwError = ReplaceSamAccountOnDn(pLd, pszPnidFixAccountDn, pszPnidFixSamAccount);
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
     }
 
 cleanup:
 
+    VMDIR_SAFE_FREE_STRINGA(pszVersion);
     VMDIR_SAFE_FREE_STRINGA(pszServerName);
     VMDIR_SAFE_FREE_STRINGA(pszAdminUPN);
     if (pszPassword)
@@ -181,8 +291,9 @@ cleanup:
     memset(pszPasswordBuf, 0, sizeof(pszPasswordBuf));
     VMDIR_SAFE_FREE_STRINGA(pszPassword);
     VMDIR_SAFE_FREE_STRINGA(pszPasswordFile);
+    VMDIR_SAFE_FREE_STRINGA(pszPnidFixAccountDn);
+    VMDIR_SAFE_FREE_STRINGA(pszPnidFixSamAccount);
     VMDIR_SAFE_FREE_MEMORY(pszErrorMessage);
-
     VdcLdapUnbind(pLd);
     pLd = NULL;
 
@@ -207,6 +318,9 @@ UpgradeDirectory(
     DWORD dwError = 0;
 
     dwError = _UpdatePSCVersion(pLd);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = _UpdateMaxDfl(pLd);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = AddComputersContainer(pLd, pszServerName);
@@ -261,7 +375,7 @@ AddComputersContainer(
                   &pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                   &pszComputersContainerDN, "%s=%s,%s",
                   ATTR_OU,
                   pszComputersContainerName,
@@ -337,7 +451,7 @@ AddCAContainer(
                   &pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                   &pszCAContainerDN, "%s=%s,%s=%s,%s",
                   ATTR_CN,
                   pszCAContainerName,
@@ -411,7 +525,7 @@ AddBuiltinDCClientsGroup(
                   &pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                   &pszDCClientsGroupDN, "cn=%s,cn=%s,%s",
                   VMDIR_DCCLIENT_GROUP_NAME,
                   VMDIR_BUILTIN_CONTAINER_NAME,
@@ -486,28 +600,28 @@ AddBuiltinCAAdminsGroup(
                   &pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                   &pszCAAdminsGroupDN, "cn=%s,cn=%s,%s",
                   VMDIR_CERT_GROUP_NAME,
                   VMDIR_BUILTIN_CONTAINER_NAME,
                   pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                   &pszDCAdminsGroupDN, "cn=%s,cn=%s,%s",
                   VMDIR_DC_GROUP_NAME,
                   VMDIR_BUILTIN_CONTAINER_NAME,
                   pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                   &pszDCClientsGroupDN, "cn=%s,cn=%s,%s",
                   VMDIR_DCCLIENT_GROUP_NAME,
                   VMDIR_BUILTIN_CONTAINER_NAME,
                   pszDomainDN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                   &pszAdministratorDN, "cn=%s,cn=%s,%s",
                   "Administrator",
                   "Users",
@@ -576,11 +690,77 @@ error:
 
 static
 DWORD
+_UpdateMaxDfl(
+    LDAP* pLd
+    )
+{
+    DWORD  dwError = 0;
+    PSTR   pszDCAccountDN = NULL;
+    PSTR   ppszVals [] = { VMDIR_MAX_DFL_STRING, NULL };
+
+    if (!pLd)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = VdcLdapReplaceAttributeValues(
+                pLd,
+                PERSISTED_DSE_ROOT_DN,
+                ATTR_MAX_DOMAIN_FUNCTIONAL_LEVEL,
+                (PCSTR*) ppszVals);
+    if (dwError)
+    {
+        printf("Failed to update DSE ROOT maximum domain functional level to %s, error (%d)\n",
+               VMDIR_MAX_DFL_STRING,
+               dwError);
+    }
+    else
+    {
+        printf("Update DSE ROOT maximum domain functional level to %s.\n",
+               VMDIR_MAX_DFL_STRING);
+    }
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirRegReadDCAccountDn( &pszDCAccountDN );
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VdcLdapReplaceAttributeValues(
+                pLd,
+                pszDCAccountDN,
+                ATTR_MAX_DOMAIN_FUNCTIONAL_LEVEL,
+                (PCSTR*) ppszVals);
+    if (dwError)
+    {
+        printf("Failed to update DC maximum domain functional level to %d, error (%d)\n",
+               VMDIR_MAX_DFL,
+               dwError);
+    }
+    else
+    {
+        printf("Update DC maximum domain functional level to %d.\n", VMDIR_MAX_DFL);
+    }
+
+cleanup:
+    VMDIR_SAFE_FREE_MEMORY(pszDCAccountDN);
+    return dwError;
+
+error:
+    goto cleanup;
+}
+
+#ifndef VDIR_PSC_VERSION
+#define VDIR_PSC_VERSION "6.7.0"
+#endif
+
+static
+DWORD
 _UpdatePSCVersion(
     LDAP* pLd
     )
 {
     DWORD  dwError = 0;
+    PSTR   pszDCAccountDN = NULL;
     PSTR   ppszVals [] = { VDIR_PSC_VERSION, NULL };
 
     if (!pLd)
@@ -596,16 +776,33 @@ _UpdatePSCVersion(
                 (PCSTR*) ppszVals);
     if (dwError)
     {
-        printf("Failed to update PSC version to %s, error (%d)\n", VDIR_PSC_VERSION, dwError);
+        printf("Failed to update DSE ROOT PSC version to %s, error (%d)\n", VDIR_PSC_VERSION, dwError);
     }
     else
     {
-        printf("Update PSC version to %s.\n", VDIR_PSC_VERSION);
+        printf("Update DSE ROOT PSC version to %s.\n", VDIR_PSC_VERSION);
     }
     BAIL_ON_VMDIR_ERROR(dwError);
 
-cleanup:
+    dwError = VmDirRegReadDCAccountDn( &pszDCAccountDN );
+    BAIL_ON_VMDIR_ERROR(dwError);
 
+    dwError = VdcLdapReplaceAttributeValues(
+                pLd,
+                pszDCAccountDN,
+                ATTR_PSC_VERSION,
+                (PCSTR*) ppszVals);
+    if (dwError)
+    {
+        printf("Failed to update DC PSC version to %s, error (%d)\n", VDIR_PSC_VERSION, dwError);
+    }
+    else
+    {
+        printf("Update DC PSC version to %s.\n", VDIR_PSC_VERSION);
+    }
+
+cleanup:
+    VMDIR_SAFE_FREE_MEMORY(pszDCAccountDN);
     return dwError;
 
 error:
@@ -780,7 +977,7 @@ UpdateDCAccountSRPSecret(
     dwError = VmDirRegReadDCAccount( &pszDCAccount );
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf( &pszFilter,
+    dwError = VmDirAllocateStringPrintf( &pszFilter,
                                              "sAMAccountName=%s",
                                              pszDCAccount);
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -798,7 +995,7 @@ UpdateDCAccountSRPSecret(
         dwError = VmDirGetDomainName( "localhost", &pszDomain );
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        dwError = VmDirAllocateStringAVsnprintf( &pszUPN,
+        dwError = VmDirAllocateStringPrintf( &pszUPN,
                                                  "%s@%s",
                                                  pszDCAccount,
                                                  pszDomain);
@@ -836,6 +1033,50 @@ error:
     goto cleanup;
 }
 
+
+static
+DWORD
+ReplaceSamAccountOnDn(
+    LDAP* pLd,
+    PCSTR pszAccountDn,
+    PCSTR pszNewSamAccount
+    )
+{
+    DWORD dwError = 0;
+    PSTR  ppszVals [] = { (PSTR) pszNewSamAccount, NULL };
+
+    if (!pLd || !pszAccountDn || !pszNewSamAccount)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = VdcLdapReplaceAttributeValues(
+                pLd,
+                pszAccountDn,
+                ATTR_SAM_ACCOUNT_NAME,
+                (PCSTR*) ppszVals);
+
+    if (dwError)
+    {
+        printf("Failed to update samaccount to %s for %s, error (%d)\n", pszNewSamAccount, pszAccountDn, dwError);
+    }
+    else
+    {
+        printf("Updated samaccount to %s for %s.\n", pszNewSamAccount, pszAccountDn);
+    }
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+cleanup:
+
+    return dwError;
+
+error:
+    goto cleanup;
+}
+
+#ifndef LIGHTWAVE_BUILD
+
 /* Replace ATTR_ACL_STRING on entries which have attribute nTSecurityDescriptor */
 static
 DWORD
@@ -853,7 +1094,7 @@ UpdateEntriesACL(
     int         totalCnt = 0;
     int         failedCnt = 0;
 
-    dwError = VmDirAllocateStringAVsnprintf( &pszFilter,
+    dwError = VmDirAllocateStringPrintf( &pszFilter,
                                              "%s=%s",
                                              ATTR_KRB_UPN,
                                              pszAdminUPN);
@@ -869,7 +1110,7 @@ UpdateEntriesACL(
 
 
     VMDIR_SAFE_FREE_MEMORY(pszFilter);
-    dwError = VmDirAllocateStringAVsnprintf( &pszFilter,
+    dwError = VmDirAllocateStringPrintf( &pszFilter,
                                              "%s=*",
                                              ATTR_OBJECT_CLASS);
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -882,7 +1123,7 @@ UpdateEntriesACL(
                                         &pszDomainDn);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(&pAclString,
+    dwError = VmDirAllocateStringPrintf(&pAclString,
                 "O:%sG:BAD:(A;;RPWP;;;%s)(A;;GXNRNWGXCCDCRPWP;;;BA)(A;;GXNRNWGXCCDCRPWP;;;%s)",
                                             pAdminSid,
                                             VMDIR_SELF_SID,
@@ -890,7 +1131,7 @@ UpdateEntriesACL(
     BAIL_ON_VMDIR_ERROR(dwError);
 
     VMDIR_SAFE_FREE_MEMORY(pszFilter);
-    dwError = VmDirAllocateStringAVsnprintf( &pszFilter,
+    dwError = VmDirAllocateStringPrintf( &pszFilter,
                                              "%s=*",
                                              ATTR_OBJECT_SECURITY_DESCRIPTOR);
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -922,5 +1163,205 @@ cleanup:
 error:
     printf("UpdateEntriesACL got error %d - vdcupgrade proceeds, and please upgrade ACL manually.\n", dwError);
     dwError = 0;
+    goto cleanup;
+}
+
+/*
+ * If upgrading from 5.5, create user certificate files. These are used for
+ * replicating with partners that are still at version 5.5.
+ * In WinToLin upgrade, 5.5 nodes may have been using a kerberos auth
+ * that is not migrated to linux. These will fallback to using user certificates.
+ */
+static
+DWORD
+UpdatePartnerCertFiles(
+    LDAP* pLd,
+    PSTR pszServerName,
+    PSTR pszAdminUPN,
+    PSTR pszPassword
+    )
+{
+    DWORD dwError = 0;
+    DWORD dwNumReplPartner = 0;
+    DWORD dwAttrLen = 0;
+    DWORD dwWriteLen = 0;
+    DWORD dwCnt = 0;
+    PSTR pszPartnerName = NULL;
+    PSTR pszPartnerDN = NULL;
+    PSTR pszDomainName = NULL;
+    PSTR pszUserName = NULL;
+    PSTR pszFileName = NULL;
+    PVMDIR_REPL_PARTNER_INFO pReplPartnerInfo = NULL;
+    PBYTE pUserCertificate = NULL;
+    FILE* certFp = NULL;
+    BOOLEAN bFound = FALSE;
+
+    if (!pLd |
+        !pszAdminUPN |
+        !pszServerName |
+        !pszPassword)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = VmDirUPNToNameAndDomain(
+                                pszAdminUPN,
+                                &pszUserName,
+                                &pszDomainName);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    // Find all partners
+    dwError = VmDirGetReplicationPartners(
+                                pszServerName,
+                                pszUserName,
+                                pszPassword,
+                                &pReplPartnerInfo,
+                                &dwNumReplPartner);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    for ( dwCnt=0; dwCnt < dwNumReplPartner; dwCnt++ )
+    {
+        VMDIR_SAFE_FREE_MEMORY(pszPartnerName);
+        VMDIR_SAFE_FREE_MEMORY(pszFileName);
+        VMDIR_SAFE_FREE_MEMORY(pszPartnerDN);
+        VMDIR_SAFE_FREE_MEMORY(pUserCertificate);
+
+        if (certFp)
+        {
+            fclose(certFp);
+            certFp = NULL;
+        }
+
+        dwError = VmDirReplURIToHostname(
+                                pReplPartnerInfo[dwCnt].pszURI,
+                                &pszPartnerName);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        // Get user cert file name for this partner
+        dwError = VmDirCertificateFileNameFromHostName(
+                                pszPartnerName,
+                                &pszFileName);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        dwError = VmDirFileExists(pszFileName, &bFound);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        // Was file migrated?
+        if (bFound)
+        {
+            continue;
+        }
+
+        dwError = VmDirGetServerAccountDN(
+                                pszDomainName,
+                                pszPartnerName,
+                                &pszPartnerDN);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        // Get partner user cert
+        dwError = VmDirLdapGetSingleAttribute(
+                                pLd,
+                                pszPartnerDN,
+                                ATTR_USER_CERTIFICATE,
+                                &pUserCertificate,
+                                &dwAttrLen);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        if ( pUserCertificate != NULL )
+        {
+            if ((certFp = fopen((const char *)pszFileName, "wb")) == NULL)
+            {
+                printf("Failed to create user certificate file %s\n", pszFileName);
+                dwError = VMDIR_ERROR_NO_SUCH_FILE_OR_DIRECTORY;
+                BAIL_ON_VMDIR_ERROR(dwError);
+            }
+
+            // write cert to file
+            dwWriteLen = (DWORD)fwrite(pUserCertificate, 1, dwAttrLen, certFp);
+
+            if (dwWriteLen != dwAttrLen)
+            {
+                printf("Failed to write user certificate file %s\n", pszFileName);
+                dwError = VMDIR_ERROR_IO;
+                BAIL_ON_VMDIR_ERROR(dwError);
+            }
+        }
+    }
+
+cleanup:
+    VMDIR_SAFE_FREE_MEMORY(pszPartnerName);
+    VMDIR_SAFE_FREE_MEMORY(pszDomainName);
+    VMDIR_SAFE_FREE_MEMORY(pszUserName);
+    VMDIR_SAFE_FREE_MEMORY(pszPartnerDN);
+    VMDIR_SAFE_FREE_MEMORY(pUserCertificate);
+    VMDIR_SAFE_FREE_MEMORY(pszFileName);
+
+    if (certFp)
+     {
+         fclose(certFp);
+     }
+
+    for (dwCnt=0; dwCnt < dwNumReplPartner; dwCnt++)
+    {
+        VMDIR_SAFE_FREE_MEMORY(pReplPartnerInfo[dwCnt].pszURI);
+    }
+    VMDIR_SAFE_FREE_MEMORY(pReplPartnerInfo);
+
+    return dwError;
+
+error:
+    goto cleanup;
+
+}
+
+#endif
+
+static
+DWORD
+getPSCVersion(
+    LDAP* pLd,
+    PSTR* ppszPSCVer
+    )
+{
+    DWORD  dwError = 0;
+    PSTR   pszPSCVer = NULL;
+    PCSTR  pszFilter = "objectclass=*";
+
+    if (!pLd || !ppszPSCVer)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = VdcLdapGetAttributeValue(pLd,
+				       "",
+				       LDAP_SCOPE_BASE,
+				       pszFilter,
+				       ATTR_PSC_VERSION,
+				       &pszPSCVer);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (IsNullOrEmptyString(pszPSCVer))
+    {
+        dwError = VmDirAllocateStringA("5.5",
+                           &pszPSCVer);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    *ppszPSCVer = pszPSCVer;
+
+cleanup:
+
+    return dwError;
+
+error:
+
+    if (ppszPSCVer)
+    {
+        *ppszPSCVer = NULL;
+    }
+
+    VMDIR_SAFE_FREE_MEMORY(pszPSCVer);
     goto cleanup;
 }

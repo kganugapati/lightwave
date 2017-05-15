@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -147,6 +147,9 @@ VmDirLogInitialize(
        {
            dwError = VMDIR_ERROR_IO;
            BAIL_ON_VMDIR_LOG_ERROR(dwError);
+       } else
+       {
+           chmod(_gpVmDirLogCtx->pszLogFileName, 0644);
        }
    }
 
@@ -332,8 +335,10 @@ _VmDirLog1(
     {
         logLevelTag = _logLevelToTag(iLevel);
 
-        clock_gettime(CLOCK_REALTIME, &tspec);
-        gmtime_r(&tspec.tv_sec, &mytm);
+#ifndef __MACH__
+	clock_gettime(CLOCK_REALTIME, &tspec);
+#endif
+	gmtime_r(&tspec.tv_sec, &mytm);
         snprintf(extraLogMessage, sizeof(extraLogMessage) - 1,
                 "%4d-%02d-%02dT%02d:%02d:%02d.%03ldZ:t@%lu:%-3.7s: ",
                  mytm.tm_year+1900,
@@ -353,7 +358,11 @@ _VmDirLog1(
         }
         else
         {
-            fprintf(stderr, "%s%s\n", extraLogMessage, logMessage);
+            logLevelTag = _logLevelToTag(iLevel);
+            fprintf(stderr, "VMDIR:t@%lu:%-3.7s: %s\n",
+                    (unsigned long) pthread_self(),
+                    logLevelTag? logLevelTag : "UNKNOWN",
+                    logMessage);
             fflush( stderr );
         }
     }

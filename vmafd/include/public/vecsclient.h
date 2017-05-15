@@ -21,6 +21,8 @@
 extern "C" {
 #endif
 
+#include "vmafdtypes.h"
+
 typedef struct _VECS_STORE_ *PVECS_STORE;
 typedef struct _VECS_ENUM_CONTEXT *PVECS_ENUM_CONTEXT;
 
@@ -390,6 +392,8 @@ VecsGetEntryByAliasW(
 
 /*
  * @brief Gets a key from the store by alias
+ *
+ * DEPRECATED. Use GetEntryByAliasA Function instead
  *
  * @param[in] pStore Handle to the Certificate store
  * @param[in] pszAlias Alias of the entry

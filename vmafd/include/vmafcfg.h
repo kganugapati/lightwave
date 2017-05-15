@@ -61,6 +61,21 @@ VmAfConfigCreateKey(
     );
 
 DWORD
+VmAfConfigDeleteKey(
+    PVMAF_CFG_CONNECTION pConnection,
+    PVMAF_CFG_KEY        pKey,
+    PCSTR                pszSubKey
+    );
+
+DWORD
+VmAfConfigEnumKeys(
+    PVMAF_CFG_CONNECTION pConnection,
+    PVMAF_CFG_KEY        pKey,
+    PSTR                 **ppszKeyNames,
+    PDWORD               pdwKeyNameCount
+    );
+
+DWORD
 VmAfConfigReadStringValue(
     PVMAF_CFG_KEY        pKey,
     PCSTR                pszSubkey,
@@ -84,6 +99,18 @@ VmAfConfigSetValue(
 	PBYTE               pValue,
 	DWORD               dwSize
 	);
+
+DWORD
+VmAfConfigDeleteValue(
+	PVMAF_CFG_KEY       pKey,
+	PCSTR               pszName
+	);
+
+DWORD
+VmAfConfigGetSecurity(
+    PVMAF_CFG_KEY         pKey,
+    PSTR                 *ppszSecurityDescriptor
+    );
 
 VOID
 VmAfConfigCloseKey(

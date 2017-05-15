@@ -19,6 +19,14 @@
 
 // add.c
 int
+VmDirParseBerToEntry(
+    BerElement *ber,
+    PVDIR_ENTRY e,
+    ber_int_t *pErrCode,
+    PSTR *ppszErrMsg
+    );
+
+int
 VmDirParseEntry(
     VDIR_OPERATION * op
     );
@@ -57,17 +65,22 @@ DWORD
 VmDirInitConnAcceptThread(
     void);
 
+VOID
+VmDirShutdownConnAcceptThread(
+    VOID
+    );
+
 void
 VmDirFreeAccessInfo(
     PVDIR_ACCESS_INFO pAccessInfo
     );
 
-// controls.c
-int
-CreateSyncRequestControl(
-    VMDIR_REPLICATION_AGREEMENT * replAgr,
-    LDAPControl*                 syncReqCtrl);
+void
+VmDirDeleteConnection(
+    VDIR_CONNECTION **  conn
+    );
 
+// controls.c
 void
 DeleteControls(
    VDIR_LDAP_CONTROL ** controls);
@@ -78,9 +91,11 @@ ParseRequestControls(
    VDIR_LDAP_RESULT *   lr );
 
 int
-ParseSyncStateControlVal(
-    BerValue *  controlValue,
-    int *       entryState);
+ParseAndFreeSyncStateControl(
+    LDAPControl ***pCtrls,
+    int*        piEntryState,
+    USN*        pulPartnerUSN
+    );
 
 int
 WriteSyncDoneControl(
@@ -97,10 +112,22 @@ WritePagedSearchDoneControl(
 int
 WriteSyncStateControl(
    VDIR_OPERATION *   op,
-   VDIR_ATTRIBUTE *   pAttr,
+   VDIR_ENTRY *       pEntry,
    BerElement *       ber,
    PSTR*              ppszErrorMsg
    );
+
+int
+VmDirCreateDigestControlContent(
+    PCSTR           pszDigest,
+    DWORD           dwDigestLen,
+    LDAPControl*    pDigestCtrl
+    );
+
+VOID
+VmDirDeleteDigestControlContent(
+    LDAPControl*    pDigestCtrl
+    );
 
 // delete.c
 int
@@ -123,10 +150,6 @@ int
 AppendDNFilter(
 	VDIR_OPERATION *    op);
 
-int
-AppendUSNChangedFilter(
-    VDIR_OPERATION *    op);
-
 VDIR_FILTER_COMPUTE_RESULT
 CheckIfEntryPassesFilter(
     VDIR_OPERATION * op,
@@ -138,10 +161,17 @@ DeleteFilter(
    VDIR_FILTER * f
    );
 
-void
+DWORD
 FilterToStrFilter(
-   VDIR_FILTER *   f,
-   VDIR_BERVALUE * strFilter );
+   PVDIR_FILTER f,
+   PVDIR_BERVALUE strFilter
+   );
+
+DWORD
+StrFilterToFilter(
+    PCSTR pszString,
+    PVDIR_FILTER *ppFilter
+    );
 
 int
 ParseFilter(
@@ -162,7 +192,7 @@ VmDirOpensslShutdown(
 
 // operation.c
 int
-VmDirNewOperation(
+VmDirExternalOperationCreate(
     BerElement*       ber,
     ber_int_t         msgId,
     ber_tag_t         reqCode,
@@ -173,16 +203,6 @@ VmDirNewOperation(
 void
 VmDirFreeOperation(
     PVDIR_OPERATION pOperation
-    );
-
-void
-VmDirFreeOperationContent(
-    PVDIR_OPERATION op
-    );
-
-void
-VmDirFreeEntryArrayContent(
-    PVDIR_ENTRY_ARRAY   pArray
     );
 
 // result.c
@@ -206,6 +226,12 @@ void
 VmDirFreeModifyRequest(
    ModifyReq * mr,
    BOOLEAN     freeSelf
+   );
+
+// rename.c
+int
+VmDirPerformRename(
+   PVDIR_OPERATION pOperation
    );
 
 // search.c
@@ -247,12 +273,23 @@ VmDirOPStatisticGetAvgTime(
 
 uint64_t
 VmDirOPStatisticGetCount(
-    PVMDIR_OPERATION_STATISTIC   pStatistic
+    ber_tag_t opTag
     );
 
 PSTR
 VmDirOPStatistic(
     ber_tag_t      opTag
+    );
+
+PCSTR
+VmDirGetOperationStringFromTag(
+    ber_tag_t opTag);
+
+// vecs.c
+DWORD
+VmDirGetVecsMachineCert(
+    PSTR*   ppszCert,
+    PSTR*   ppszKey
     );
 
 #endif /* LH_H_ */

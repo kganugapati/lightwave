@@ -12,12 +12,17 @@
 noinst_LTLIBRARIES = libmdb-store.la
 
 libmdb_store_la_SOURCES = \
-    attrindexing.c  \
-    config.c        \
-    entry.c         \
-    globals.c       \
-    indexer.c       \
-    init.c          \
+    config.c \
+    entry.c \
+    generic.c \
+    globals.c \
+    index.c \
+    indexdesc.c \
+    indexreadutil.c \
+    indexwriteutil.c \
+    init.c \
+    iterate.c \
+    legacy.c \
     txn.c
 
 libmdb_store_la_CPPFLAGS = \

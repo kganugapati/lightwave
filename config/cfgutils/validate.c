@@ -16,8 +16,6 @@
 
 #include "includes.h"
 
-BOOLEAN VmDeployIsIPV6Address( PCSTR pszString );
-
 DWORD
 VmwDeployValidateHostname(
     PCSTR pszHostname
@@ -39,6 +37,60 @@ VmwDeployValidateHostname(
             "Error : Invalid hostname [%s]", 
             VMW_DEPLOY_SAFE_LOG_STRING(pszHostname));
     }
+
+    return dwError;
+}
+
+DWORD
+VmwDeployValidateOrgUnit(
+    PCSTR pszOrgUnit
+    )
+{
+    DWORD dwError = 0;
+    BOOLEAN bHasSpecialChars = FALSE;
+
+    VMW_DEPLOY_LOG_DEBUG(
+            "Validating organizational unit [%s]",
+            VMW_DEPLOY_SAFE_LOG_STRING(pszOrgUnit));
+
+    if (!IsNullOrEmptyString(pszOrgUnit))
+    {
+        PCSTR pszCursor = pszOrgUnit;
+
+        while (*pszCursor && !bHasSpecialChars)
+        {
+            switch (*pszCursor)
+            {
+                case '!':
+                case '@':
+                case '#':
+                case '$':
+                case '%':
+                case '^':
+                case '&':
+                case '*':
+                case '[':
+                case ']':
+                     bHasSpecialChars = TRUE;
+                     break;
+                default:
+                     pszCursor++;
+                     break;
+            }
+        }
+    }
+
+    if (bHasSpecialChars)
+    {
+        VMW_DEPLOY_LOG_ERROR(
+                "Organizational unit [%s] has invalid characters",
+                VMW_DEPLOY_SAFE_LOG_STRING(pszOrgUnit));
+
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
+
+error:
 
     return dwError;
 }
@@ -262,7 +314,7 @@ VmwDeployValidatePartnerCredentials(
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_DEPLOY_ERROR(dwError);
     }
-    if (VmDeployIsIPV6Address(pszServer))
+    if (VmwDeployIsIPV6Address(pszServer))
     {
         dwError = VmwDeployAllocateStringPrintf(
     			    &pszLdapURI,
@@ -305,12 +357,62 @@ error:
     goto cleanup;
 }
 
-BOOLEAN
-VmDeployIsIPV6Address(
-    PCSTR pszString
+DWORD
+VmwDeployValidateDNSForwarders(
+    PCSTR pszForwarders
     )
 {
-    struct sockaddr_in6 sa = {0};
-    int result = inet_pton(AF_INET6, pszString, &(sa.sin6_addr));
-    return result != 0;
+    DWORD  dwError = 0;
+    PCSTR  pszDelim = ",";
+    PCSTR  pszReadCursor = pszForwarders;
+
+    VMW_DEPLOY_LOG_INFO(
+            "Validating DNS Forwarders [%s]",
+            VMW_DEPLOY_SAFE_LOG_STRING(pszForwarders));
+
+    if (IsNullOrEmptyString(pszForwarders))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
+
+    while (!IsNullOrEmptyString(pszReadCursor))
+    {
+        size_t len_name = 0;
+        size_t len_delim = 0;
+        char szForwarder[128];
+
+        len_name = strcspn(pszReadCursor, pszDelim);
+
+        if (len_name > 0)
+        {
+            if (len_name > sizeof(szForwarder)-1)
+            {
+                dwError = ERROR_INVALID_PARAMETER;
+                BAIL_ON_DEPLOY_ERROR(dwError);
+            }
+
+            strncpy(&szForwarder[0], pszReadCursor, len_name);
+            szForwarder[len_name] = '\0';
+
+            if (!VmwDeployIsIPAddress(szForwarder))
+            {
+               VMW_DEPLOY_LOG_ERROR("Error: An invalid DNS forwarder [%s] was specified", szForwarder);
+
+               dwError = ERROR_INVALID_PARAMETER;
+               BAIL_ON_DEPLOY_ERROR(dwError);
+            }
+
+            pszReadCursor += len_name;
+        }
+
+        len_delim = strspn(pszReadCursor, pszDelim);
+
+        pszReadCursor += len_delim;
+    }
+
+error:
+
+    return dwError;
 }
+

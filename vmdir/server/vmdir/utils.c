@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -16,16 +16,179 @@
 
 #include "includes.h"
 
+/*
+ *  Could have get this via replication agreement cache.
+ *  But current access replication agreement cache is not thr safe.
+ */
+static
+DWORD
+_VmDirGetLocalProcessedUSN(
+    PSTR*   ppszLocalProcessedUSN
+    )
+{
+    DWORD               dwError = ERROR_SUCCESS;
+    VDIR_ENTRY_ARRAY    entryArray = {0};
+    PVDIR_ATTRIBUTE     pAttrLocalUSN= NULL;
+    PVDIR_ATTRIBUTE     pAttrURI= NULL;
+    size_t              iCnt = 0;
+    PSTR                pszLocalProcessedUSN = NULL;
+    PSTR                pszURIHost = NULL;
+    size_t              dwLength = 0;
+    size_t              dwCurrent = 0;
+
+    dwError = VmDirSimpleEqualFilterInternalSearch(
+                        gVmdirServerGlobals.serverObjDN.lberbv.bv_val,
+                        LDAP_SCOPE_SUBTREE,
+                        ATTR_OBJECT_CLASS,
+                        OC_REPLICATION_AGREEMENT,
+                        &entryArray);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (entryArray.iSize > 0)
+    {
+        // calculate length
+        for ( iCnt = 0; iCnt < entryArray.iSize; iCnt ++ )
+        {
+            pAttrLocalUSN = VmDirFindAttrByName(&(entryArray.pEntry[iCnt]), ATTR_LAST_LOCAL_USN_PROCESSED);
+
+            pAttrURI = VmDirFindAttrByName(&(entryArray.pEntry[iCnt]), ATTR_LABELED_URI);
+            if (!pAttrURI)
+            {
+                dwError = VMDIR_ERROR_NO_SUCH_ATTRIBUTE;
+                BAIL_ON_VMDIR_ERROR(dwError);
+            }
+            dwLength += ( (pAttrLocalUSN ? pAttrLocalUSN->vals[0].lberbv_len:1) +
+                          pAttrURI->vals[0].lberbv_len + 2 );   // add '|' and ',' separator
+        }
+
+        dwLength++; // for NULL terminator
+        dwError = VmDirAllocateMemory( sizeof(CHAR)*(dwLength), (PVOID)&pszLocalProcessedUSN );
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        for ( iCnt = 0, dwCurrent = 0; iCnt < entryArray.iSize; iCnt ++ )
+        {
+            pAttrLocalUSN = VmDirFindAttrByName(&(entryArray.pEntry[iCnt]), ATTR_LAST_LOCAL_USN_PROCESSED);
+
+            pAttrURI = VmDirFindAttrByName(&(entryArray.pEntry[iCnt]), ATTR_LABELED_URI);
+
+            VMDIR_SAFE_FREE_MEMORY(pszURIHost);
+            dwError=VmDirReplURIToHostname( pAttrURI->vals[0].lberbv_val, &pszURIHost);
+            BAIL_ON_VMDIR_ERROR(dwError);
+
+            dwError = VmDirStringPrintFA( pszLocalProcessedUSN + dwCurrent,
+                                          dwLength-dwCurrent,
+                                          "%s|%s,",
+                                          pszURIHost, // strlen(pszURIHost) <= pAttrURI->vals[0].lberbv_len
+                                          pAttrLocalUSN ? pAttrLocalUSN->vals[0].lberbv_val:"0");
+            BAIL_ON_VMDIR_ERROR(dwError);
+
+            dwCurrent += ( (pAttrLocalUSN ? pAttrLocalUSN->vals[0].lberbv_len:1) + strlen(pszURIHost) + 2 );
+        }
+
+        *ppszLocalProcessedUSN = pszLocalProcessedUSN;
+        pszLocalProcessedUSN = NULL;
+    }
+
+cleanup:
+    VMDIR_SAFE_FREE_MEMORY(pszLocalProcessedUSN);
+    VMDIR_SAFE_FREE_MEMORY(pszURIHost);
+    VmDirFreeEntryArrayContent(&entryArray);
+
+    return dwError;
+
+error:
+
+    goto cleanup;
+}
+
+/*
+ *  Could have get this via gVmdirServerGlobals.utdVector.
+ *  But current access gVmdirServerGlobals.utdVector is not thr safe.
+ */
+static
+DWORD
+_VmDirGetLocalUTDVector(
+    PSTR*               ppszUtdVector
+    )
+{
+    DWORD               dwError = ERROR_SUCCESS;
+    PSTR                pszUtdVector = NULL;
+    VDIR_ENTRY_ARRAY    entryArray = {0};
+    PVDIR_ATTRIBUTE     pAttrUTDVector= NULL;
+
+    dwError = VmDirSimpleEqualFilterInternalSearch(
+                        gVmdirServerGlobals.serverObjDN.lberbv.bv_val,
+                        LDAP_SCOPE_BASE,
+                        ATTR_OBJECT_CLASS,
+                        OC_DIR_SERVER,
+                        &entryArray);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (entryArray.iSize == 1)
+    {
+        pAttrUTDVector = VmDirFindAttrByName(&(entryArray.pEntry[0]), ATTR_UP_TO_DATE_VECTOR);
+        if (!pAttrUTDVector)
+        {
+            dwError = VMDIR_ERROR_NO_SUCH_ATTRIBUTE;
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
+
+        dwError = VmDirAllocateAndCopyMemory(   pAttrUTDVector->vals[0].lberbv_val,
+                                                pAttrUTDVector->vals[0].lberbv_len,
+                                                (PVOID*)&pszUtdVector);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    *ppszUtdVector = pszUtdVector;
+    pszUtdVector = NULL;
+
+cleanup:
+    VmDirFreeEntryArrayContent(&entryArray);
+    VMDIR_SAFE_FREE_MEMORY(pszUtdVector);
+
+    return dwError;
+
+error:
+
+    goto cleanup;
+}
+
 VOID
 VmDirdStateSet(
     VDIR_SERVER_STATE   state)
 {
     BOOLEAN             bInLock = FALSE;
     VDIR_BACKEND_CTX    beCtx = {0};
+    VDIR_SERVER_STATE   currentState = VMDIRD_STATE_UNDEFINED;
+    DWORD ulError = 0;
 
-    VMDIR_LOCK_MUTEX(bInLock, gVmdirGlobals.mutex);
-    gVmdirGlobals.vmdirdState = state;
-    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirGlobals.mutex);
+    VMDIR_LOCK_MUTEX(bInLock, gVmdirdStateGlobals.pMutex);
+    currentState = gVmdirdStateGlobals.vmdirdState;
+
+    // Do not transition to normal running states from FAILURE.
+    if (state == VMDIRD_STATE_UNDEFINED ||
+        (currentState == VMDIRD_STATE_FAILURE && state != VMDIRD_STATE_SHUTDOWN))
+    {
+
+        VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL,
+                       "%s: State (%d) cannot transition to state (%d)",
+                       __FUNCTION__,
+                       currentState,
+                       state);
+        goto error;
+    }
+
+    if (state == VMDIRD_STATE_READ_ONLY_DEMOTE)
+    {
+        /*
+         * Force RPC server to stop listening during demote operation.
+         * SRP operations can't work properly while in this state.
+         */
+        state = VMDIRD_STATE_READ_ONLY;
+        rpc_mgmt_stop_server_listening(NULL, (unsigned32*)&ulError);
+    }
+
+    gVmdirdStateGlobals.vmdirdState = state;
 
     if (state == VMDIRD_STATE_READ_ONLY) // Wait for the pending write transactions to be over before returning
     {
@@ -39,10 +202,16 @@ VmDirdStateSet(
         }
     }
 
-    VmDirBackendCtxContentFree(&beCtx);
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "VmDir State (%u)", state);
 
+cleanup:
+    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirdStateGlobals.pMutex);
+    VmDirBackendCtxContentFree(&beCtx);
+
     return;
+
+error:
+    goto cleanup;
 }
 
 VDIR_SERVER_STATE
@@ -53,53 +222,38 @@ VmDirdState(
     VDIR_SERVER_STATE rtnState;
     BOOLEAN bInLock = FALSE;
 
-    VMDIR_LOCK_MUTEX(bInLock, gVmdirGlobals.mutex);
-    rtnState = gVmdirGlobals.vmdirdState;
-    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirGlobals.mutex);
+    VMDIR_LOCK_MUTEX(bInLock, gVmdirdStateGlobals.pMutex);
+    rtnState = gVmdirdStateGlobals.vmdirdState;
+    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirdStateGlobals.pMutex);
 
     return rtnState;
 }
 
-BOOLEAN
-VmDirdGetRestoreMode(
+VDIR_SERVER_STATE
+VmDirdGetTargetState(
     VOID
     )
 {
-    BOOLEAN bRestoreMode;
+    VDIR_SERVER_STATE targetState;
     BOOLEAN bInLock = FALSE;
 
-    VMDIR_LOCK_MUTEX(bInLock, gVmdirRunmodeGlobals.pMutex);
-    bRestoreMode = gVmdirRunmodeGlobals.mode == VMDIR_RUNMODE_RESTORE;
-    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirRunmodeGlobals.pMutex);
+    VMDIR_LOCK_MUTEX(bInLock, gVmdirdStateGlobals.pMutex);
+    targetState = gVmdirdStateGlobals.targetState;
+    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirdStateGlobals.pMutex);
 
-    return bRestoreMode;
-}
-
-VMDIR_RUNMODE
-VmDirdGetRunMode(
-    VOID
-    )
-{
-    VMDIR_RUNMODE runMode;
-    BOOLEAN bInLock = FALSE;
-
-    VMDIR_LOCK_MUTEX(bInLock, gVmdirRunmodeGlobals.pMutex);
-    runMode = gVmdirRunmodeGlobals.mode;
-    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirRunmodeGlobals.pMutex);
-
-    return runMode;
+    return targetState;
 }
 
 VOID
-VmDirdSetRunMode(
-    VMDIR_RUNMODE mode
+VmDirdSetTargetState(
+    VDIR_SERVER_STATE targetState
     )
 {
     BOOLEAN bInLock = FALSE;
 
-    VMDIR_LOCK_MUTEX(bInLock, gVmdirRunmodeGlobals.pMutex);
-    gVmdirRunmodeGlobals.mode = mode;
-    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirRunmodeGlobals.pMutex);
+    VMDIR_LOCK_MUTEX(bInLock, gVmdirdStateGlobals.pMutex);
+    gVmdirdStateGlobals.targetState = targetState;
+    VMDIR_UNLOCK_MUTEX(bInLock, gVmdirdStateGlobals.pMutex);
 }
 
 VOID
@@ -191,8 +345,6 @@ VmDirServerStatusEntry(
     PVDIR_ENTRY*    ppEntry
     )
 {
-#define SUPPORTED_STATUS_COUNT    6
-
     DWORD           dwError = 0;
     int             iNumAttrs = 1 + 1 + SUPPORTED_STATUS_COUNT;     // cn/oc/6 ops
     PSTR            pszAry[SUPPORTED_STATUS_COUNT + 1] = {0};
@@ -243,6 +395,7 @@ VmDirServerStatusEntry(
     dwError = VmDirAttrListToNewEntry( pSchemaCtx,
                                        SERVER_STATUS_DN,
                                        ppszAttrList,
+                                       FALSE,
                                        &pEntry);
     BAIL_ON_VMDIR_ERROR(dwError);
 
@@ -251,6 +404,147 @@ VmDirServerStatusEntry(
 cleanup:
 
     VmDirFreeStringArrayA(pszAry);
+
+    if (ppszAttrList != NULL)
+    {
+        VmDirFreeStringArrayA(ppszAttrList);
+        VMDIR_SAFE_FREE_MEMORY(ppszAttrList);
+    }
+
+    if (pSchemaCtx != NULL)
+    {
+        VmDirSchemaCtxRelease(pSchemaCtx);
+    }
+
+    return dwError;
+
+error:
+
+    if (pEntry != NULL)
+    {
+        VmDirFreeEntry(pEntry);
+    }
+
+    goto cleanup;
+}
+
+DWORD
+VmDirReplicationStatusEntry(
+    PVDIR_ENTRY*    ppEntry
+    )
+{
+    DWORD               dwError = 0;
+    DWORD               dwNumAttrs = 1 + 1 + SUPPORTED_STATUS_COUNT;     // cn/oc/
+    PSTR*               ppszAttrList = NULL;
+    PVDIR_ENTRY         pEntry = NULL;
+    PVDIR_SCHEMA_CTX    pSchemaCtx = NULL;
+    VDIR_BACKEND_CTX    backendCtx = {0};
+    USN                 maxPartnerVisibleUSN = 0;
+    PSTR                pszPartnerVisibleUSN = NULL;
+    PSTR                pszCycleCount = NULL;
+    PSTR                pszServerName = NULL;
+    PSTR                pszInvocationID = NULL;
+    PSTR                pszUtdVector = NULL;
+    PSTR                pszLocalProcessedUSN = NULL;
+    USN                 maxOriginatingUSN = 0;
+    PSTR                pszMaxOriginatingUSN = NULL;
+    CHAR*               pAtSign = NULL;
+
+    assert( ppEntry );
+
+    pAtSign = VmDirStringRChrA( gVmdirServerGlobals.dcAccountUPN.lberbv_val, '@' );
+    if ( pAtSign == NULL )
+    {
+        dwError = VMDIR_ERROR_BAD_ATTRIBUTE_DATA;
+        BAIL_ON_VMDIR_ERROR( dwError );
+    }
+
+    dwError = VmDirAllocateStringOfLenA(
+                    gVmdirServerGlobals.dcAccountUPN.lberbv_val,
+                    (DWORD)(pAtSign - gVmdirServerGlobals.dcAccountUPN.lberbv_val),
+                    &pszServerName);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    backendCtx.pBE = VmDirBackendSelect("");
+
+    maxPartnerVisibleUSN = backendCtx.pBE->pfnBEGetLeastOutstandingUSN( &backendCtx, FALSE ) - 1;
+
+    maxOriginatingUSN = backendCtx.pBE->pfnBEGetMaxOriginatingUSN( &backendCtx );
+
+    dwError = VmDirAllocateStringPrintf( &pszPartnerVisibleUSN,
+                                             "%u",
+                                             maxPartnerVisibleUSN);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirAllocateStringPrintf( &pszCycleCount,
+                                             "%u",
+                                             VmDirGetReplCycleCounter());
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirAllocateStringPrintf( &pszMaxOriginatingUSN,
+                                             "%u",
+                                             maxOriginatingUSN);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    pszInvocationID = gVmdirServerGlobals.invocationId.lberbv_val;  // this global never change.
+
+    _VmDirGetLocalUTDVector( &pszUtdVector);            // ignore error
+    _VmDirGetLocalProcessedUSN( &pszLocalProcessedUSN); // ignore error
+
+    dwError = VmDirAllocateMemory( sizeof(PSTR) * ((dwNumAttrs) * 2 + 1), // add 1 for VmDirFreeStringArrayA call later
+                                   (PVOID)&ppszAttrList);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    // construct ppszAttrList from table.
+    {
+        PSTR    ppszArray[] = {
+                ATTR_CN,                    NULL,                             REPLICATION_STATUS_CN,
+                ATTR_OBJECT_CLASS,          NULL,                             OC_SERVER_STATUS,
+                ATTR_SERVER_RUNTIME_STATUS, REPL_STATUS_SERVER_NAME,          pszServerName,
+                ATTR_SERVER_RUNTIME_STATUS, REPL_STATUS_VISIBLE_USN,          pszPartnerVisibleUSN,
+                ATTR_SERVER_RUNTIME_STATUS, REPL_STATUS_CYCLE_COUNT,          pszCycleCount,
+                ATTR_SERVER_RUNTIME_STATUS, REPL_STATUS_INVOCATION_ID,        pszInvocationID,
+                ATTR_SERVER_RUNTIME_STATUS, REPL_STATUS_UTDVECTOR,            pszUtdVector,
+                ATTR_SERVER_RUNTIME_STATUS, REPL_STATUS_PROCESSED_USN_VECTOR, pszLocalProcessedUSN,
+                ATTR_SERVER_RUNTIME_STATUS, REPL_STATUS_ORIGINATING_USN,      pszMaxOriginatingUSN,
+                NULL };
+        DWORD   dwCnt = 0;
+        DWORD   dwIndex = 0;
+
+        for ( dwCnt = 0, dwIndex = 0; dwCnt < dwNumAttrs; dwCnt++ )
+        {
+            dwError = VmDirAllocateStringA( ppszArray[dwCnt*3], &ppszAttrList[dwIndex++]);
+            BAIL_ON_VMDIR_ERROR(dwError);
+
+            dwError = VmDirAllocateStringPrintf( &(ppszAttrList[dwIndex++]),
+                                                     "%s%s",
+                                                     ppszArray[dwCnt*3+1] ? ppszArray[dwCnt*3+1] : "" ,
+                                                     ppszArray[dwCnt*3+2] ? ppszArray[dwCnt*3+2] : "Unknown" );
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
+    }
+
+    dwError = VmDirSchemaCtxAcquire(&pSchemaCtx);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirAttrListToNewEntry( pSchemaCtx,
+                                       REPLICATION_STATUS_DN,
+                                       ppszAttrList,
+                                       FALSE,
+                                       &pEntry);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    *ppEntry = pEntry;
+
+cleanup:
+
+    VMDIR_SAFE_FREE_MEMORY( pszServerName );
+    VMDIR_SAFE_FREE_MEMORY( pszLocalProcessedUSN );
+    VMDIR_SAFE_FREE_MEMORY( pszUtdVector );
+    VMDIR_SAFE_FREE_MEMORY( pszPartnerVisibleUSN );
+    VMDIR_SAFE_FREE_MEMORY( pszCycleCount );
+    VMDIR_SAFE_FREE_MEMORY( pszMaxOriginatingUSN );
+    VmDirBackendCtxContentFree( &backendCtx );
 
     if (ppszAttrList != NULL)
     {
@@ -408,10 +702,7 @@ VmDirGetLogMaximumOldLogs(
     PDWORD pdwMaximumOldLogs
     )
 {
-    if (VmDirGetRegKeyValueDword(VMDIR_CONFIG_SOFTWARE_KEY_PATH, VMDIR_REG_KEY_MAXIMUM_OLD_LOGS, pdwMaximumOldLogs) != 0)
-    {
-        *pdwMaximumOldLogs = VMDIR_LOG_MAX_OLD_FILES;
-    }
+    (VOID)VmDirGetRegKeyValueDword(VMDIR_CONFIG_SOFTWARE_KEY_PATH, VMDIR_REG_KEY_MAXIMUM_OLD_LOGS, pdwMaximumOldLogs, VMDIR_LOG_MAX_OLD_FILES);
 }
 
 void

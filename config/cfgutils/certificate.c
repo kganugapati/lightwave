@@ -215,14 +215,15 @@ error:
 
     goto cleanup;
 }
-
 DWORD
+
 VmwDeployCreateMachineSSLCert(
     PCSTR pszServername,
     PCSTR pszDomain,
     PCSTR pszUsername,
     PCSTR pszPassword,
-    PCSTR pszHostname,
+    PCSTR pszSubjectName,
+    PCSTR pszSubjectAltName,
     PSTR* ppszPrivateKey,
     PSTR* ppszCert
     )
@@ -242,13 +243,13 @@ VmwDeployCreateMachineSSLCert(
     PVMCA_CERTIFICATE pCert = NULL;
     PSTR      pszCert = NULL;
     PSTR      pszPrivateKey = NULL;
-    time_t tmNotBefore = time(NULL);
+    time_t tmNotBefore = time(NULL) - VMW_CERT_EXPIRY_START_LAG;
     time_t tmNotAfter = tmNotBefore + VMW_DEFAULT_CERT_VALIDITY;
 
     if (IsNullOrEmptyString(pszServername) ||
         IsNullOrEmptyString(pszUsername) ||
         !pszPassword ||
-        IsNullOrEmptyString(pszHostname))
+        IsNullOrEmptyString(pszSubjectName))
     {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_DEPLOY_ERROR(dwError);
@@ -275,15 +276,34 @@ VmwDeployCreateMachineSSLCert(
     BAIL_ON_DEPLOY_ERROR(dwError);
 
     dwError = VMCAInitPKCS10DataA(
-                    pszHostname,
+                    pszSubjectName,
                     pszOrganization,
                     pszOU,
                     pszState,
                     pszCountry,
                     pszEmail,
-                    VmwDeployIsIPAddress(pszHostname) ? pszHostname : NULL,
+                    NULL,
                     pCertRequest);
     BAIL_ON_DEPLOY_ERROR(dwError);
+
+    if (!IsNullOrEmptyString(pszSubjectAltName))
+    {
+        if (VmwDeployIsIPAddress(pszSubjectAltName))
+        {
+            dwError = VMCASetCertValueA(
+                              VMCA_OID_IPADDRESS,
+                              pCertRequest,
+                              (PSTR)pszSubjectAltName);
+        }
+        else
+        {
+            dwError = VMCASetCertValueA(
+                              VMCA_OID_DNS,
+                              pCertRequest,
+                              (PSTR)pszSubjectAltName);
+        }
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
 
     dwError = VMCACreateSigningRequest(
                     pCertRequest,

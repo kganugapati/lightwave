@@ -1,5 +1,11 @@
 ACLOCAL_AMFLAGS = -I m4
 
+PYTHON_DIR =
+
+if ENABLE_PYTHON
+    PYTHON_DIR += python
+endif
+
 SUBDIRS = \
     include \
     config  \
@@ -7,4 +13,7 @@ SUBDIRS = \
     vmcadb  \
     service \
     client  \
-    certool
+    certool \
+    jdepends \
+    java \
+    $(PYTHON_DIR)

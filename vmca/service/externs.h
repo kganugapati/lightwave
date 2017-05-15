@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -30,6 +30,20 @@ extern "C" {
 #endif
 
 extern VMCA_SERVER_GLOBALS gVMCAServerGlobals;
+
+#if 0
+
+extern VMCA_ACCESS_TOKEN_METHODS gVMCAAccessTokenMethods[];
+
+#ifndef _WIN32
+
+extern uint32_t
+VMCAHandleHttpRequest(
+        PREST_REQUEST pRequest,
+        PREST_RESPONSE* ppResponse,
+        uint32_t paramsCount);
+#endif
+#endif
 
 #ifdef __cplusplus
 }

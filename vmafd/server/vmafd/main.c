@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -21,7 +21,7 @@
 //TODO, move to gVmafdGlobals?
 int  vmafd_syslog_level = 0;
 int  vmafd_syslog = 0;
-int  vmafd_debug = 0;
+int  vmafd_console_log = 0;
 
 static
 DWORD
@@ -33,9 +33,10 @@ main(
    char  * argv[])
 {
     DWORD        dwError = 0;
-    int          logLevel = 0;
+    int          logLevel = VMAFD_DEBUG_ERROR;
     BOOLEAN      bEnableSysLog = FALSE;
     BOOLEAN      bEnableConsole = FALSE;
+    VMAFD_DOMAIN_STATE domainState = VMAFD_DOMAIN_STATE_NONE;
 
     umask(0);
 
@@ -72,6 +73,10 @@ main(
     {
         vmafd_syslog = 1;
     }
+    if (bEnableConsole)
+    {
+        vmafd_console_log = 1;
+    }
 
     dwError = VmAfdInit();
     if (dwError)
@@ -90,14 +95,27 @@ main(
     dwError = VmAfdInitSignalThread(&gVmafdGlobals);
     BAIL_ON_VMAFD_ERROR(dwError);
 
+    dwError = VmAfSrvGetDomainState(&domainState);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
     dwError = VmAfdInitCertificateThread(&gVmafdGlobals.pCertUpdateThr);
     BAIL_ON_VMAFD_ERROR(dwError);
 
     dwError = VmAfdInitPassRefreshThread(&gVmafdGlobals.pPassRefreshThr);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    VmAfdLog(VMAFD_DEBUG_ANY, "vmafdd: started!" );
+    dwError = CdcInitCdcService(&gVmafdGlobals.pCdcContext);
+    BAIL_ON_VMAFD_ERROR(dwError);
 
+#if 0
+    //TODO: Comment out DDNS client code for now
+    dwError = VmDdnsInitThread(&gVmafdGlobals.pDdnsContext);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdInitSourceIpThread(&gVmafdGlobals.pSourceIpContext);
+    BAIL_ON_VMAFD_ERROR(dwError);
+#endif
+    VmAfdLog(VMAFD_DEBUG_ANY, "vmafdd: started!" );
     /*
      * Start the init loop which initializes configuration and
      * then waits until signaled to reinitialize.  It returns
@@ -110,7 +128,7 @@ main(
 cleanup:
 
    VmAfdLog(VMAFD_DEBUG_ANY, "vmafdd: stop");
-   VmAfdShutdown();
+   VmAfdServerShutdown();
    VmAfdLogTerminate();
 
    return dwError;

@@ -1,3 +1,11 @@
+/*
+ * Copyright (C) 2014 VMware, Inc. All rights reserved.
+ *
+ * Module   : type_spec.h
+ *
+ * Abstract :
+ *
+ */
 typedef enum
 {
     VMW_IPC_TYPE_UNDEFINED = 0,
@@ -620,6 +628,20 @@ typedef struct _VMW_TYPE_SPEC_
     }\
 }
 
+#define GET_RHTTPPROXY_PORT_OUTPUT_PARAMS \
+{\
+    {\
+        "Return Code",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "RHTTP Proxy Port",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    }\
+}
+
 #define SET_RHTTPPROXY_PORT_INPUT_PARAMS \
 {\
     {\
@@ -722,6 +744,20 @@ typedef struct _VMW_TYPE_SPEC_
     }\
 }
 
+#define GET_SITE_NAME_OUTPUT_PARAMS \
+{\
+    {\
+        "Return Code",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "Site Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    }\
+}
+
 #define GET_MACHINE_ID_OUTPUT_PARAMS \
 {\
     {\
@@ -798,103 +834,23 @@ typedef struct _VMW_TYPE_SPEC_
   }\
 }
 
-#define SET_DC_NAME_INPUT_PARAMS \
+#define JOIN_VALIDATE_CREDENTIALS_INPUT_PARAMS \
 {\
-    {\
-        "Domain Name",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    }\
-}
-
-#define GET_SITE_GUID_OUTPUT_PARAMS \
-{\
-    {\
-        "Return Code",\
-        VMW_IPC_TYPE_UINT32,\
-        {NULL}\
-    },\
-    {\
-        "Site GUID",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    }\
-}
-
-#define GET_MACHINE_ID_OUTPUT_PARAMS \
-{\
-    {\
-        "Return Code",\
-        VMW_IPC_TYPE_UINT32,\
-        {NULL}\
-    },\
-    {\
-        "Machine ID",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    }\
-}
-
-#define SET_MACHINE_ID_INPUT_PARAMS \
-{\
-    {\
-        "Machine ID",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    }\
-}
-
-#define PROMOTE_VMDIR_INPUT_PARAMS \
-{\
-    {\
-        "Server Name",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    },\
-    {\
-        "Domain Name",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    },\
-    {\
-        "User Name",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    },\
-    {\
-        "Password",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    },\
-    {\
-        "Site Name",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    },\
-    {\
-        "Partner Host Name",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    }\
-}
-
-#define DEMOTE_VMDIR_INPUT_PARAMS \
-{\
-    {\
-        "Server Name",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    },\
-    {\
-        "User Name",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    },\
-    {\
-        "Password",\
-        VMW_IPC_TYPE_WSTRING,\
-        {NULL}\
-    }\
+  {\
+    "Domain Name",\
+    VMW_IPC_TYPE_WSTRING,\
+    {NULL}\
+  },\
+  {\
+    "User Name",\
+    VMW_IPC_TYPE_WSTRING,\
+    {NULL}\
+  },\
+  {\
+    "Password",\
+    VMW_IPC_TYPE_WSTRING,\
+    {NULL}\
+  }\
 }
 
 #define JOIN_VMDIR_INPUT_PARAMS \
@@ -931,6 +887,40 @@ typedef struct _VMW_TYPE_SPEC_
     }\
 }
 
+#define JOIN_VMDIR_2_INPUT_PARAMS \
+{\
+    {\
+        "Domain Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "User Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Password",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "MachineName",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Organizational Unit",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    { \
+        "Join Flags",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    }\
+}
+
 #define LEAVE_VMDIR_INPUT_PARAMS \
 {\
     {\
@@ -945,6 +935,49 @@ typedef struct _VMW_TYPE_SPEC_
     },\
     {\
         "Password",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "dwLeaveFlags",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    }\
+}
+
+#define CREATE_COMPUTER_ACCOUNT_INPUT_PARAMS \
+{\
+    {\
+        "UserName",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Password",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "MachineName",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Organizational Unit",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    }\
+}
+
+#define CREATE_COMPUTER_ACCOUNT_OUTPUT_PARAMS \
+{\
+    {\
+        "Return Code",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "Out Password",\
         VMW_IPC_TYPE_WSTRING,\
         {NULL}\
     }\
@@ -1071,3 +1104,227 @@ typedef struct _VMW_TYPE_SPEC_
         {NULL}\
     }\
 }
+
+#define GET_CDC_NAME_INPUT_PARAMS \
+{\
+    {\
+        "Domain Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Domain Guid",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Site Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Flags",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    }\
+}
+
+#define GET_CDC_NAME_OUTPUT_PARAMS \
+{\
+    {\
+        "Return Code",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "DC Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "DC Address",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "DC Address Type",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "Domain Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "DC Site Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+}
+
+#define POST_HEARTBEAT_INPUT_PARAMS \
+{\
+    {\
+        "Service Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Service Port",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    }\
+}
+
+#define GET_HEARTBEAT_STATUS_OUTPUT_PARAMS \
+{\
+    {\
+        "Return Code",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "Is Alive",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "Heartbeat Status Blob",\
+        VMW_IPC_TYPE_BLOB,\
+        {NULL}\
+    },\
+    {\
+        "Heartbeat Status Blob Size",\
+        VMW_IPC_TYPE_BLOB_SIZE,\
+        {NULL}\
+    }\
+}
+
+#define DNS_CONFIG_INPUT_PARAMS \
+{\
+  {\
+    "User Name",\
+    VMW_IPC_TYPE_WSTRING,\
+    {NULL}\
+  },\
+  {\
+    "Password",\
+    VMW_IPC_TYPE_WSTRING,\
+    {NULL}\
+  }\
+}
+
+#define GET_CDC_STATUS_INFO_INPUT_PARAMS \
+{\
+    {\
+        "DC Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Domain Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    }\
+}
+
+
+#define GET_CDC_STATUS_INFO_OUTPUT_PARAMS \
+{\
+    {\
+        "Return Code",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "Last Ping",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "Last Response Time",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "Last Error",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "IsAlive",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "DC Site Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Heartbeat Status Blob",\
+        VMW_IPC_TYPE_BLOB,\
+        {NULL}\
+    },\
+    {\
+        "Heartbeat Status Blob Size",\
+        VMW_IPC_TYPE_BLOB_SIZE,\
+        {NULL}\
+    }\
+}
+
+#define CHANGE_PNID_INPUT_PARAMS \
+{\
+    {\
+        "User Name",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "Password",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    },\
+    {\
+        "PNID",\
+        VMW_IPC_TYPE_WSTRING,\
+        {NULL}\
+    }\
+}
+
+#define GET_DOMAIN_NAME_LIST_PARAMS \
+{ \
+    {\
+       "Domain Name", \
+        VMW_IPC_TYPE_STRING, \
+        {NULL}\
+    }\
+}
+
+#define GET_DOMAIN_LIST_OUTPUT_PARAMS \
+{ \
+    {\
+        "Return Code",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "Count",\
+        VMW_IPC_TYPE_UINT32,\
+        {NULL}\
+    },\
+    {\
+        "DC List Array",\
+        VMW_IPC_TYPE_BLOB,\
+        {NULL}\
+    },\
+    {\
+        "DC List Blob Size",\
+        VMW_IPC_TYPE_BLOB_SIZE,\
+        {NULL}\
+    }\
+}
+
+
+

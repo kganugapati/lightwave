@@ -1,3 +1,17 @@
+/*
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
 #include "stdafx.h"
 
 #ifdef _WIN32
@@ -115,7 +129,6 @@ error:
 DWORD
 RpcEventLogAdd(
     handle_t IDL_handle,
-    RP_PWSTR pszServerName,
     unsigned int eventID,
     unsigned int eventType,
     RP_PWSTR pszMessage
@@ -132,7 +145,6 @@ RpcEventLogAdd(
        BAIL_ON_VMEVENT_ERROR(dwError);
     }
     dwError = EventLogServerAddEvent(
-                 pszServerName,
                  eventID,
                  eventType,
                  pszMessage);
@@ -145,7 +157,6 @@ error:
 DWORD
 RpcEventLogInitEnumHandle(
     handle_t IDL_handle,
-    RP_PWSTR pszServerName,
     unsigned int * pdwHandle
     )
 {
@@ -161,7 +172,6 @@ RpcEventLogInitEnumHandle(
     }
 
     dwError = EventLogServerInitEnumEventsHandle(
-                    pszServerName,
                     pdwHandle
                     );
     BAIL_ON_VMEVENT_ERROR(dwError);
@@ -174,7 +184,6 @@ error:
 DWORD
 RpcEventLogEnumEvents(
     handle_t IDL_handle,
-    RP_PWSTR pszServerName,
     unsigned int dwHandle,
     unsigned int dwStartIndex,
     unsigned int dwNumPackages,
@@ -195,7 +204,6 @@ RpcEventLogEnumEvents(
     }
 
     dwError = EventLogServerEnumEvents(
-                    pszServerName,
                     dwHandle,
                     dwStartIndex,
                     dwNumPackages,

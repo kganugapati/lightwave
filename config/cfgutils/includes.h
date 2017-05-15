@@ -22,6 +22,14 @@
 #include <lwsm/lwsm.h>
 #endif
 
+#ifdef HAVE_REG_LWREG_H
+#include <reg/lwreg.h>
+#endif
+
+#ifdef HAVE_REG_REGUTIL_H
+#include <reg/regutil.h>
+#endif
+
 #ifdef HAVE_LDAP_H
 #include <ldap.h>
 #endif
@@ -32,6 +40,10 @@
 
 #ifdef HAVE_VMCA_H
 #include <vmca.h>
+#endif
+
+#ifdef HAVE_VMDNS_H
+#include <vmdns.h>
 #endif
 
 #ifdef HAVE_VMAFDCLIENT_H

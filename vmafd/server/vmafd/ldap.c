@@ -1,3 +1,11 @@
+/*
+ * Copyright (C) 2014 VMware, Inc. All rights reserved.
+ *
+ * Module   : ldap.c
+ *
+ * Abstract :
+ *
+ */
 #include "includes.h"
 
 //TODO: Should remove this function after it is included in vmdirclient.h
@@ -29,13 +37,6 @@ VmAfdCopyQueryResultAttributeString(
     BOOL         bOptional,
     PSTR*        ppszOut
 );
-
-static
-DWORD
-VmAfdGetDefaultDomainName(
-    LDAP* pLotus,
-    PSTR* ppDomainName
-    );
 
 DWORD
 VmAfdGetDSERootAttribute(
@@ -129,8 +130,8 @@ DWORD
 VmAfdLDAPConnect(
     PSTR   pszHostName,
     DWORD  dwPort,
-    PSTR   pszUpn,
-    PSTR   pszPassword,
+    PCSTR   pszUpn,
+    PCSTR   pszPassword,
     LDAP** ppLotus
     )
 {
@@ -547,7 +548,114 @@ error:
     goto cleanup;
 }
 
-static
+DWORD
+VmAfdGetDomainFunctionLevel(
+    LDAP* pLotus,
+    PSTR* ppDomainFunctionLevel
+    )
+{
+    DWORD dwError = 0;
+    PSTR pszDomainFunctionLevel = NULL;
+    PCHAR pszFunctionalLevelAttr = "vmwDomainFunctionalLevel";
+    PSTR pszDomainName = NULL;
+    LDAPMessage* pSearchResult = NULL;
+    LDAPMessage* pResults = NULL;
+    BerElement* pBer = NULL;
+    BerValue** ppValue = NULL;
+    PCHAR attrs[] = {pszFunctionalLevelAttr, NULL};
+    PCHAR pszFilter = "(objectClass=*)";
+    PSTR pAttribute = NULL;
+
+    if (!pLotus || !ppDomainFunctionLevel)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdGetDefaultDomainName(
+                 pLotus,
+                 &pszDomainName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = ldap_search_ext_s(
+                 pLotus,
+                 pszDomainName,
+                 LDAP_SCOPE_BASE,
+                 pszFilter,
+                 attrs,
+                 0, /* get values and attrs */
+                 NULL,
+                 NULL,
+                 NULL,
+                 0,
+                 &pSearchResult);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (ldap_count_entries(pLotus, pSearchResult) != 1)
+    {
+        dwError = ERROR_INVALID_STATE;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    pResults = ldap_first_entry(pLotus, pSearchResult);
+    if (pResults == NULL)
+    {
+        ldap_get_option(pLotus, LDAP_OPT_ERROR_NUMBER, &dwError);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    pAttribute = ldap_first_attribute(pLotus,pResults,&pBer);
+    if (pAttribute == NULL)
+    {
+        ldap_get_option(pLotus, LDAP_OPT_ERROR_NUMBER, &dwError);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    ppValue = ldap_get_values_len(pLotus, pResults, pAttribute);
+    if (ppValue == NULL)
+    {
+        ldap_get_option(pLotus, LDAP_OPT_ERROR_NUMBER, &dwError);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateStringA(ppValue[0]->bv_val, &pszDomainFunctionLevel);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppDomainFunctionLevel = pszDomainFunctionLevel;
+
+cleanup:
+
+    if (ppValue != NULL)
+    {
+        ldap_value_free_len(ppValue);
+    }
+    if (pAttribute != NULL)
+    {
+        ldap_memfree(pAttribute);
+    }
+    if (pBer != NULL)
+    {
+        ber_free(pBer,0);
+    }
+    if (pSearchResult != NULL)
+    {
+        ldap_msgfree(pSearchResult);
+    }
+    VMAFD_SAFE_FREE_STRINGA(pszDomainName);
+
+    return dwError;
+
+error :
+
+    VMAFD_SAFE_FREE_STRINGA(pszDomainFunctionLevel);
+    if (ppDomainFunctionLevel)
+    {
+        *ppDomainFunctionLevel = NULL;
+    }
+
+    goto cleanup;
+}
+
 DWORD
 VmAfdGetDefaultDomainName(
     LDAP* pLotus,

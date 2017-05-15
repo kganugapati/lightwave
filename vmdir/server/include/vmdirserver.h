@@ -1,10 +1,10 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright 2012-2016 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -32,9 +32,17 @@
 #include <lwrpcrt/lwrpcrt.h>
 #endif
 
+#include <lw/types.h>
+#include <lw/hash.h>
+#include <lw/security-api.h>
+
+#include <vmsuperlogging.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define DEFAULT_THREAD_PRIORITY_DELTA 10
 
 /*
  * Plugin logic has four hook points per LDAP operation -
@@ -79,7 +87,7 @@ typedef struct _VMDIR_SERVER_GLOBALS
 
     VDIR_BERVALUE        invocationId;
     VDIR_BERVALUE        bvDefaultAdminDN;
-    unsigned char        serverId;
+    int                  serverId;
     VDIR_BERVALUE        systemDomainDN;
     VDIR_BERVALUE        delObjsContainerDN;
     VDIR_BERVALUE        bvDCGroupDN;
@@ -94,24 +102,26 @@ typedef struct _VMDIR_SERVER_GLOBALS
     PSTR                 pszSiteName;
     BOOLEAN              isIPV4AddressPresent;
     BOOLEAN              isIPV6AddressPresent;
+    USN                  initialNextUSN; // used for server restore only
+    USN                  maxOriginatingUSN;  // Cache value to prevent
+                                             // excessive searching
+    VDIR_BERVALUE        bvServerObjName;
+    DWORD                dwDomainFunctionalLevel;
+    // Data that controls the thread that cleans up deleted entries.
+    DWORD                dwTombstoneExpirationPeriod;
+    DWORD                dwTombstoneThreadFrequency;
 } VMDIR_SERVER_GLOBALS, *PVMDIR_SERVER_GLOBALS;
 
 extern VMDIR_SERVER_GLOBALS gVmdirServerGlobals;
 
-typedef enum _VMDIR_RUNMODE
-{
-    VMDIR_RUNMODE_NORMAL,
-    VMDIR_RUNMODE_STANDALONE,
-    VMDIR_RUNMODE_RESTORE
-} VMDIR_RUNMODE;
-
-typedef struct _VMDIR_RUNMODE_GLOBALS
+typedef struct _VMDIRD_STATE_GLOBALS
 {
     PVMDIR_MUTEX  pMutex;
-    VMDIR_RUNMODE mode;
-} VMDIR_RUNMODE_GLOBALS;
+    VDIR_SERVER_STATE vmdirdState;
+    VDIR_SERVER_STATE targetState;
+} VMDIRD_STATE_GLOBALS;
 
-extern VMDIR_RUNMODE_GLOBALS gVmdirRunmodeGlobals;
+extern VMDIRD_STATE_GLOBALS gVmdirdStateGlobals;
 
 typedef struct _VMDIR_GLOBALS
 {
@@ -123,10 +133,9 @@ typedef struct _VMDIR_GLOBALS
     BOOLEAN                         bPatchSchema;
     PSTR                            pszBDBHome;
 
-    int                             iSocketFd;
-
     BOOLEAN                         bAllowInsecureAuth;
     BOOLEAN                         bAllowAdminLockout;
+    BOOLEAN                         bDisableVECSIntegration;
 
     PDWORD                          pdwLdapListenPorts;
     DWORD                           dwLdapListenPorts;
@@ -136,10 +145,11 @@ typedef struct _VMDIR_GLOBALS
     DWORD                           dwLdapConnectPorts;
     PDWORD                          pdwLdapsConnectPorts;
     DWORD                           dwLdapsConnectPorts;
+    PSTR                            pszRestListenPort;
+
     DWORD                           dwLdapRecvTimeoutSec;
     // following fields are protected by mutex
     PVMDIR_MUTEX                    mutex;
-    VDIR_SERVER_STATE               vmdirdState;
     PVDIR_THREAD_INFO               pSrvThrInfo;
     BOOLEAN                         bReplNow;
 
@@ -153,8 +163,6 @@ typedef struct _VMDIR_GLOBALS
 
     BOOLEAN                         bRegisterTcpEndpoint;
 
-    PSECURITY_DESCRIPTOR_ABSOLUTE   gpVmDirSrvSD;
-
     // To synchronize creation and use of replication agreements.
     PVMDIR_MUTEX                    replAgrsMutex;
     PVMDIR_COND                     replAgrsCondition;
@@ -162,9 +170,13 @@ typedef struct _VMDIR_GLOBALS
     // To synchronize first replication cycle done state and vdcpromo exit criteria.
     PVMDIR_MUTEX                    replCycleDoneMutex;
     PVMDIR_COND                     replCycleDoneCondition;
+    DWORD                           dwReplCycleCounter;
+
+    // To synchronize replication reads and writes.
+    PVMDIR_RWLOCK                   replRWLock;
 
     // Upper limit (local USNs only < this number) on updates that can be replicated out "safely".
-    USN                             limitLocalUsnToBeReplicated;
+    USN                             limitLocalUsnToBeSupplied;
 
     // Operation threads shutdown synchronize counter, synchronize value 0
     PVMDIR_SYNCHRONIZE_COUNTER      pOperationThrSyncCounter;
@@ -179,6 +191,27 @@ typedef struct _VMDIR_GLOBALS
 
     PVMDIR_MUTEX                    pFlowCtrlMutex;
     DWORD                           dwMaxFlowCtrlThr;
+    PVMSUPERLOGGING                 pLogger;
+    UINT64                          iServerStartupTime;
+    // Limit the index scan to hunt for good filter
+    DWORD                           dwMaxIndexScan;
+    // # of candidate in search filter - used for search optimization
+    DWORD                           dwSmallCandidateSet;
+    // Limit index scan for the best effort sizelimit search
+    DWORD                           dwMaxSizelimitScan;
+
+    DWORD                           dwLdapSearchTimeoutSec;
+    BOOLEAN                         bAllowImportOpAttrs;
+    BOOLEAN                         bTrackLastLoginTime;
+    BOOLEAN                         bPagedSearchReadAhead;
+
+    // The following three counter is for database copy feature
+    // registra key configuration.
+    DWORD                           dwCopyDbWritesMin;
+    DWORD                           dwCopyDbIntervalInSec;
+    DWORD                           dwCopyDbBlockWriteInSec;
+    // Collect stats for estimate elapsed time with database copy
+    DWORD                           dwLdapWrites;
 } VMDIR_GLOBALS, *PVMDIR_GLOBALSS;
 
 extern VMDIR_GLOBALS gVmdirGlobals;
@@ -195,22 +228,45 @@ typedef struct _VMDIR_KRB_GLOBALS
 
 extern VMDIR_KRB_GLOBALS gVmdirKrbGlobals;
 
-// accountmgmt.c
-DWORD
-VmDirCreateAccount(
-    PCSTR   pszUPNName,
-    PCSTR   pszUserName,
-    PCSTR   pszPassword,            // optional
-    PCSTR   pszEntryDN              // optional
-    );
+typedef struct _VMDIR_TRACK_LAST_LOGIN_TIME
+{
+    PVMDIR_MUTEX    pMutex;
+    PVMDIR_COND     pCond;
+    PVMDIR_TSSTACK  pTSStack;
+} VMDIR_TRACK_LAST_LOGIN_TIME, *PVMDIR_TRACK_LAST_LOGIN_TIME;
 
-DWORD
-VmDirUPNToAccountDN(
-    PCSTR       pszUPNName,
-    PCSTR       pszAccountRDNAttr,
-    PCSTR       pszAccountRDNValue,
-    PSTR*       ppszContainerDN
-    );
+extern VMDIR_TRACK_LAST_LOGIN_TIME gVmdirTrackLastLoginTime;
+
+typedef struct _VMDIR_INTEGRITY_JOB *PVMDIR_INTEGRITY_JOB;
+
+typedef struct _VMDIR_INTEGRITY_CHECK_GLOBALS
+{
+    PVMDIR_MUTEX            pMutex;
+    PVMDIR_INTEGRITY_JOB    pJob;
+
+} VMDIR_INTEGRITY_CHECK_GLOBALS, *PVMDIR_INTEGRITY_CHECK_GLOBALS;
+
+extern VMDIR_INTEGRITY_CHECK_GLOBALS gVmdirIntegrityCheck;
+
+typedef enum
+{
+    INTEGRITY_CHECK_JOB_NONE = 0,
+    INTEGRITY_CHECK_JOB_START,
+    INTEGRITY_CHECK_JOB_STOP,
+    INTEGRITY_CHECK_JOB_FINISH,
+    INTEGRITY_CHECK_JOB_RECHECK,
+    INTEGRITY_CHECK_JOB_INVALID,
+    INTEGRITY_CHECK_JOB_SHOW_SUMMARY
+} VMDIR_INTEGRITY_CHECK_JOB_STATE, *PVMDIR_INTEGRITY_CHECK_JOB_STATE;
+
+typedef enum
+{
+    INTEGRITY_CHECK_JOBCXT_NONE = 0,
+    INTEGRITY_CHECK_JOBCTX_VALID,
+    INTEGRITY_CHECK_JOBCTX_INVALID,
+    INTEGRITY_CHECK_JOBCTX_SKIP,
+    INTEGRITY_CHECK_JOBCTX_ABORT
+} VMDIR_INTEGRITY_CHECK_JOBCTX_STATE, *PVMDIR_INTEGRITY_CHECK_JOBCTX_STATE;
 
 // krb.c
 DWORD
@@ -218,6 +274,19 @@ VmDirKrbRealmNameNormalize(
     PCSTR       pszName,
     PSTR*       ppszNormalizeName
     );
+
+#ifdef VMDIR_ENABLE_PAC
+DWORD
+VmDirKrbGetAuthzInfo(
+    PCSTR pszUpnName,
+    VMDIR_AUTHZ_INFO** ppInfo
+    );
+
+VOID
+VmDirKrbFreeAuthzInfo(
+    VMDIR_AUTHZ_INFO* pInfo
+    );
+#endif
 
 // utils.c
 VDIR_SERVER_STATE
@@ -230,19 +299,14 @@ VmDirdStateSet(
     VDIR_SERVER_STATE   state
     );
 
-BOOLEAN
-VmDirdGetRestoreMode(
-    VOID
-    );
-
-VMDIR_RUNMODE
-VmDirdGetRunMode(
+VDIR_SERVER_STATE
+VmDirdGetTargetState(
     VOID
     );
 
 VOID
-VmDirdSetRunMode(
-    VMDIR_RUNMODE mode
+VmDirdSetTargetState(
+    VDIR_SERVER_STATE   state
     );
 
 USN
@@ -304,15 +368,20 @@ VmDirServerStatusEntry(
     PVDIR_ENTRY*    ppEntry
     );
 
+DWORD
+VmDirReplicationStatusEntry(
+    PVDIR_ENTRY*    ppEntry
+    );
+
 // srvthr.c
 VOID
 VmDirSrvThrAdd(
     PVDIR_THREAD_INFO   pThrInfo
     );
 
-VOID
+DWORD
 VmDirSrvThrInit(
-    PVDIR_THREAD_INFO   pThrInfo,
+    PVDIR_THREAD_INFO   *ppThrInfo,
     PVMDIR_MUTEX        pAltMutex,
     PVMDIR_COND         pAltCond,
     BOOLEAN             bJoinFlag
@@ -352,6 +421,34 @@ VmDirSrvGetSocketAcceptFd(
 VOID
 VmDirShutdown(
     PBOOLEAN pbWaitTimeOut
+    );
+
+// tracklastlogin.c
+VOID
+VmDirAddTrackLastLoginItem(
+    PCSTR   pszDN
+    );
+
+// integritycheck.c
+DWORD
+VmDirEntrySHA1Digest(
+    PVDIR_ENTRY pEntry,
+    PSTR        pOutSH1DigestBuf
+    );
+
+DWORD
+VmDirIntegrityCheckStart(
+    VMDIR_INTEGRITY_CHECK_JOB_STATE jobState
+    );
+
+VOID
+VmDirIntegrityCheckStop(
+    VOID
+    );
+
+DWORD
+VmDirIntegrityCheckShowStatus(
+    PVDIR_ENTRY*    ppEntry
     );
 
 #ifdef __cplusplus

@@ -40,7 +40,8 @@ VmwDeployCreateMachineSSLCert(
     PCSTR pszDomain,
     PCSTR pszUsername,
     PCSTR pszPassword,
-    PCSTR pszHostname,
+    PCSTR pszSubjectName,
+    PCSTR pszSubjectAltName,
     PSTR* ppszPrivateKey,
     PSTR* ppszCert
     );
@@ -55,6 +56,16 @@ DWORD
 VmwDeployGetDomainDN(
     PCSTR pszDomain,
     PSTR* ppszDomainDN
+    );
+
+// dns.c
+
+DWORD
+VmwDeploySetForwarders(
+    PCSTR pszDomain,
+    PCSTR pszUsername,
+    PCSTR pszPassword,
+    PCSTR pszForwarders
     );
 
 // logging.c
@@ -112,5 +123,10 @@ VmwDeployWriteToFile(
 DWORD
 VmwDeployValidateHostname(
     PCSTR pszHostname
+    );
+
+DWORD
+VmwDeployValidateDNSForwarders(
+    PCSTR pszForwarders
     );
 

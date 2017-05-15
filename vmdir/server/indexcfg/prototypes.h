@@ -32,55 +32,170 @@
 extern "C" {
 #endif
 
-// init.c
-int
-VdirAttrIndexNameCmp(
-    const void *p1,
-    const void *p2
+// indexcfg.c
+DWORD
+VmDirIndexCfgCreate(
+    PCSTR               pszAttrName,
+    PVDIR_INDEX_CFG*    ppIndexCfg
     );
 
 DWORD
-VdirAttrIndexInitViaEntry(
-    PVDIR_ENTRY  pEntry);
+VmDirDefaultIndexCfgInit(
+    PVDIR_DEFAULT_INDEX_CFG pDefIdxCfg,
+    PVDIR_INDEX_CFG*        ppIndexCfg
+    );
 
 DWORD
-VdirAttrIndexInitViaCacheAndDescs(
-    PVDIR_ATTR_INDEX_INSTANCE   pFromCache,
-    PVDIR_CFG_ATTR_INDEX_DESC   pIndexDesc,
-    USHORT                      dwDescSize);
+VmDirIndexCfgCopy(
+    PVDIR_INDEX_CFG     pIndexCfg,
+    PVDIR_INDEX_CFG*    ppIndexCfgCpy
+    );
 
 DWORD
-VdirAttrIndexCacheAllocate(
-    PVDIR_ATTR_INDEX_INSTANCE* ppAttrIdxCache,
-    USHORT  usIdxSize
+VmDirIndexCfgAddUniqueScopeMod(
+    PVDIR_INDEX_CFG pIndexCfg,
+    PCSTR           pszUniqScope
+    );
+
+DWORD
+VmDirIndexCfgDeleteUniqueScopeMod(
+    PVDIR_INDEX_CFG pIndexCfg,
+    PCSTR           pszUniqScope
+    );
+
+DWORD
+VmDirIndexCfgValidateUniqueScopeMods(
+    PVDIR_INDEX_CFG pIndexCfg
+    );
+
+DWORD
+VmDirIndexCfgApplyUniqueScopeMods(
+    PVDIR_INDEX_CFG pIndexCfg
+    );
+
+DWORD
+VmDirIndexCfgRevertBadUniqueScopeMods(
+    PVDIR_INDEX_CFG pIndexCfg
+    );
+
+DWORD
+VmDirIndexCfgStatusStringfy(
+    PVDIR_INDEX_CFG pIndexCfg,
+    PSTR*           ppszStatus
     );
 
 VOID
-VdirAttrIdxCacheFree(
-    PVDIR_ATTR_INDEX_INSTANCE   pAttrIdxCache
+VmDirIndexCfgClear(
+    PVDIR_INDEX_CFG pIndexCfg
+    );
+
+VOID
+VmDirFreeIndexCfgMapPair(
+    PLW_HASHMAP_PAIR    pPair,
+    LW_PVOID            pUnused
+    );
+
+// indexingtask.c
+DWORD
+VmDirIndexingTaskInit(
+    PVDIR_INDEXING_TASK*    ppTask
     );
 
 DWORD
-VdirstrToAttrIndexDesc(
-    PSTR    pszStr,
-    PVDIR_CFG_ATTR_INDEX_DESC   pDesc
+VmDirIndexingTaskCompute(
+    PVDIR_INDEXING_TASK*    ppTask
+    );
+
+DWORD
+VmDirIndexingTaskPopulateIndices(
+    PVDIR_INDEXING_TASK pTask
+    );
+
+DWORD
+VmDirIndexingTaskValidateScopes(
+    PVDIR_INDEXING_TASK pTask
+    );
+
+DWORD
+VmDirIndexingTaskDeleteIndices(
+    PVDIR_INDEXING_TASK pTask
+    );
+
+DWORD
+VmDirIndexingTaskRecordProgress(
+    PVDIR_INDEXING_TASK pTask,
+    PVDIR_INDEX_UPD     pIndexUpd
+    );
+
+BOOLEAN
+VmDirIndexingTaskIsNoop(
+    PVDIR_INDEXING_TASK pTask
+    );
+
+VOID
+VmDirFreeIndexingTask(
+    PVDIR_INDEXING_TASK pTask
     );
 
 // indexingthr.c
-
 DWORD
-VdirIndexingPreCheck(
-    PVDIR_ATTR_INDEX_INSTANCE* ppCache
+InitializeIndexingThread(
+    VOID
     );
 
 DWORD
-VdirIndexingEntryAppendFlag(
-    VDIR_MODIFICATION*   pMods,
-    PVDIR_ENTRY          pEntry);
+VmDirIndexingThreadFun(
+    PVOID   pArg
+    );
+
+// indexupd.c
+DWORD
+VmDirIndexUpdInit(
+    PVDIR_BACKEND_CTX   pBECtx,
+    PVDIR_INDEX_UPD*    ppIndexUpd
+    );
 
 DWORD
-InitializeIndexingThread(
-    void);
+VmDirIndexUpdCopy(
+    PVDIR_INDEX_UPD     pSrcIdxUpd,
+    PVDIR_INDEX_UPD     pTgtIdxUpd
+    );
+
+DWORD
+VmDirIndexUpdApply(
+    PVDIR_INDEX_UPD     pIndexUpd
+    );
+
+VOID
+VmDirIndexUpdFree(
+    PVDIR_INDEX_UPD     pIndexUpd
+    );
+
+// progress.c
+DWORD
+VmDirIndexCfgRecordProgress(
+    PVDIR_BACKEND_CTX   pBECtx,
+    PVDIR_INDEX_CFG     pIndexCfg
+    );
+
+DWORD
+VmDirIndexCfgRestoreProgress(
+    PVDIR_BACKEND_CTX   pBECtx,
+    PVDIR_INDEX_CFG     pIndexCfg,
+    PBOOLEAN            pbRestore
+    );
+
+// vmit.c
+DWORD
+VmDirIndexLibInitVMIT(
+    VOID
+    );
+
+DWORD
+VmDirVMITIndexCfgInit(
+    PVDIR_DEFAULT_INDEX_CFG pDefIdxCfg,
+    PVDIR_INDEX_CFG*        ppIndexCfg
+    );
 
 #ifdef __cplusplus
 }

@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -61,6 +61,33 @@ VmAfdIsLocalHost(
 DWORD
 VmAfdRpcGetErrorCode(
     dcethread_exc* pDceException
+    );
+
+PVMAFD_SERVER
+VmAfdAcquireServer(
+    PVMAFD_SERVER pServer
+    );
+
+VOID
+VmAfdReleaseServer(
+    PVMAFD_SERVER pServer
+    );
+
+DWORD
+VmAfdAllocateFromRpcHeartbeatStatus(
+   PVMAFD_HB_STATUS_W   pHeartbeatStatusSrc,
+   PVMAFD_HB_STATUS_W *ppHeartbeatStatusDest
+   );
+
+VOID
+VmAfdRpcClientFreeHeartbeatStatus(
+   PVMAFD_HB_STATUS_W pHeartbeatStatus
+   );
+
+DWORD
+VmAfdHeartbeatStatusAFromW(
+    PVMAFD_HB_STATUS_W  pwHeartbeatStatus,
+    PVMAFD_HB_STATUS_A* ppHeartbeatStatus
     );
 
 /* rpc.c */
@@ -127,6 +154,16 @@ VecsLocalIPCRequest(
     VMW_TYPE_SPEC *output_spec
 );
 
+DWORD
+VecsLocalIPCRequestH(
+	PVM_AFD_CONNECTION pConnection,
+	UINT32 apiType,
+	DWORD noOfArgsIn,
+	DWORD noOfArgsOut,
+	VMW_TYPE_SPEC *input_spec,
+	VMW_TYPE_SPEC *output_spec
+	);
+
 /* afdlocalclient.c */
 
 DWORD
@@ -158,6 +195,11 @@ DWORD
 VmAfdLocalSetLDU(
     PCWSTR pwszLDU
 );
+
+DWORD
+VmAfdLocalGetRHTTPProxyPort(
+    PDWORD pdwPort
+    );
 
 DWORD
 VmAfdLocalSetRHTTPProxyPort(
@@ -201,6 +243,11 @@ VmAfdLocalGetSiteGUID(
 );
 
 DWORD
+VmAfdLocalGetSiteName(
+    PWSTR* ppwszSiteName
+);
+
+DWORD
 VmAfdLocalGetMachineID(
     PWSTR* ppwszMachineID
 );
@@ -228,6 +275,13 @@ VmAfdLocalDemoteVmDir(
 );
 
 DWORD
+VmAfdLocalJoinValidateDomainCredentials(
+    PCWSTR pwszDomainName,
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword
+    );
+
+DWORD
 VmAfdLocalJoinVmDir(
     PCWSTR pwszServerName,
     PCWSTR pwszUserName,
@@ -238,10 +292,30 @@ VmAfdLocalJoinVmDir(
 );
 
 DWORD
+VmAfdLocalJoinVmDir2(
+    PCWSTR           pwszDomainName,
+    PCWSTR           pwszUserName,
+    PCWSTR           pwszPassword,
+    PCWSTR           pwszMachineName,
+    PCWSTR           pwszOrgUnit,
+    VMAFD_JOIN_FLAGS dwFlags
+    );
+
+DWORD
 VmAfdLocalLeaveVmDir(
     PCWSTR pwszServerName,
     PCWSTR pwszUserName,
-    PCWSTR pwszPassword
+    PCWSTR pwszPassword,
+    DWORD  dwLeaveFlags
+);
+
+DWORD
+VmAfdLocalCreateComputerAccount(
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword,
+    PCWSTR pwszMachineName,
+    PCWSTR pwszOrgUnit,
+    PWSTR* ppwszOutPassword
 );
 
 DWORD
@@ -264,6 +338,13 @@ VmAfdLocalQueryAD(
     PWSTR *pwszDomain,
     PWSTR *pwszDistinguishedName,
     PWSTR *pwszNetbiosName
+);
+
+DWORD
+VmAfdLocalGetDCList(
+    PCSTR pszDomain,
+    PDWORD pdwServerCount,
+    PVMAFD_DC_INFO_W *ppVmAfdDCInfo
 );
 
 DWORD
@@ -295,3 +376,73 @@ DWORD
 VmAfdLocalTriggerRootCertsRefresh(
     VOID
 );
+
+DWORD
+VmAfdLocalRefreshSiteName(
+    VOID
+);
+
+DWORD
+VmAfdLocalPostHeartbeat(
+    PCWSTR pwszServiceName,
+    DWORD  dwPort
+);
+
+DWORD
+VmAfdLocalGetHeartbeatStatus(
+    PVMAFD_HB_STATUS_W* ppHeartbeatStatus
+);
+
+DWORD
+VmAfdLocalConfigureDNSW(
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword
+    );
+
+DWORD
+VmAfdLocalChangePNID(
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword,
+    PCWSTR pwszPNID
+    );
+
+// cdclocalclient.c
+
+DWORD
+CdcLocalEnableClientAffinity(
+    VOID
+    );
+
+DWORD
+CdcLocalDisableClientAffinity(
+    VOID
+    );
+
+DWORD
+CdcLocalGetDCNameW(
+    PCWSTR pszDomainName,
+    GUID_W pDomainGuid,
+    PCWSTR pszSiteName,
+    DWORD dwFlags,
+    PCDC_DC_INFO_W *ppDomainControllerInfo
+    );
+
+DWORD
+CdcLocalEnumDCEntries(
+    PWSTR **ppszDCEntries,
+    PDWORD pdwCount
+    );
+
+DWORD
+CdcLocalGetDCStatusInfo(
+    PCWSTR pwszDCName,
+    PCWSTR pwszDomainName,
+    PCDC_DC_STATUS_INFO_W *ppDCStatusInfo,
+    PVMAFD_HB_STATUS_W    *ppHbStatus
+    );
+
+DWORD
+CdcLocalGetCurrentState(
+    PDWORD pdwState
+    );
+

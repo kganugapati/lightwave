@@ -48,7 +48,7 @@ LockoutRecFree(
     );
 
 static
-PCVOID
+LW_PCVOID
 LockoutRecGetKey(
     PLW_HASHTABLE_NODE  pNode,
     PVOID               pUnused
@@ -80,8 +80,9 @@ LockoutPolicyLoadFromEntry(
 static
 BOOLEAN
 _VmDirExemptUserFromLockoutPolicy(
-    ENTRYID     entryID,
-    PCSTR       pszNormDN
+    ENTRYID             entryID,
+    PCSTR               pszNormDN,
+    PVDIR_ACCESS_INFO   pAccessInfo
     );
 
 VOID
@@ -92,7 +93,7 @@ VdirLockoutCacheRemoveRec(
     DWORD                   dwError = 0;
     BOOLEAN                 bInLock = FALSE;
     PCSTR                   pszErrorContext = NULL;
-    PLW_HASHTABLE_NODE   pNode = NULL;
+    PLW_HASHTABLE_NODE      pNode = NULL;
     PVDIR_LOCKOUT_REC       pLockoutRec = NULL;
 
     assert(pszNormDN);
@@ -102,11 +103,11 @@ VdirLockoutCacheRemoveRec(
     if (gVdirLockoutCache.pHashTbl)
     {
         pszErrorContext = " lockout cache find key.";
-        dwError = LwNtStatusToWin32Error(
-                      LwRtlHashTableFindKey(
+        dwError = LwRtlHashTableFindKey(
                         gVdirLockoutCache.pHashTbl,
                         &pNode,
-                        (PVOID)pszNormDN));
+                        (PVOID)pszNormDN);
+        dwError = LwNtStatusToWin32Error(dwError);
         if (dwError == ERROR_NOT_FOUND)
         {
             dwError = 0;
@@ -116,7 +117,7 @@ VdirLockoutCacheRemoveRec(
         if (pNode)
         {
 
-            dwError = LwNtStatusToWin32Error(LwRtlHashTableRemove(gVdirLockoutCache.pHashTbl, pNode));
+            dwError = LwRtlHashTableRemove(gVdirLockoutCache.pHashTbl, pNode);
             assert(dwError == 0);
 
             pLockoutRec = (PVDIR_LOCKOUT_REC)LW_STRUCT_FROM_FIELD(pNode, VDIR_LOCKOUT_REC, Node);
@@ -182,7 +183,7 @@ VdirLoginBlocked(
     }
 
     // bypass lockout policy check for default Administrator and DC Account user
-    if ( _VmDirExemptUserFromLockoutPolicy( pEntry->eId, BERVAL_NORM_VAL(pEntry->dn) ) )
+    if ( _VmDirExemptUserFromLockoutPolicy( pEntry->eId, BERVAL_NORM_VAL(pEntry->dn), &pOperation->conn->AccessInfo) )
     {
         dwError = 0;
         goto cleanup;
@@ -337,7 +338,7 @@ VdirPasswordFailEvent(
     }
 
     // bypass lockout policy check for default Administrator and DC Account user
-    if ( pEntry && _VmDirExemptUserFromLockoutPolicy( pEntry->eId, pszNormDN ) )
+    if ( pEntry && _VmDirExemptUserFromLockoutPolicy( pEntry->eId, pszNormDN, &pOperation->conn->AccessInfo) )
     {
         goto cleanup;
     }
@@ -351,7 +352,7 @@ VdirPasswordFailEvent(
     }
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    if (! policy.bEnabled)
+    if (!policy.bEnabled)
     {
         goto cleanup;
     }
@@ -406,15 +407,15 @@ VdirPasswordFailEvent(
         }
     }
 
-	if (pEntry)
-	{
-       // lockout policy check
-       dwError = LockoutPolicyCheck(
-                    pLockoutRec,
-                    pEntry,
-                    &bAccountLockout);
-       BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, pszLocalErrMsg, "Lockout policy check failed");
-	}
+    if (pEntry)
+    {
+        // lockout policy check
+        dwError = LockoutPolicyCheck(
+                     pLockoutRec,
+                     pEntry,
+                     &bAccountLockout);
+        BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, pszLocalErrMsg, "Lockout policy check failed");
+    }
 
 cleanup:
 
@@ -465,7 +466,7 @@ VdirGetPasswdAndLockoutPolicy(
     if (pszDomainDN)
     {
         // default policy entry lives under domain entry with fix cn
-        dwError = VmDirAllocateStringAVsnprintf(
+        dwError = VmDirAllocateStringPrintf(
                         &pszPolicyDN,
                         "cn=%s,%s",
                         PASSWD_LOCKOUT_POLICY_DEFAULT_CN,
@@ -685,7 +686,7 @@ LockoutCacheRecGet(
     DWORD                   dwError = 0;
     BOOLEAN                 bInLock = FALSE;
     PCSTR                   pszErrorContext = NULL;
-    PLW_HASHTABLE_NODE   pNode = NULL;
+    PLW_HASHTABLE_NODE      pNode = NULL;
     PVDIR_LOCKOUT_REC       pLockoutRec = NULL;
 
     assert(pszNormDN && ppLockoutRec);
@@ -695,11 +696,11 @@ LockoutCacheRecGet(
     if (gVdirLockoutCache.pHashTbl)
     {
         pszErrorContext = "lockout cache lookup";
-        dwError = LwNtStatusToWin32Error(
-                      LwRtlHashTableFindKey(
+        dwError = LwRtlHashTableFindKey(
                         gVdirLockoutCache.pHashTbl,
                         &pNode,
-                        (PVOID)pszNormDN));
+                        (PVOID)pszNormDN);
+        dwError = LwNtStatusToWin32Error(dwError);
         if (dwError == ERROR_NOT_FOUND)
         {
             dwError = 0;
@@ -727,9 +728,9 @@ error:
 }
 
 static
-PCVOID
+LW_PCVOID
 LockoutRecGetKey(
-    PLW_HASHTABLE_NODE   pNode,
+    PLW_HASHTABLE_NODE      pNode,
     PVOID                   pUnused
     )
 {
@@ -761,14 +762,14 @@ LockoutCacheRecSet(
 
     if (! gVdirLockoutCache.pHashTbl)
     {
-        dwError = LwNtStatusToWin32Error(
-                    LwRtlCreateHashTable(
+        dwError = LwRtlCreateHashTable(
                         &gVdirLockoutCache.pHashTbl,
                         LockoutRecGetKey,
                         LwRtlHashDigestPstr,
                         LwRtlHashEqualPstr,
                         NULL,
-                        VMDIR_LOCKOUT_VECTOR_HASH_TABLE_SIZE));
+                        VMDIR_LOCKOUT_VECTOR_HASH_TABLE_SIZE);
+        dwError = LwNtStatusToWin32Error(dwError);
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
@@ -790,6 +791,65 @@ error:
 }
 
 
+static
+BOOLEAN
+VmDirCheckForPasswordExpiration(
+    PVDIR_LOCKOUT_REC pLockoutRec,
+    PVDIR_ENTRY pEntry
+    )
+{
+    int64_t iPwdLastSet =  0;
+    int64_t iExpirationInSeconds = 0;
+    time_t tNow = time(NULL);
+    BOOLEAN bPasswordExpired = FALSE;
+    PVDIR_ATTRIBUTE pPwdLastSetAttr = NULL;
+    PVDIR_ATTRIBUTE pPwdNeverExpiresAttr = NULL;
+
+    if (pLockoutRec->iExpireInDay == 0)
+    {
+        VMDIR_LOG_DEBUG(LDAP_DEBUG_ANY, "Lockout policy check - password policy ExpireInDay is 0, implying never expire.");
+        goto cleanup;
+    }
+
+    pPwdNeverExpiresAttr = VmDirFindAttrByName(pEntry, ATTR_PASSWORD_NEVER_EXPIRES);
+    if (pPwdNeverExpiresAttr && pPwdNeverExpiresAttr->vals &&
+        VmDirStringCompareA(pPwdNeverExpiresAttr->vals[0].lberbv.bv_val, VDIR_LDAP_BOOLEN_SYNTAX_TRUE_STR, FALSE) == 0)
+    {
+        VMDIR_LOG_DEBUG(LDAP_DEBUG_ANY, "Lockout policy check - password never expires. (%s)",
+                  VDIR_SAFE_STRING(BERVAL_NORM_VAL(pEntry->dn)) );
+        goto cleanup;
+    }
+
+    pPwdLastSetAttr = VmDirFindAttrByName(pEntry, ATTR_PWD_LAST_SET);
+    if (pPwdLastSetAttr && pPwdLastSetAttr->vals)
+    {
+        iPwdLastSet = VmDirStringToLA(pPwdLastSetAttr->vals[0].lberbv.bv_val, NULL, 10);
+        iExpirationInSeconds = (int64_t)pLockoutRec->iExpireInDay * 24 * 60 * 60;
+
+        if ((tNow - iPwdLastSet) > iExpirationInSeconds)
+        {
+            bPasswordExpired = TRUE;
+            VMDIR_LOG_DEBUG(
+                LDAP_DEBUG_ANY,
+                "Lockout policy check - password expired. (%s)",
+                VDIR_SAFE_STRING(BERVAL_NORM_VAL(pEntry->dn)));
+
+            (VOID)VdirUserActCtlFlagSet(
+                    pEntry,
+                    USER_ACCOUNT_CONTROL_PASSWORD_EXPIRE_FLAG);
+        }
+    }
+    else
+    {
+        VMDIR_LOG_DEBUG(LDAP_DEBUG_ANY,
+                "Lockout policy check - no pwdLastSet attribute (%s)",
+                VDIR_SAFE_STRING(BERVAL_NORM_VAL(pEntry->dn)));
+    }
+
+cleanup:
+    return bPasswordExpired;
+}
+
 /*
  * *bBoolLockout is true if
  * 1. MaxFailAttempt reached    OR
@@ -803,20 +863,15 @@ LockoutPolicyCheck(
     PBOOLEAN            bBoolLockout
     )
 {
-    DWORD               dwError = 0;
-    PVDIR_ATTRIBUTE     pPwdLastSetAttr = NULL;
-    PVDIR_ATTRIBUTE     pPwdNeverExpiresAttr = NULL;
-    int64_t             iPwdLastSet =  0;
-
-    assert(pLockoutRec && bBoolLockout);
+    DWORD dwError = 0;
 
     *bBoolLockout = FALSE;
 
-    if ( pLockoutRec->bAutoUnlockAccount )
+    if (pLockoutRec->bAutoUnlockAccount)
     {
         pLockoutRec->bAutoUnlockAccount = FALSE;
         pLockoutRec->lockoutTime = 0;
-        VdirUserActCtlFlagUnset(pEntry, USER_ACCOUNT_CONTROL_LOCKOUT_FLAG);  // ignore error
+        (VOID)VdirUserActCtlFlagUnset(pEntry, USER_ACCOUNT_CONTROL_LOCKOUT_FLAG);
 
         goto cleanup;
     }
@@ -830,7 +885,7 @@ LockoutPolicyCheck(
             pLockoutRec->lockoutTime = time(NULL);
 
             // modify entry to set lockout flag
-            VdirUserActCtlFlagSet(pEntry, USER_ACCOUNT_CONTROL_LOCKOUT_FLAG);  // ignore error
+            (VOID)VdirUserActCtlFlagSet(pEntry, USER_ACCOUNT_CONTROL_LOCKOUT_FLAG);
         }
 
         VMDIR_LOG_WARNING( VMDIR_LOG_MASK_ALL,
@@ -840,57 +895,11 @@ LockoutPolicyCheck(
         goto cleanup;
     }
 
-    // check if password last change > policy.iExpireInDay
-    if (pEntry)
-    {
-        pPwdNeverExpiresAttr = VmDirFindAttrByName(pEntry, ATTR_PASSWORD_NEVER_EXPIRES);
-        if (pPwdNeverExpiresAttr && pPwdNeverExpiresAttr->vals &&
-            VmDirStringCompareA(pPwdNeverExpiresAttr->vals[0].lberbv.bv_val, VDIR_LDAP_BOOLEN_SYNTAX_TRUE_STR, FALSE) == 0)
-        {
-            VMDIR_LOG_DEBUG(LDAP_DEBUG_ANY, "Lockout policy check - password never expires. (%s)",
-                      VDIR_SAFE_STRING(BERVAL_NORM_VAL(pEntry->dn)) );
-            goto cleanup;
-        }
-
-        pPwdLastSetAttr = VmDirFindAttrByName(pEntry, ATTR_PWD_LAST_SET);
-        if (pPwdLastSetAttr && pPwdLastSetAttr->vals)
-        {
-            time_t  tNow = time(NULL);
-
-            iPwdLastSet = VmDirStringToLA(pPwdLastSetAttr->vals[0].lberbv.bv_val, NULL, 10);
-
-            if (pLockoutRec->iExpireInDay == 0)
-            {
-                VMDIR_LOG_DEBUG(LDAP_DEBUG_ANY, "Lockout policy check - password policy ExpireInDay is 0, implying never expire.");
-                goto cleanup;
-            }
-            else if ((tNow - iPwdLastSet) > (pLockoutRec->iExpireInDay * 24 * 60 * 60))
-            {
-                *bBoolLockout = TRUE;
-                VdirUserActCtlFlagSet(pEntry, USER_ACCOUNT_CONTROL_PASSWORD_EXPIRE_FLAG);  // ignore error
-                VMDIR_LOG_DEBUG(LDAP_DEBUG_ANY,
-                        "Lockout policy check - password expired. (%s)",
-                        VDIR_SAFE_STRING(BERVAL_NORM_VAL(pEntry->dn)));
-
-                goto cleanup;
-            }
-        }
-        else
-        {
-            VMDIR_LOG_DEBUG(LDAP_DEBUG_ANY,
-                    "Lockout policy check - no pwdLastSet attribute (%s)",
-                    VDIR_SAFE_STRING(BERVAL_NORM_VAL(pEntry->dn)));
-            goto error;
-        }
-    }
+    *bBoolLockout = VmDirCheckForPasswordExpiration(pLockoutRec, pEntry);
 
 cleanup:
 
     return dwError;
-
-error:
-
-    goto cleanup;
 }
 
 static
@@ -1026,7 +1035,8 @@ static
 BOOLEAN
 _VmDirExemptUserFromLockoutPolicy(
     ENTRYID     entryID,
-    PCSTR       pszNormDN
+    PCSTR       pszNormDN,
+    PVDIR_ACCESS_INFO   pAccessInfo
     )
 {
     DWORD       dwError          = 0;
@@ -1040,7 +1050,8 @@ _VmDirExemptUserFromLockoutPolicy(
     {
         // exempt if direct member of DCGroup
         dwError = VmDirIsDirectMemberOf( (PSTR)pszNormDN,
-                                         gVmdirServerGlobals.bvDCGroupDN.lberbv_val,
+                                         VDIR_ACCESS_DCGROUP_MEMBER_INFO,
+                                         &pAccessInfo->accessRoleBitmap,
                                          &bExemptUser );
         BAIL_ON_VMDIR_ERROR(dwError);
 
@@ -1048,7 +1059,8 @@ _VmDirExemptUserFromLockoutPolicy(
         {
             // exempt if direct member of DCClientGroup
             dwError = VmDirIsDirectMemberOf( (PSTR)pszNormDN,
-                                             gVmdirServerGlobals.bvDCClientGroupDN.lberbv_val,
+                                             VDIR_ACCESS_DCCLIENT_GROUP_MEMBER_INFO,
+                                             &pAccessInfo->accessRoleBitmap,
                                              &bExemptUser );
             BAIL_ON_VMDIR_ERROR(dwError);
         }

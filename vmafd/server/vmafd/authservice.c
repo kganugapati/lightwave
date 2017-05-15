@@ -1,3 +1,11 @@
+/*
+ * Copyright (C) 2014 VMware, Inc. All rights reserved.
+ *
+ * Module   : authservice.c
+ *
+ * Abstract :
+ *
+ */
 #include "includes.h"
 
 
@@ -607,6 +615,12 @@ VecsSrvCloseCertStoreHandle (
                            pStore,
                            pConnectionContext->pSecurityContext
                          );
+
+    if (pStore != pConnectionContext->pStoreHandle)
+    {
+        VMAFD_SAFE_FREE_MEMORY(pConnectionContext->pStoreHandle);
+        pConnectionContext->pStoreHandle = NULL;
+    }
     BAIL_ON_VMAFD_ERROR (dwError);
 cleanup:
     return dwError;

@@ -1,3 +1,6 @@
 SUBDIRS = \
-    jni \
+    java \
+    jni  \
+    cdcjni \
+    heartbeatjni \
     python

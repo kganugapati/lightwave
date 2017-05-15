@@ -1,3 +1,18 @@
+/*
+ * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
+
 #include "includes.h"
 
 DWORD
@@ -14,7 +29,8 @@ VmDirLocalAPIHandler(
     PBYTE pResponse = NULL;
     DWORD dwResponseSize = 0;
 
-    if (dwRequestSize < sizeof (UINT32)){
+    if (dwRequestSize < sizeof(UINT32))
+    {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR (dwError);
     }
@@ -51,6 +67,39 @@ VmDirLocalAPIHandler(
                         );
         break;
 
+      case VMDIR_IPC_CREATE_TENANT:
+
+        dwError = VmDirIpcCreateTenant(
+                        pSecurityContext,
+                        pRequest,
+                        dwRequestSize,
+                        &pResponse,
+                        &dwResponseSize
+                        );
+        break;
+
+      case VMDIR_IPC_DELETE_TENANT:
+
+        dwError = VmDirIpcDeleteTenant(
+                        pSecurityContext,
+                        pRequest,
+                        dwRequestSize,
+                        &pResponse,
+                        &dwResponseSize
+                        );
+        break;
+
+      case VMDIR_IPC_ENUMERATE_TENANTS:
+
+        dwError = VmDirIpcEnumerateTenants(
+                        pSecurityContext,
+                        pRequest,
+                        dwRequestSize,
+                        &pResponse,
+                        &dwResponseSize
+                        );
+        break;
+
       case VMDIR_IPC_FORCE_RESET_PASSWORD:
 
         dwError = VmDirIpcForceResetPassword(
@@ -76,6 +125,16 @@ VmDirLocalAPIHandler(
       case VMDIR_IPC_GENERATE_PASSWORD:
 
         dwError = VmDirIpcGeneratePassword(
+                        pSecurityContext,
+                        pRequest,
+                        dwRequestSize,
+                        &pResponse,
+                        &dwResponseSize
+                        );
+        break;
+
+      case VMDIR_IPC_GET_SERVER_STATE:
+        dwError = VmDirIpcGetServerState(
                         pSecurityContext,
                         pRequest,
                         dwRequestSize,

@@ -27,11 +27,12 @@
 
 #include "includes.h"
 
-VMDIR_RUNMODE_GLOBALS gVmdirRunmodeGlobals =
-    {
-        VMDIR_SF_INIT(.pMutex, NULL),
-        VMDIR_SF_INIT(.mode, VMDIR_RUNMODE_NORMAL),
-    };
+VMDIRD_STATE_GLOBALS gVmdirdStateGlobals =
+{
+    VMDIR_SF_INIT(.pMutex, NULL),
+    VMDIR_SF_INIT(.vmdirdState, VMDIRD_STATE_UNDEFINED),
+    VMDIR_SF_INIT(.targetState, VMDIRD_STATE_NORMAL),
+};
 
 VMDIR_GLOBALS gVmdirGlobals =
     {
@@ -39,9 +40,9 @@ VMDIR_GLOBALS gVmdirGlobals =
         VMDIR_SF_INIT(.pszBootStrapSchemaFile, NULL),
         VMDIR_SF_INIT(.bPatchSchema, FALSE),
         VMDIR_SF_INIT(.pszBDBHome, NULL),
-        VMDIR_SF_INIT(.iSocketFd, -1),
         VMDIR_SF_INIT(.bAllowInsecureAuth, 0),
         VMDIR_SF_INIT(.bAllowAdminLockout, 0),
+        VMDIR_SF_INIT(.bDisableVECSIntegration, 0),
         VMDIR_SF_INIT(.pdwLdapListenPorts, NULL),
         VMDIR_SF_INIT(.dwLdapListenPorts, 0),
         VMDIR_SF_INIT(.pdwLdapsListenPorts, NULL),
@@ -50,9 +51,9 @@ VMDIR_GLOBALS gVmdirGlobals =
         VMDIR_SF_INIT(.dwLdapConnectPorts, 0),
         VMDIR_SF_INIT(.pdwLdapsConnectPorts, NULL),
         VMDIR_SF_INIT(.dwLdapsConnectPorts, 0),
+        VMDIR_SF_INIT(.pszRestListenPort, NULL),
         VMDIR_SF_INIT(.dwLdapRecvTimeoutSec, 0),
         VMDIR_SF_INIT(.mutex, NULL),
-        VMDIR_SF_INIT(.vmdirdState, VMDIRD_STATE_UNDEFINED),
         VMDIR_SF_INIT(.pSrvThrInfo, NULL),
         VMDIR_SF_INIT(.bReplNow, FALSE),
 #if !defined(_WIN32) || defined(HAVE_DCERPC_WIN32)
@@ -62,12 +63,13 @@ VMDIR_GLOBALS gVmdirGlobals =
         VMDIR_SF_INIT(.hStopServiceEvent, 0),
 #endif
         VMDIR_SF_INIT(.bRegisterTcpEndpoint, TRUE),
-        VMDIR_SF_INIT(.gpVmDirSrvSD, 0),
         VMDIR_SF_INIT(.replAgrsMutex, NULL),
         VMDIR_SF_INIT(.replAgrsCondition, NULL),
         VMDIR_SF_INIT(.replCycleDoneMutex, NULL),
         VMDIR_SF_INIT(.replCycleDoneCondition, NULL),
-        VMDIR_SF_INIT(.limitLocalUsnToBeReplicated, 0),
+        VMDIR_SF_INIT(.dwReplCycleCounter, 0),
+        VMDIR_SF_INIT(.replRWLock, NULL),
+        VMDIR_SF_INIT(.limitLocalUsnToBeSupplied, 0),
         VMDIR_SF_INIT(.pOperationThrSyncCounter, NULL),
         VMDIR_SF_INIT(.pPortListenSyncCounter, NULL),
 #ifdef _WIN32
@@ -77,6 +79,19 @@ VMDIR_GLOBALS gVmdirGlobals =
         VMDIR_SF_INIT(.pMutexIPCConnection, NULL),
         VMDIR_SF_INIT(.pFlowCtrlMutex, NULL),
         VMDIR_SF_INIT(.dwMaxFlowCtrlThr, 1024),
+        VMDIR_SF_INIT(.pLogger, NULL),
+        VMDIR_SF_INIT(.iServerStartupTime, 0),
+        VMDIR_SF_INIT(.dwMaxIndexScan, 512),
+        VMDIR_SF_INIT(.dwSmallCandidateSet,32),
+        VMDIR_SF_INIT(.dwMaxSizelimitScan,0),
+        VMDIR_SF_INIT(.dwLdapSearchTimeoutSec, 0),
+        VMDIR_SF_INIT(.bAllowImportOpAttrs, FALSE),
+        VMDIR_SF_INIT(.bTrackLastLoginTime, FALSE),
+        VMDIR_SF_INIT(.bPagedSearchReadAhead, FALSE),
+        VMDIR_SF_INIT(.dwCopyDbWritesMin, 100),
+        VMDIR_SF_INIT(.dwCopyDbIntervalInSec, 0),
+        VMDIR_SF_INIT(.dwCopyDbBlockWriteInSec, 30),
+        VMDIR_SF_INIT(.dwLdapWrites, 0)
     };
 
 VMDIR_KRB_GLOBALS gVmdirKrbGlobals =
@@ -120,7 +135,28 @@ VMDIR_SERVER_GLOBALS gVmdirServerGlobals =
         VMDIR_SF_INIT(.utdVector, VDIR_BERVALUE_INIT),
         VMDIR_SF_INIT(.pszSiteName, NULL),
         VMDIR_SF_INIT(.isIPV4AddressPresent, FALSE),
-        VMDIR_SF_INIT(.isIPV6AddressPresent, FALSE)
+        VMDIR_SF_INIT(.isIPV6AddressPresent, FALSE),
+        VMDIR_SF_INIT(.initialNextUSN, 0),
+        VMDIR_SF_INIT(.maxOriginatingUSN, 0),
+        VMDIR_SF_INIT(.bvServerObjName, VDIR_BERVALUE_INIT),
+        VMDIR_SF_INIT(.dwDomainFunctionalLevel, VDIR_DFL_DEFAULT),
+        VMDIR_SF_INIT(.dwTombstoneExpirationPeriod, 0),
+        VMDIR_SF_INIT(.dwTombstoneThreadFrequency, 0),
     };
 
 VMDIR_REPLICATION_AGREEMENT * gVmdirReplAgrs = NULL;
+
+VMDIR_TRACK_LAST_LOGIN_TIME gVmdirTrackLastLoginTime =
+    {
+        // NOTE: order of fields MUST stay in sync with struct definition...
+        VMDIR_SF_INIT(.pMutex, NULL),
+        VMDIR_SF_INIT(.pCond, NULL),
+        VMDIR_SF_INIT(.pTSStack, NULL)
+    };
+
+VMDIR_INTEGRITY_CHECK_GLOBALS gVmdirIntegrityCheck =
+    {
+        // NOTE: order of fields MUST stay in sync with struct definition...
+        VMDIR_SF_INIT(.pMutex, NULL),
+        VMDIR_SF_INIT(.pJob, NULL)
+    };

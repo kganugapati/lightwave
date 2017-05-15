@@ -33,6 +33,8 @@
 extern "C" {
 #endif
 
+#define VMDIR_PCSTR_UNKNOWN "unknown"
+
 #ifdef _WIN32
     #define HAVE_LMDB_H
     #define PCVOID const PVOID
@@ -253,6 +255,14 @@ extern "C" {
         }                                 \
     } while(0)
 
+#define VMDIR_SAFE_FREE_RWLOCK(lock)      \
+    do {                                  \
+        if ((lock)) {                     \
+            VmDirFreeRWLock(lock);        \
+            (lock) = NULL;                \
+        }                                 \
+    } while(0)
+
 #define VMDIR_SAFE_FREE_CONDITION(cond)   \
     do {                                  \
         if ((cond)) {                     \
@@ -269,28 +279,73 @@ extern "C" {
         }                                           \
     } while(0)
 
-#define VMDIR_LOCK_MUTEX(bInLock, mutex) \
-    do {                                 \
-        if (!(bInLock))                  \
-        {                                \
-            VmDirLockMutex(mutex);       \
-            (bInLock) = TRUE;            \
-        }                                \
+#define VMDIR_LOCK_MUTEX(bInLock, mutex)        \
+    do {                                        \
+        if (!(bInLock))                         \
+        {                                       \
+            if (VmDirLockMutex(mutex) == 0)     \
+            {                                   \
+                (bInLock) = TRUE;               \
+            }                                   \
+        }                                       \
     } while (0)
 
-#define VMDIR_UNLOCK_MUTEX(bInLock, mutex) \
-    do {                                  \
-        if ((bInLock))                    \
-        {                                 \
-            VmDirUnLockMutex(mutex);      \
-            (bInLock) = FALSE;            \
-        }                                 \
+#define VMDIR_UNLOCK_MUTEX(bInLock, mutex)      \
+    do {                                        \
+        if ((bInLock))                          \
+        {                                       \
+            if (VmDirUnLockMutex(mutex) == 0)   \
+            {                                   \
+                (bInLock) = FALSE;              \
+            }                                   \
+        }                                       \
+    } while (0)
+
+#define VMDIR_RWLOCK_READLOCK(bInLock, lock, dwMilliSec)        \
+    do {                                                        \
+        if (!(bInLock))                                         \
+        {                                                       \
+            if (VmDirRWLockReadLock(lock, dwMilliSec) == 0)     \
+            {                                                   \
+                (bInLock) = TRUE;                               \
+            }                                                   \
+        }                                                       \
+    } while (0)
+
+#define VMDIR_RWLOCK_WRITELOCK(bInLock, lock, dwMilliSec)       \
+    do {                                                        \
+        if (!(bInLock))                                         \
+        {                                                       \
+            if (VmDirRWLockWriteLock(lock, dwMilliSec) == 0)    \
+            {                                                   \
+                (bInLock) = TRUE;                               \
+            }                                                   \
+        }                                                       \
+    } while (0)
+
+#define VMDIR_RWLOCK_UNLOCK(bInLock, lock)          \
+    do {                                            \
+        if ((bInLock))                              \
+        {                                           \
+            if (VmDirRWLockUnlock(lock) == 0)       \
+            {                                       \
+                (bInLock) = FALSE;                  \
+            }                                       \
+        }                                           \
+    } while (0)
+
+#define BAIL_WITH_VMDIR_ERROR(dwError, ERROR_CODE)                          \
+    do {                                                                    \
+        dwError = ERROR_CODE;                                               \
+        assert(dwError != 0);                                               \
+        VMDIR_LOG_DEBUG(VMDIR_LOG_MASK_ALL, "[%s,%d]", __FILE__, __LINE__); \
+        goto error;                                                         \
     } while (0)
 
 #define BAIL_ON_VMDIR_ERROR(dwError) \
     if (dwError)                                                            \
     {                                                                       \
-        VMDIR_LOG_DEBUG( VMDIR_LOG_MASK_ALL, "[%s,%d]",__FILE__, __LINE__); \
+        VMDIR_LOG_DEBUG(VMDIR_LOG_MASK_ALL, "[%s,%d]", __FILE__, __LINE__); \
         goto error;                                                         \
     }
 
@@ -299,7 +354,7 @@ extern "C" {
     {                                                                       \
         if (pszErrMsg == NULL)                                              \
         {                                                                   \
-            VmDirAllocateStringAVsnprintf(                                  \
+            VmDirAllocateStringPrintf(                                      \
                             &(pszErrMsg),                                   \
                             Format,                                         \
                             ##__VA_ARGS__);                                 \
@@ -351,7 +406,7 @@ extern "C" {
         {                                                           \
             if (ldapErrMsg == NULL)                                 \
             {                                                       \
-                VmDirAllocateStringAVsnprintf(                      \
+                VmDirAllocateStringPrintf(                          \
                                 &(ldapErrMsg),                      \
                                 Format,                             \
                                 ##__VA_ARGS__);                     \
@@ -408,7 +463,7 @@ extern "C" {
             else                                                \
             {                                                   \
                 PSTR    pszTmp = pszOrgErrMsg;                  \
-                VmDirAllocateStringAVsnprintf(                  \
+                VmDirAllocateStringPrintf(                      \
                                 &(pszOrgErrMsg),                \
                                 "%s %s",                        \
                                 pszTmp, pszNewErrMsg);          \
@@ -511,17 +566,13 @@ extern "C" {
 #define VDIR_SAFE_STRING(str) ((str) ? (str) : "")
 #endif
 
-
 #ifndef VDIR_SAFE_SPACE_STRING
 #define VDIR_SAFE_SPACE_STRING(str) ((str) ? (str) : " ")
 #endif
 
-/*
- * 4 bytes for RID : 1 byte server id + 3 bytes sequence number
- */
-#define VMDIR_RID_SEQUENCE_NUMBER(dwRid, dwServerId)    \
-    (((dwRid) & 0x00FFFFFF) | ( ((DWORD)(dwServerId)) << 24))
-
+#ifndef VMDIR_ARRAY_SIZE
+#define VMDIR_ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // Used in attribute index cache and bdb-store
@@ -554,6 +605,9 @@ extern "C" {
 #define LDAP_DEBUG_TRACE (1)
 #endif
 
+#define METADATA_TOKEN_COUNT 6
+#define HIGHWATER_USN_STEP   100
+#define HIGHWATER_USN_REPL_BUFFER 10000
 
 #define VMDIR_ASCII_aTof(c)     ( (c) >= 'a' && (c) <= 'f' )
 #define VMDIR_ASCII_AToF(c)     ( (c) >= 'A' && (c) <= 'F' )
@@ -606,7 +660,8 @@ if ( VMDIR_ASCII_UPPER(c) )             \
     (c) = ((c) + 32);                   \
 }
 
-#define VMDIR_MAX_PATH_LEN             512
+#define VMDIR_MAX_PATH_LEN              512
+#define VMDIR_MAX_PWD_LEN               128
 
 // Conforms to MSDN http://msdn.microsoft.com/en-us/library/windows/desktop/ms738527(v=vs.85).aspx
 #define VMDIR_MAX_HOSTNAME_LEN         256
@@ -623,7 +678,7 @@ if ( VMDIR_ASCII_UPPER(c) )             \
 
 #define VMDIR_SASL_MIN_SSF              1
 #define VMDIR_SASL_MAX_SSF              1024
-#define VMDIR_SASL_MAX_BUFFER_LEN       65536
+#define VMDIR_SASL_MAX_BUFFER_LEN       0xfffff
 
 #define VMDIR_LDAPS_PROTOCOL            "ldaps"
 #define VMDIR_LDAP_PROTOCOL             "ldap"
@@ -636,6 +691,8 @@ if ( VMDIR_ASCII_UPPER(c) )             \
 #define HOURS_IN_DAY      (24)
 #define SECONDS_IN_HOUR   (SECONDS_IN_MINUTE * MINUTES_IN_HOUR)
 #define SECONDS_IN_DAY    (SECONDS_IN_HOUR * HOURS_IN_DAY)
+
+#define WIN_EPOCH 116444736000000000LL
 
 #ifdef _WIN32
 
@@ -659,6 +716,16 @@ if ( VMDIR_ASCII_UPPER(c) )             \
      (pAttr->vals[0].lberbv.bv_len > 0) &&          \
      (pAttr->vals[0].lberbv.bv_val != NULL))
 
+/*
+ * Set pointer P at the next Nth field from the current position in attr-value-meta-data
+ * attr-value-meta-data is delimited by ':'
+ */
+#define VALUE_META_TO_NEXT_FIELD(P, N)                                              \
+    {                                                                               \
+        int iii;                                                                    \
+        char *ppp;                                                                  \
+        for(iii=0,ppp=P;iii<N && ppp;P=VmDirStringChrA(ppp, ':')+1,ppp=P,iii++);    \
+    }
 
 //IPC API
 
@@ -668,6 +735,10 @@ if ( VMDIR_ASCII_UPPER(c) )             \
 //#define VMDIR_IPC_GET_SRP_SECRET       3
 #define VMDIR_IPC_SET_SRP_SECRET       4
 #define VMDIR_IPC_GENERATE_PASSWORD    5
+#define VMDIR_IPC_GET_SERVER_STATE     6
+#define VMDIR_IPC_CREATE_TENANT        7
+#define VMDIR_IPC_DELETE_TENANT        8
+#define VMDIR_IPC_ENUMERATE_TENANTS    9
 
 //VERSIONS
 #define VER1_INPUT 0
@@ -682,6 +753,127 @@ typedef enum
 
 #define GROUP_EVERYONE_W {'E','V','E','R','Y','O','N','E',0}
 #define GROUP_EVERYONE "EVERYONE";
+
+/*
+ * 1.2.840.113554.1.2.10
+ *
+ * {iso(1) member-body(2) US(840) mit(113554) infosys(1) gssapi(2) srp(10)}
+ * "Made up" SRP OID,
+ * "Made up" SRP OID, which is actually in MIT GSSAPI OID namespace,
+ *  based on existing GSSAPI mech OIDs.
+ * This is being depricated in future releases.
+ */
+#ifndef GSS_SRP_MECH_OID
+#define GSS_SRP_MECH_OID_LENGTH 9
+#define GSS_SRP_MECH_OID "\x2a\x86\x48\x86\xf7\x12\x01\x02\x0a"
+#endif
+
+/*
+ * 1.3.6.1.4.1.27433.3.1
+ *
+ * {iso(1) identified-organization(3) dod(6) internet(1) private(4)
+ *   enterprise(1) 27433}
+ * Centeris Corporation
+ * Note: No OIDs are officially registered under the father Centeris Corp OID.
+ * "\x06\x08\x2b\x06\x01\x04\x01\x81\xd6\x29"
+ *
+ * Note: This is the exact OID as found in lsass/include/ntlm/gssntlm.h;
+ */
+#ifndef GSS_CRED_OPT_PW
+#define GSS_CRED_OPT_PW     "\x2b\x06\x01\x04\x01\x81\xd6\x29\x03\x01"
+#define GSS_CRED_OPT_PW_LEN 10
+#endif
+
+/* Defines related to GSS_NTLM authentication */
+#ifndef GSS_NTLM_MECH_OID
+#define GSS_NTLM_MECH_OID_LENGTH 10
+#define GSS_NTLM_MECH_OID "\x2b\x06\x01\x04\x01\x82\x37\x02\x02\x0a"
+#endif
+
+#ifndef GSS_NTLM_PASSWORD_OID
+#define GSS_NTLM_PASSWORD_OID "\x2b\x06\x01\x04\x01\x81\xd6\x29\x03\x01"
+#define GSS_NTLM_PASSWORD_LEN 10
+#endif
+
+#ifndef SPNEGO_OID
+#define SPNEGO_OID_LENGTH 6
+#define SPNEGO_OID "\x2b\x06\x01\x05\x05\x02"
+#endif
+
+/*
+ * 1.3.6.1.4.1.6876.11711.2.1.1
+ *
+ * {iso(1) identified-organization(3) dod(6) internet(1) private(4)
+ *   enterprise(1) 6876 vmwSecurity(11711) vmwAuthentication(2) vmwGSSAPI(1)
+ *   vmwSRP(1)}
+ * Official registered GSSAPI_SRP Mech OID
+ */
+#ifndef GSSAPI_SRP_MECH_OID_LENGTH
+#define GSSAPI_SRP_MECH_OID_LENGTH 12
+#endif
+
+#ifndef GSSAPI_SRP_MECH_OID
+#define GSSAPI_SRP_MECH_OID "\x2b\x06\x01\x04\x01\xb5\x5c\xdb\x3f\x02\x01\x01"
+#endif
+
+/*
+ * 1.3.6.1.4.1.6876.11711.2.1.1.1
+ *
+ * {iso(1) identified-organization(3) dod(6) internet(1) private(4)
+ *   enterprise(1) 6876 vmwSecurity(11711) vmwAuthentication(2) vmwGSSAPI(1)
+ *   vmwSRP(1) vmwSrpCredOptPwd(1)}
+ * Official registered GSSAPI_SRP password cred option OID
+ */
+#ifndef GSSAPI_SRP_CRED_OPT_PW
+#define GSSAPI_SRP_CRED_OPT_PW  \
+    "\x2b\x06\x01\x04\x01\xb5\x5c\xdb\x3f\x02\x01\x01\x01"
+#define GSSAPI_SRP_USERNAME  \
+    "\x2b\x06\x01\x04\x01\xb5\x5c\xdb\x3f\x02\x01\x01\x02"
+#endif
+
+#ifndef GSSAPI_SRP_CRED_OPT_PW_LEN
+#define GSSAPI_SRP_CRED_OPT_PW_LEN  13
+#endif
+
+/*
+ * vmwUnix 1.3.6.1.4.1.6876.11711.2.1.2
+ *   vmwUnixCredOptPwd 1.3.6.1.4.1.6876.11711.2.1.2.1
+ */
+
+/*
+ * 1.3.6.1.4.1.6876.11711.2.1.2
+ *
+ * {iso(1) identified-organization(3) dod(6) internet(1) private(4)
+ *   enterprise(1) 6876 vmwSecurity(11711) vmwAuthentication(2) vmwGSSAPI(1)
+ *   vmwUNIX(2)}
+ * Official registered GSSAPI_UNIX Mech OID
+ */
+#ifndef GSSAPI_UNIX_MECH_OID_LENGTH
+#define GSSAPI_UNIX_MECH_OID_LENGTH 12
+#endif
+
+#ifndef GSSAPI_UNIX_MECH_OID
+#define GSSAPI_UNIX_MECH_OID "\x2b\x06\x01\x04\x01\xb5\x5c\xdb\x3f\x02\x01\x02"
+#endif
+
+/*
+ * 1.3.6.1.4.1.6876.11711.2.1.2.1
+ *
+ * {iso(1) identified-organization(3) dod(6) internet(1) private(4)
+ *   enterprise(1) 6876 vmwSecurity(11711) vmwAuthentication(2) vmwGSSAPI(1)
+ *   vmwUNIX(2) vmwSrpCredOptPwd(1)}
+ * Official registered GSSAPI_UNIX password cred option OID
+ */
+#ifndef GSSAPI_UNIX_CRED_OPT_PW
+#define GSSAPI_UNIX_CRED_OPT_PW  \
+    "\x2b\x06\x01\x04\x01\xb5\x5c\xdb\x3f\x02\x01\x02\x01"
+#define GSSAPI_UNIX_USERNAME  \
+    "\x2b\x06\x01\x04\x01\xb5\x5c\xdb\x3f\x02\x01\x02\x02"
+#endif
+
+#ifndef GSSAPI_UNIX_CRED_OPT_PW_LEN
+#define GSSAPI_UNIX_CRED_OPT_PW_LEN  13
+#endif
 
 #ifdef __cplusplus
 }

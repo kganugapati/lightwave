@@ -29,6 +29,9 @@
 #include <config.h>
 
 #include <vmdirsys.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 // OpenLDAP ber library include files
 #include <lber.h>
@@ -54,8 +57,11 @@
 #include <ldaphead.h>
 #include <middlelayer.h>
 #include <replication.h>
+#include <vmacl.h>
 
+#include <structs.h>
 #include <prototypes.h>
+
 #define VDIR_SAFE_UNBIND_EXT_S(pLd)             \
     do {                                        \
         if (pLd) {                              \
@@ -68,14 +74,10 @@
 
 #pragma once
 #include "targetver.h"
-#define WIN32_LEAN_AND_MEAN // Exclude rarely-used stuff from Windows headers
 #include <windows.h>
 #include <WinSock2.h>
 #include <stdint.h>
 #include <stdlib.h>
-#if !defined(HAVE_DCERPC_WIN32)
-#include <rpc.h>
-#endif
 #include <assert.h>
 #include <stddef.h>
 #include <tchar.h>
@@ -93,9 +95,12 @@
 // SUNG kdcmerge should revmove this if not mantain our own cread cache
 #include <krb5/krb5.h>
 
-#undef LBERLIB_ONLY
+#define LW_STRICT_NAMESPACE
+#include <lw/types.h>
+#include <lw/hash.h>
+#include <lw/security-types.h>
 
-#include "banned.h"
+#undef LBERLIB_ONLY
 
 #include <vmdir.h>
 #include <vmdirtypes.h>
@@ -112,8 +117,11 @@
 #include <ldaphead.h>
 #include <middlelayer.h>
 #include <replication.h>
+#include <vmacl.h>
 
+#include <structs.h>
 #include "prototypes.h"
+#include "banned.h"
 #define VDIR_SAFE_UNBIND_EXT_S(pLd)             \
     do {                                        \
         if (pLd) {                              \

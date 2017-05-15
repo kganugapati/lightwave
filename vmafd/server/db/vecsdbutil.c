@@ -1,3 +1,12 @@
+/*
+ * Copyright (C) 2014 VMware, Inc. All rights reserved.
+ *
+ * Module   : vecsdbutil.c
+ * Author   : Aishu Raghavan (araghavan@vmware.com)
+ *
+ * Abstract :
+ *
+ */
 #include "includes.h"
 static
 VOID
@@ -37,17 +46,17 @@ VecsDbCreateCertStore(
         BAIL_ON_VECS_ERROR(dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_WRITE);
     BAIL_ON_VECS_ERROR(dwError);
 
-   dwError = VecsDbGetStoreCount(pDbContext, &dwSizeOfTable);
-   BAIL_ON_VECS_ERROR (dwError);
+    dwError = VecsDbGetStoreCount(pDbContext, &dwSizeOfTable);
+    BAIL_ON_VECS_ERROR (dwError);
 
-   if (dwSizeOfTable > STORE_TABLE_LIMIT)
-   {
-      dwError = ERROR_IMPLEMENTATION_LIMIT;
-      BAIL_ON_VECS_ERROR (dwError);
-   }
+    if (dwSizeOfTable > STORE_TABLE_LIMIT)
+    {
+       dwError = ERROR_IMPLEMENTATION_LIMIT;
+       BAIL_ON_VECS_ERROR (dwError);
+    }
 
     if(!pDbContext->pCreateStoreTable)
     {
@@ -160,7 +169,7 @@ VecsDbGetCertStore(
        BAIL_ON_VECS_ERROR(dwError);
    }
 
-   dwError = VecsDbCreateContext(&pDbContext);
+   dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
    BAIL_ON_VECS_ERROR(dwError);
 
    if(!pDbContext->pQueryStoreTable)
@@ -246,7 +255,7 @@ VecsDbGetCertStoreName(
        BAIL_ON_VECS_ERROR(dwError);
    }
 
-   dwError = VecsDbCreateContext(&pDbContext);
+   dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
    BAIL_ON_VECS_ERROR(dwError);
 
    if(!pDbContext->pQueryStoreTable)
@@ -335,7 +344,7 @@ VecsDbEnumCertStore(
     PWSTR *pszStoreNameArray = NULL;
     DWORD dwStoreTableSize = 0;
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR(dwError);
 
     dwError = VecsDbGetStoreCount (pDbContext, &dwStoreTableSize);
@@ -474,7 +483,7 @@ VecsDbDeleteCertStore(
     dwError = VecsDbGetCertStore(pwszStoreName, NULL , &dwStoreId);
     BAIL_ON_VECS_ERROR(dwError);
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_WRITE);
     BAIL_ON_VECS_ERROR(dwError);
 
     if (!pDbContext->pDeleteStore)
@@ -584,7 +593,7 @@ VecsDbAddCert(
       dwPrivateKeySize = (nPrivateKeySize+1)* sizeof(WCHAR);
    }
 
-   dwError = VecsDbCreateContext(&pDbContext);
+   dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_WRITE);
    BAIL_ON_VECS_ERROR(dwError);
 
    if(!pDbContext->pAddCertQuery)
@@ -754,7 +763,7 @@ VecsDbGetEntryByAliasInfoLevel1(
        BAIL_ON_VECS_ERROR(dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pGetCertFromAliasQuery)
@@ -897,7 +906,7 @@ VecsDbGetEntryByAliasInfoLevel2(
        BAIL_ON_VECS_ERROR(dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pGetCertFromAliasQuery)
@@ -1052,7 +1061,7 @@ VecsDbGetEntryTypeByAlias(
        BAIL_ON_VECS_ERROR(dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pQueryTypeByAlias)
@@ -1155,7 +1164,7 @@ VecsDbGetEntryDateByAlias(
        BAIL_ON_VECS_ERROR(dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pQueryDateByAlias)
@@ -1261,7 +1270,7 @@ VecsDbGetCertificateByAlias(
        BAIL_ON_VECS_ERROR(dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pGetCertFromAliasQuery)
@@ -1374,7 +1383,7 @@ VecsDbGetPrivateKeyByAlias(
        BAIL_ON_VECS_ERROR(dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pGetPKeyFromAlias)
@@ -1479,7 +1488,7 @@ VecsDbGetEntriesCount(
     sqlite3_stmt* pDbQuery = NULL;
     DWORD dwCertsReturned = 0;
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pQueryCertificatesPaged)
@@ -1554,7 +1563,7 @@ VecsDbEnumInfoLevel1(
     PVMAFD_CERT_ARRAY pCertContainer = NULL;
     PVMAFD_CERT_CONTAINER pContainer = NULL;
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pQueryInfoLevel1)
@@ -1718,7 +1727,7 @@ VecsDbEnumInfoLevel2(
     PBYTE pCertBlob = NULL;
     DWORD dwCertSize = 0;
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pQueryInfoLevel2)
@@ -1898,7 +1907,6 @@ VecsDbDeleteCert(
     )
 {
     DWORD dwError = 0;
-    DWORD dwDbStatus = 0;
     PVECS_DB_CONTEXT pDbContext = NULL;
     sqlite3_stmt* pDbQuery = NULL;
 
@@ -1908,7 +1916,7 @@ VecsDbDeleteCert(
         BAIL_ON_VECS_ERROR (dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_WRITE);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pDelCertQuery)
@@ -1952,8 +1960,14 @@ VecsDbDeleteCert(
                    );
     BAIL_ON_VECS_ERROR(dwError);
 
-    dwDbStatus = VecsDbStepSql(pDbQuery);
-    BAIL_ON_VECS_ERROR (dwDbStatus);
+    dwError = VecsDbStepSql(pDbQuery);
+    BAIL_ON_VECS_ERROR (dwError);
+
+    if (!sqlite3_changes(pDbContext->pDb))
+    {
+        dwError = ERROR_OBJECT_NOT_FOUND;
+        BAIL_ON_VECS_ERROR(dwError);
+    }
 
     dwError = VecsDbCommitTransaction(pDbContext->pDb);
     BAIL_ON_VECS_ERROR(dwError);
@@ -2004,7 +2018,7 @@ VecsDbSetEntryDwordAttributeByAlias(
        BAIL_ON_VECS_ERROR(dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_WRITE);
     BAIL_ON_VECS_ERROR(dwError);
 
     if(!pDbContext->pUpdateCertAttrQuery)
@@ -2191,3 +2205,136 @@ VecsDbIsRestrictedStore (
     return bIsRestricted;
 }
 
+DWORD
+VecsDbSetDbVersion(
+    DWORD dwVersion
+    )
+{
+    DWORD dwError = 0;
+    PVECS_DB_CONTEXT pDbContext = NULL;
+    sqlite3_stmt* pDbQuery = NULL;
+
+    char szQuery[] = "INSERT INTO AfdProperties ("
+                     " Property,"
+                     " Value)"
+                     " VALUES(\"dbVersion\", :version);";
+
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_WRITE);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = sqlite3_prepare_v2(
+                        pDbContext->pDb,
+                        szQuery,
+                        -1,
+                        &pDbQuery,
+                        NULL
+                        );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsBindDword(
+                        pDbQuery,
+                        ":version",
+                        dwVersion
+                        );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsDbStepSql(pDbQuery);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+
+    if (pDbQuery)
+    {
+        sqlite3_reset(pDbQuery);
+        sqlite3_finalize(pDbQuery);
+    }
+    if (pDbContext)
+    {
+        VecsDbReleaseContext(pDbContext);
+    }
+    return dwError;
+error:
+
+    goto cleanup;
+}
+
+DWORD
+VecsDbGetDbVersion(
+    PDWORD pdwVersion
+    )
+{
+    DWORD dwError = 0;
+    DWORD dwVersion = 0;
+    PVECS_DB_CONTEXT pDbContext = NULL;
+    sqlite3_stmt* pDbQuery = NULL;
+    DWORD bTableExists = 0;
+    DWORD dwCount = 0;
+
+    char szQuery[] = "SELECT Value from AfdProperties"
+                     " WHERE Property = \"dbVersion\"";
+
+    if (!pdwVersion)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsCheckifTableExists(pDbContext->pDb, "AfdProperties", &bTableExists);
+    BAIL_ON_VECS_ERROR(dwError);
+
+    if (bTableExists)
+    {
+        dwError = sqlite3_prepare_v2(
+                            pDbContext->pDb,
+                            szQuery,
+                            -1,
+                            &pDbQuery,
+                            NULL
+                            );
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = VecsDbStepSql(pDbQuery);
+        if (dwError == SQLITE_ROW)
+        {
+            dwError = VecsDBGetColumnInt(
+                            pDbQuery,
+                            "Value",
+                            &dwVersion
+                            );
+            BAIL_ON_VMAFD_ERROR(dwError);
+            ++dwCount;
+        }
+        else if (dwError == SQLITE_DONE || !dwCount)
+        {
+            // pre 6.5 version
+            dwVersion = 0;
+            dwError = 0;
+        }
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    *pdwVersion = dwVersion;
+
+cleanup:
+
+    if (pDbQuery)
+    {
+        sqlite3_reset(pDbQuery);
+        sqlite3_finalize(pDbQuery);
+    }
+    if (pDbContext)
+    {
+        VecsDbReleaseContext(pDbContext);
+    }
+    return dwError;
+error:
+    if (pdwVersion)
+    {
+        *pdwVersion = 0;
+    }
+
+    goto cleanup;
+}

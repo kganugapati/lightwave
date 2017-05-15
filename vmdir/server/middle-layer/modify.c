@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -23,11 +23,12 @@ AddAttrToEntryStruct(
    VDIR_ATTRIBUTE * attr);
 
 static
-void
+DWORD
 AddAttrValsToEntryStruct(
    VDIR_ENTRY *     e,
    VDIR_ATTRIBUTE * eAttr,
-   VDIR_ATTRIBUTE * modAttr);
+   VDIR_ATTRIBUTE * modAttr,
+   PSTR*            ppszErrMsg);
 
 static
 int
@@ -35,7 +36,15 @@ CheckIfAnAttrValAlreadyExists(
     PVDIR_SCHEMA_CTX  pSchemaCtx,
     VDIR_ATTRIBUTE *  eAttr,
     VDIR_ATTRIBUTE *  modAttr,
-    PSTR*             ppszErrorMsg
+    PSTR*             ppszErrorMsg,
+    BOOLEAN           bIsReplOp
+    );
+
+static
+int
+GenerateNewParent(
+    PVDIR_ENTRY pEntry,
+    PVDIR_ATTRIBUTE pDnAttr
     );
 
 static
@@ -44,7 +53,8 @@ DelAttrValsFromEntryStruct(
    PVDIR_SCHEMA_CTX  pSchemaCtx,
    VDIR_ENTRY *      e,
    VDIR_ATTRIBUTE *  modAttr,
-   PSTR*             ppszErrorMsg
+   PSTR*             ppszErrorMsg,
+   BOOLEAN           bIsReplOp
    );
 
 static
@@ -53,12 +63,10 @@ RemoveAttrVals(
    VDIR_ATTRIBUTE * eAttr,
    VDIR_ATTRIBUTE * modAttr);
 
-static
-int
-ModifyEntryStructureRuleCheck(
-    PVDIR_OPERATION      pOperation,
-    VDIR_MODIFICATION*   pMods,
-    PVDIR_ENTRY          pEntry);
+static int
+VmDirGenerateRenameAttrsMods(
+    PVDIR_OPERATION pOperation
+    );
 
 static
 int
@@ -74,6 +82,15 @@ _VmDirPatchBadMemberData(
     PVDIR_ENTRY         pEntry
     );
 
+static
+int
+_VmDirAttrValueMetaDataToAdd(
+    PVDIR_MODIFICATION  pMod,
+    int                 currentVersion,
+    PSTR                pTimeStamp,
+    char *              usnChanged
+    );
+
 int
 VmDirModifyEntryCoreLogic(
     VDIR_OPERATION *    pOperation, /* IN */
@@ -84,6 +101,9 @@ VmDirModifyEntryCoreLogic(
 {
     int       retVal = LDAP_SUCCESS;
     PSTR      pszLocalErrMsg = NULL;
+    BOOLEAN   bDnModified = FALSE;
+    BOOLEAN   bLeafNode = FALSE;
+    PVDIR_ATTRIBUTE pAttrMemberOf = NULL;
 
     retVal = pOperation->pBEIF->pfnBEIdToEntry( pOperation->pBECtx,
                                                 pOperation->pSchemaCtx,
@@ -104,9 +124,33 @@ VmDirModifyEntryCoreLogic(
                                   "VmDirSrvAccessCheck failed - (%u)", retVal);
 
     // Apply modify operations to the current entry (in pack format)
-    retVal = VmDirApplyModsToEntryStruct( pOperation->pSchemaCtx, modReq, pEntry, &pszLocalErrMsg );
+    retVal = VmDirApplyModsToEntryStruct( pOperation->pSchemaCtx, modReq, pEntry, &bDnModified, &pszLocalErrMsg,
+                                          pOperation->opType == VDIR_OPERATION_TYPE_REPL);
     BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg,
                                   "ApplyModsToEntryStruct failed - (%d)(%s)", retVal, pszLocalErrMsg);
+
+    if (bDnModified)
+    {
+        retVal = pOperation->pBEIF->pfnBEChkIsLeafEntry(
+                                        pOperation->pBECtx,
+                                        entryId,
+                                        &bLeafNode);
+        BAIL_ON_VMDIR_ERROR(retVal);
+
+        if (bLeafNode == FALSE)
+        {
+            retVal = LDAP_NOT_ALLOWED_ON_NONLEAF;
+            BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "Rename of a non-leaf node is not allowed." );
+        }
+
+        // Verify not a member of any groups
+        retVal = VmDirFindMemberOfAttribute(pEntry, &pAttrMemberOf);
+        if (pAttrMemberOf && pAttrMemberOf->numVals > 0)
+        {
+            retVal = LDAP_UNWILLING_TO_PERFORM;
+            BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "Rename of a node with memberships is not allowed." );
+        }
+    }
 
     if (pOperation->opType != VDIR_OPERATION_TYPE_REPL)
     {
@@ -114,10 +158,6 @@ VmDirModifyEntryCoreLogic(
         retVal = VmDirSchemaCheck(pEntry);
         BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "Schema check failed - (%u)(%s)",
                                       retVal, VDIR_SAFE_STRING(VmDirSchemaCtxGetErrorMsg(pEntry->pSchemaCtx)));
-
-        // Schema structure rule check
-        retVal = ModifyEntryStructureRuleCheck(pOperation, modReq->mods, pEntry);
-        BAIL_ON_VMDIR_ERROR( retVal );
 
         // check and read lock dn referenced entries
         retVal = pOperation->pBEIF->pfnBEChkDNReference( pOperation->pBECtx, pEntry );
@@ -136,6 +176,7 @@ VmDirModifyEntryCoreLogic(
 
 cleanup:
 
+    VmDirFreeAttribute(pAttrMemberOf);
     VMDIR_SAFE_FREE_MEMORY( pszLocalErrMsg );
 
     return retVal;
@@ -145,6 +186,12 @@ error:
     VmDirLog( LDAP_DEBUG_ANY, "CoreLogicModifyEntry failed, DN = %s, (%u)(%s)",
                                VDIR_SAFE_STRING( modReq->dn.lberbv.bv_val ),
                                retVal, VDIR_SAFE_STRING(pszLocalErrMsg) );
+
+    if ( pOperation->ldapResult.pszErrMsg == NULL )
+    {
+        pOperation->ldapResult.pszErrMsg = pszLocalErrMsg;
+        pszLocalErrMsg = NULL;
+    }
 
     goto cleanup;
 }
@@ -179,18 +226,18 @@ VmDirMLModify(
     dwError = VmDirInternalModifyEntry( pOperation);
     BAIL_ON_VMDIR_ERROR( dwError );
 
+    if (pOperation->opType == VDIR_OPERATION_TYPE_EXTERNAL)
+    {
+        pOperation->pBEIF->pfnBESetMaxOriginatingUSN(pOperation->pBECtx,
+                                                     pOperation->pBECtx->wTxnUSN);
+    }
+
 cleanup:
-
-    VmDirSendLdapResult( pOperation );
-
     VMDIR_SAFE_FREE_MEMORY(pszLocalErrMsg);
-
     return pOperation->ldapResult.errCode;
 
 error:
-
     VMDIR_SET_LDAP_RESULT_ERROR( &(pOperation->ldapResult), dwError, pszLocalErrMsg);
-
     goto cleanup;
 }
 
@@ -224,17 +271,33 @@ VmDirInternalModifyEntry(
 
     modReq = &(pOperation->request.modifyReq);
 
+    // make sure we have minimum DN length
+    if (modReq->dn.lberbv_len < 3)
+    {
+        retVal = VMDIR_ERROR_INVALID_REQUEST;
+        BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "Invalid DN length - (%u)", modReq->dn.lberbv_len);
+    }
+
     // Normalize DN
     retVal = VmDirNormalizeDN( &(modReq->dn), pOperation->pSchemaCtx);
     BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "DN normalization failed - (%u)(%s)",
                                   retVal, VDIR_SAFE_STRING(VmDirSchemaCtxGetErrorMsg(pOperation->pSchemaCtx)) );
 
+    // Acquire schema modification mutex
+    retVal = VmDirSchemaModMutexAcquire(pOperation);
+    BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "Failed to lock schema mod mutex", retVal );
+
+
     if (pOperation->opType != VDIR_OPERATION_TYPE_REPL)
     {
-        // Execute pre modify plugin logic
-        retVal = VmDirExecutePreModApplyModifyPlugins(pOperation, NULL, retVal);
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "PreModApplyModify plugin failed - (%u)",  retVal );
+        // Generate mods based on MODN request
+        retVal = VmDirGenerateRenameAttrsMods( pOperation );
+        BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "GenerateDeleteAttrsMods failed - (%u)", retVal);
     }
+
+    // Execute pre modify plugin logic
+    retVal = VmDirExecutePreModApplyModifyPlugins(pOperation, NULL, retVal);
+    BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "PreModApplyModify plugin failed - (%u)",  retVal );
 
     // Normalize attribute values in mods
     retVal = VmDirNormalizeMods( pOperation->pSchemaCtx, modReq->mods, &pszLocalErrMsg );
@@ -333,12 +396,14 @@ txnretry:
     // transaction retry loop end.
     // ************************************************************************************
 
-    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Modify Entry (%s)", VDIR_SAFE_STRING(pEntry->dn.lberbv_val));
+    gVmdirGlobals.dwLdapWrites++;
+
+    VmDirAuditWriteOp(pOperation, VDIR_SAFE_STRING(pEntry->dn.lberbv_val));
 
 cleanup:
 
     {
-        int iPostCommitPluginRtn  = 0;
+        int iPostCommitPluginRtn = 0;
 
         // Execute post modify plugin logic
         iPostCommitPluginRtn = VmDirExecutePostModifyCommitPlugins(pOperation, &entry, retVal);
@@ -351,6 +416,9 @@ cleanup:
                       iPostCommitPluginRtn);
         }
     }
+
+    // Release schema modification mutex
+    (VOID)VmDirSchemaModMutexRelease(pOperation);
 
     VmDirFreeEntryContent ( &entry );
     VMDIR_SAFE_FREE_MEMORY( pszLocalErrMsg );
@@ -557,7 +625,9 @@ VmDirApplyModsToEntryStruct(
     PVDIR_SCHEMA_CTX    pSchemaCtx,
     ModifyReq *         modReq,
     PVDIR_ENTRY         pEntry,
-    PSTR*               ppszErrorMsg
+    PBOOLEAN            pbDnModified,
+    PSTR*               ppszErrorMsg,
+    BOOLEAN             bIsReplOp
     )
 {
     int                 retVal = LDAP_SUCCESS;
@@ -601,10 +671,11 @@ VmDirApplyModsToEntryStruct(
                 }
                 else // Add values to an existing attribute case.
                 {
-                    retVal = CheckIfAnAttrValAlreadyExists(pSchemaCtx, attr, &(currMod->attr), &pszLocalErrorMsg);
+                    retVal = CheckIfAnAttrValAlreadyExists(pSchemaCtx, attr, &(currMod->attr), &pszLocalErrorMsg, bIsReplOp);
                     BAIL_ON_VMDIR_ERROR( retVal );
 
-                    AddAttrValsToEntryStruct( pEntry, attr, &(currMod->attr) );
+                    retVal = AddAttrValsToEntryStruct( pEntry, attr, &(currMod->attr), &pszLocalErrorMsg );
+                    BAIL_ON_VMDIR_ERROR(retVal);
                 }
                 prevMod = currMod;
                 currMod = currMod->next;
@@ -629,7 +700,7 @@ VmDirApplyModsToEntryStruct(
                 }
                 else
                 {
-                    retVal = DelAttrValsFromEntryStruct(pSchemaCtx, pEntry, &(currMod->attr), &pszLocalErrorMsg );
+                    retVal = DelAttrValsFromEntryStruct(pSchemaCtx, pEntry, &(currMod->attr), &pszLocalErrorMsg, bIsReplOp);
                     if ((retVal == VMDIR_ERROR_NO_SUCH_ATTRIBUTE) &&
                         (VmDirStringCompareA(currMod->attr.type.lberbv.bv_val, ATTR_USER_PASSWORD, FALSE) == 0))
                     {   // for user password change, the old password supplied != existing record
@@ -665,6 +736,18 @@ VmDirApplyModsToEntryStruct(
                     }
                     else // Real replace attribute values case
                     {
+                        // If DN is being modified, may need to re-parent
+                        if (VmDirStringCompareA(attr->type.lberbv.bv_val, ATTR_DN, FALSE) == 0)
+                        {
+                            if (pbDnModified)
+                            {
+                                *pbDnModified = TRUE;
+                            }
+
+                            retVal = GenerateNewParent(pEntry, &(currMod->attr));
+                            BAIL_ON_VMDIR_ERROR(retVal);
+                        }
+
                         // Setup Delete attribute and Add attribute mods. Change currMod->operation to ADD, and
                         // insert a DELETE mod for this attribute before this mod.
 
@@ -698,6 +781,7 @@ VmDirApplyModsToEntryStruct(
                 assert( FALSE );
         }
     }
+
 
 cleanup:
 
@@ -826,6 +910,36 @@ VmDirGenerateModsNewMetaData(
             currentVersion = VmDirStringToIA(strchr(pMod->attr.metaData, ':') + 1);
         }
 
+        if(currentVersion > 0 && !pMod->attr.pATDesc->bSingleValue)
+        {
+            if (VDIR_CONCURRENT_ATTR_VALUE_UPDATE_ENABLED && //When concurrent attribute update feature enabled.
+                (pMod->operation == MOD_OP_ADD || (pMod->operation == MOD_OP_DELETE && pMod->attr.numVals > 0)))
+            {
+                //Create attr-value-meta-data instread of attr-meta-data PR 1531924
+                retVal = _VmDirAttrValueMetaDataToAdd(pMod, currentVersion, origTimeStamp, pUsnChangedMod->attr.vals[0].lberbv.bv_val);
+                BAIL_ON_VMDIR_ERROR( retVal );
+                continue;
+            }
+            else
+            {
+                // MOD_OP_REPALCE or MOD_OP_DELETE with empty value on multi-value attr
+                // Create the list of attr-value-meta-data to be deleted.
+                // If VDIR_CONCURRENT_ATTR_VALUE_UPDATE_ENABLED is FALSE,
+                // then pfnBEGetAttrValueMetaData() does nothing.
+                retVal = pOperation->pBEIF->pfnBEGetAttrValueMetaData(pOperation->pBECtx, entryId,
+                                                                      pMod->attr.pATDesc->usAttrID,
+                                                                      &pMod->attr.valueMetaDataToDelete);
+                BAIL_ON_VMDIR_ERROR( retVal );
+            }
+        }
+
+        // Get here if modify is NOT to add/delete a value on a multivalue value attribute
+        // or there is NO any value yet for the attribute.
+
+        // Force version gap if specified by pMod composer.
+        // User case: force sync schema metadata version in 6.5 schema patch.
+        currentVersion += pMod->usForceVersionGap;
+
         // SJ-TBD: Since, currently, Replace mod is replaced by Delete and Add mods, the logic to set new attribute
         // meta data in each of these 2 mods is bit strange, but works, because both Delete and Add mods read
         // current attribute meta data from the DB, and not Add mod seeing attribute meta data from the previous
@@ -836,6 +950,7 @@ VmDirGenerateModsNewMetaData(
                              "%s:%d:%s:%s:%s", pUsnChangedMod->attr.vals[0].lberbv.bv_val, currentVersion + 1,
                              gVmdirServerGlobals.invocationId.lberbv.bv_val,
                              origTimeStamp, pUsnChangedMod->attr.vals[0].lberbv.bv_val );
+
     }
 
 cleanup:
@@ -959,6 +1074,40 @@ _VmDirExternalModsSanityCheck(
                                             "attribute (%s) can not be modified",
                                             VDIR_SAFE_STRING(pLocalMod->attr.pATDesc->pszName));
         }
+
+        if ( pLocalMod->operation == MOD_OP_ADD ||
+             pLocalMod->operation == MOD_OP_REPLACE )
+        {
+            // ADD or REPLACE principal name, validate its syntax.
+            if ( VmDirStringCompareA(pLocalMod->attr.type.lberbv_val, ATTR_KRB_UPN, FALSE) == 0 ||
+                 VmDirStringCompareA(pLocalMod->attr.type.lberbv_val, ATTR_KRB_SPN, FALSE) == 0 )
+            {
+                retVal = VmDirValidatePrincipalName( &(pLocalMod->attr), &pszLocalErrMsg);
+                BAIL_ON_VMDIR_ERROR(retVal);
+            }
+            else if (VmDirStringCompareA(pLocalMod->attr.type.lberbv_val, ATTR_OBJECT_SECURITY_DESCRIPTOR, FALSE) == 0)
+            {
+                BOOLEAN bReturn = FALSE;
+
+                bReturn = VmDirValidRelativeSecurityDescriptor(
+                            (PSECURITY_DESCRIPTOR_RELATIVE)pLocalMod->attr.vals[0].lberbv_val,
+                            (ULONG)pLocalMod->attr.vals[0].lberbv_len,
+                            OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION);
+                if (!bReturn)
+                {
+                    retVal = VMDIR_ERROR_BAD_ATTRIBUTE_DATA;
+                    BAIL_ON_VMDIR_ERROR(retVal);
+                }
+            }
+        }
+        else if (pLocalMod->operation == MOD_OP_DELETE)
+        {
+            if (VmDirStringCompareA(pLocalMod->attr.type.lberbv_val, ATTR_OBJECT_SECURITY_DESCRIPTOR, FALSE) == 0)
+            {
+                retVal = VMDIR_ERROR_DATA_CONSTRAINT_VIOLATION;
+                BAIL_ON_VMDIR_ERROR(retVal);
+            }
+        }
     }
 
 cleanup:
@@ -981,31 +1130,54 @@ error:
  */
 
 static
-void
+DWORD
 AddAttrValsToEntryStruct(
    VDIR_ENTRY *     e,
    VDIR_ATTRIBUTE * eAttr,    // Entry attribute to be updated with new attribute values
-   VDIR_ATTRIBUTE * modAttr   // Modify attribute containing new attribute values
+   VDIR_ATTRIBUTE * modAttr,  // Modify attribute containing new attribute values
+   PSTR*            ppszErrMsg
    )
 {
     unsigned int     i = 0;
     unsigned int     j = 0;
-    DWORD dwError = ERROR_SUCCESS;
+    DWORD   dwError = ERROR_SUCCESS;
+    PSTR    pszErrMsg = NULL;
 
     assert( e->allocType == ENTRY_STORAGE_FORMAT_NORMAL );
+
+    if ( (size_t)eAttr->numVals + (size_t)modAttr->numVals > UINT16_MAX)
+    {
+        dwError = VMDIR_ERROR_DATA_CONSTRAINT_VIOLATION;
+        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pszErrMsg),
+                                      "Too many %s attribute values, max %u allowed.",
+                                      VDIR_SAFE_STRING(eAttr->type.lberbv_val), UINT16_MAX);
+    }
 
     dwError = VmDirReallocateMemoryWithInit( eAttr->vals, (PVOID*)(&(eAttr->vals)),
                                              (eAttr->numVals + modAttr->numVals + 1) * sizeof( VDIR_BERVALUE ),
                                              (eAttr->numVals + 1) * sizeof( VDIR_BERVALUE ) );
+    BAIL_ON_VMDIR_ERROR(dwError);
 
     for (i = 0, j = eAttr->numVals; i < modAttr->numVals; i++, j++)
     {
-        VmDirBervalContentDup( &modAttr->vals[i], &eAttr->vals[j] );
+        dwError = VmDirBervalContentDup( &modAttr->vals[i], &eAttr->vals[j] );
+        BAIL_ON_VMDIR_ERROR(dwError);
     }
     memset( &(eAttr->vals[j]), 0, sizeof(VDIR_BERVALUE) ); // set last BerValue.lberbv.bv_val to NULL;
     eAttr->numVals += modAttr->numVals;
 
-    return;
+cleanup:
+    VMDIR_SAFE_FREE_MEMORY(pszErrMsg);
+    return dwError;
+
+error:
+    if (ppszErrMsg)
+    {
+        *ppszErrMsg = pszErrMsg;
+        pszErrMsg = NULL;
+    }
+
+    goto cleanup;
 }
 
 /*
@@ -1019,15 +1191,17 @@ CheckIfAnAttrValAlreadyExists(
     PVDIR_SCHEMA_CTX  pSchemaCtx,
     VDIR_ATTRIBUTE *  eAttr,
     VDIR_ATTRIBUTE *  modAttr,
-    PSTR*             ppszErrorMsg
+    PSTR*             ppszErrorMsg,
+    BOOLEAN           bIsReplOp
     )
 {
     int retVal = LDAP_SUCCESS;
-    unsigned int i = 0;
-    unsigned int j = 0;
-    PSTR         pszLocalErrorMsg = NULL;
+    int i = 0;
+    int j = 0;
+    int numVals = modAttr->numVals;
+    PSTR    pszLocalErrorMsg = NULL;
 
-    for (i=0; i < eAttr->numVals; i++)
+    for (i=0; i < (int)eAttr->numVals; i++)
     {
         retVal = VmDirSchemaBervalNormalize( pSchemaCtx, modAttr->pATDesc, // Assumption: modAttr type is same as eAttr type
                                               &eAttr->vals[i]) ;
@@ -1037,7 +1211,7 @@ CheckIfAnAttrValAlreadyExists(
                                 VMDIR_MIN(eAttr->vals[i].lberbv.bv_len, VMDIR_MAX_LOG_OUTPUT_LEN),
                                 VDIR_SAFE_STRING(eAttr->vals[i].lberbv.bv_val));
 
-        for (j = 0; j < modAttr->numVals; j++)
+        for (j = 0; j < (int)modAttr->numVals; j++)
         {
             // modAttr values are already normalized.
             assert( modAttr->vals[j].bvnorm_val );
@@ -1050,13 +1224,53 @@ CheckIfAnAttrValAlreadyExists(
         }
         if (j != modAttr->numVals) // found a match in middle
         {
-            retVal = VMDIR_ERROR_TYPE_OR_VALUE_EXISTS;
-            BAIL_ON_VMDIR_ERROR_WITH_MSG(   retVal, (pszLocalErrorMsg),
+            if (bIsReplOp)
+            {
+                /*
+                 * This is considered no error during replicaiton processing that implements concurrently
+                 * adding/deleting values on multi-valued attribute (PR 1531924)
+                 * E.g. at the supplier, delete a value in one LDAP modify, then add the same value
+                 * in the 2nd LDAP modify, only the 2nd valueMetaData is kept, and used to created the mod,
+                 * but both LDAP modifies happended to be contained in the same replModify.
+                 */
+                modAttr->vals[j].bvnorm_val[0] = '\0';
+                modAttr->vals[j].bvnorm_len = 1;
+                numVals--;
+            }
+            else
+            {
+                retVal = VMDIR_ERROR_TYPE_OR_VALUE_EXISTS;
+                BAIL_ON_VMDIR_ERROR_WITH_MSG(   retVal, (pszLocalErrorMsg),
                                     "Attribute (%s) value (%.*s) exists",
                                     VDIR_SAFE_STRING(modAttr->pATDesc->pszName),
                                     VMDIR_MIN(eAttr->vals[i].lberbv.bv_len, VMDIR_MAX_LOG_OUTPUT_LEN),
                                     VDIR_SAFE_STRING(eAttr->vals[i].lberbv.bv_val));
+            }
         }
+    }
+
+    if (numVals < (int)modAttr->numVals)
+    {
+         VDIR_BERVALUE * vals = modAttr->vals;
+         int modAttrNumVals = modAttr->numVals;
+
+         retVal = VmDirAllocateMemory(sizeof(VDIR_BERVALUE) * (numVals+1), (PVOID*)&modAttr->vals);
+         BAIL_ON_VMDIR_ERROR(retVal);
+
+         for (i = 0, j=0; i < modAttrNumVals; i++)
+         {
+             if (vals[i].bvnorm_len == 1 && vals[i].bvnorm_val[0] == '\0')
+             {
+                 VmDirFreeBervalContent(&vals[i]);
+             } else
+             {
+                 modAttr->vals[j++] = vals[i];
+             }
+         }
+         modAttr->vals[j].lberbv.bv_val = NULL;
+         modAttr->vals[j].lberbv.bv_len = 0;
+         modAttr->numVals = j;
+         VMDIR_SAFE_FREE_MEMORY(vals);
     }
 
 cleanup:
@@ -1081,14 +1295,14 @@ error:
  * Assumption: This function assumes/asserts that the modAttr does exist in the entry.
  *
  */
-
 static
 int
 DelAttrValsFromEntryStruct(
    PVDIR_SCHEMA_CTX  pSchemaCtx,
    VDIR_ENTRY *      e,
    VDIR_ATTRIBUTE *  modAttr,
-   PSTR*             ppszErrorMsg
+   PSTR*             ppszErrorMsg,
+   BOOLEAN           bIsReplOp
    )
 {
     int                 retVal = LDAP_SUCCESS;
@@ -1156,6 +1370,7 @@ DelAttrValsFromEntryStruct(
     }
     else // Specific attribute values need to be deleted.
     {
+        unsigned int matched_numVals = 0;
         // Check if all attribute values that are being deleted exist in the Attribute
         for (i=0; i < modAttr->numVals; i++)
         {
@@ -1170,11 +1385,27 @@ DelAttrValsFromEntryStruct(
                 if (modAttr->vals[i].bvnorm_len == eAttr->vals[j].bvnorm_len &&
                     memcmp( modAttr->vals[i].bvnorm_val, eAttr->vals[j].bvnorm_val, modAttr->vals[i].bvnorm_len) == 0)
                 {
+                    // found a match
+                    if (i > matched_numVals)
+                    {
+                        // need to shift value position
+                        modAttr->vals[matched_numVals] = modAttr->vals[i];
+                        memset(&modAttr->vals[i], 0, sizeof(modAttr->vals[i]));
+                    }
+                    matched_numVals++;
                     break;
                 }
             }
             if (j == eAttr->numVals) // did not find a match
             {
+                if (bIsReplOp)
+                {
+                    // This is considered no error during replicaiton processing that implements concurrently
+                    // adding/deleting values on multi-valued attribute (PR 1531924)
+                    VmDirFreeBervalContent(&modAttr->vals[i]);
+                    continue;
+                }
+
                 retVal = VMDIR_ERROR_NO_SUCH_ATTRIBUTE;
                 BAIL_ON_VMDIR_ERROR_WITH_MSG(   retVal, (pszLocalErrorMsg),
                                         "Attribute (%s) value (%.*s) being deleted does not exist.",
@@ -1183,8 +1414,12 @@ DelAttrValsFromEntryStruct(
                                         VDIR_SAFE_STRING(modAttr->vals[i].lberbv.bv_val));
             }
         }
+
+        // update modAttr numVals
+        modAttr->numVals = matched_numVals;
+
         // All values are being deleted. => Delete the whole attribute
-        if (modAttr->numVals == eAttr->numVals)
+        if (matched_numVals == eAttr->numVals)
         {
             // Adjust the "next" pointer of the attribute before the attribute being deleted. => Altering the attribute
             // chain.
@@ -1269,45 +1504,215 @@ RemoveAttrVals(
 }
 
 /*
- * if pMods contain objectclass, verify structure rule integrity.
- * *
- * *********************************************************************************************
- * BUGBUG BUGBUG BUGBUG BUGBUG BUGBUG BUGBUG BUGBUG BUGBUG BUGBUG BUGBUG - this is NOT complete
- * Correct logic is -
- * 1. check if structure objectclass is been modified
- * 2. check new structure objectclass is ok by its parent
- * 3. check new structure objectclass is ok by its children
- *
- * For now, only allow ADD new auxiliary objectclass.
- * Reject REPLACE and DELETE objectclass mod.
- * *********************************************************************************************
- *
- * RETURN:
- * LDAP_OPERATIONS_ERROR    - all other errors
+ * TODO: Should not allow renaming computers, domain controllers, replication
+ * agreements, server objects
  */
-static
-int
-ModifyEntryStructureRuleCheck(
-    PVDIR_OPERATION      pOperation,
-    VDIR_MODIFICATION*   pMods,
-    PVDIR_ENTRY          pEntry)
+static int
+VmDirGenerateRenameAttrsMods(
+    PVDIR_OPERATION pOperation
+    )
 {
-    int     iRetVal = 0;
-    VDIR_MODIFICATION*   pTmpMods = NULL;
+    int                 retVal = 0;
+    ModifyReq *         modReq = &(pOperation->request.modifyReq);
+    VDIR_BERVALUE       parentdn = VDIR_BERVALUE_INIT;
+    VDIR_BERVALUE       NewDn = VDIR_BERVALUE_INIT;
+    VDIR_BERVALUE       OldRdn = VDIR_BERVALUE_INIT;
+    VDIR_BERVALUE       NewRdn = VDIR_BERVALUE_INIT;
+    PSTR pszOldRdnAttrName = NULL;
+    PSTR pszOldRdnAttrVal = NULL;
+    PSTR pszNewRdnAttrName = NULL;
+    PSTR pszNewRdnAttrVal = NULL;
 
-    assert(pOperation && pEntry);
-
-    for (pTmpMods = pMods; pTmpMods != NULL; pTmpMods = pTmpMods->next)
+    if (modReq->newrdn.lberbv.bv_len == 0)
     {
-        if (VmDirStringCompareA(pTmpMods->attr.type.lberbv.bv_val, "objectclass", FALSE) == 0)
+        goto cleanup; // Nothing to do
+    }
+
+    if (strchr(modReq->newrdn.lberbv.bv_val, RDN_SEPARATOR_CHAR)) // FIXME : Need to handle escape
+    {
+        retVal = VMDIR_ERROR_UNWILLING_TO_PERFORM;
+        //BAIL_ON_VMDIR_ERROR_WITH_MSG(retVal, pszLocalErrMsg, "New RDN has more than one component");
+        BAIL_ON_VMDIR_ERROR(retVal);
+    }
+
+    if (modReq->newSuperior.lberbv.bv_len)
+    {
+        retVal = VmDirNormalizeDN( &(modReq->newSuperior), pOperation->pSchemaCtx);
+        //BAIL_ON_VMDIR_ERROR_WITH_MSG(retVal, pszLocalErrMsg, "DN normalization failed - (%u)(%s)",
+        //                              retVal, VDIR_SAFE_STRING(VmDirSchemaCtxGetErrorMsg(pOperation->pSchemaCtx)) );
+        BAIL_ON_VMDIR_ERROR(retVal)
+
+        retVal = VmDirCatDN(&modReq->newrdn, &modReq->newSuperior, &NewDn);
+        BAIL_ON_VMDIR_ERROR(retVal);
+    }
+    else
+    {
+        retVal = VmDirGetParentDN(&modReq->dn, &parentdn);
+        BAIL_ON_VMDIR_ERROR(retVal);
+
+        retVal = VmDirCatDN(&modReq->newrdn, &parentdn, &NewDn);
+        BAIL_ON_VMDIR_ERROR(retVal);
+    }
+
+    retVal = VmDirNormalizeDN( &NewDn, pOperation->pSchemaCtx);
+    //BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "DN normalization failed - (%u)(%s)",
+    //                              retVal, VDIR_SAFE_STRING(VmDirSchemaCtxGetErrorMsg(pOperation->pSchemaCtx)) );
+    BAIL_ON_VMDIR_ERROR( retVal );
+
+    retVal = VmDirGetRdn(&NewDn, &NewRdn);
+    BAIL_ON_VMDIR_ERROR(retVal);
+
+    retVal = VmDirRdnToNameValue(&NewRdn, &pszNewRdnAttrName, &pszNewRdnAttrVal);
+    BAIL_ON_VMDIR_ERROR(retVal);
+
+    retVal = VmDirGetRdn(&modReq->dn, &OldRdn);
+    BAIL_ON_VMDIR_ERROR(retVal);
+
+    retVal = VmDirRdnToNameValue(&OldRdn, &pszOldRdnAttrName, &pszOldRdnAttrVal);
+    BAIL_ON_VMDIR_ERROR(retVal);
+
+    // Change DN
+    retVal = VmDirAppendAMod(pOperation, MOD_OP_REPLACE, ATTR_DN, ATTR_DN_LEN, NewDn.bvnorm_val, NewDn.bvnorm_len);
+    BAIL_ON_VMDIR_ERROR( retVal );
+
+
+    if (strcmp(pszNewRdnAttrName, pszOldRdnAttrName) == 0)
+    {
+        if (strcmp(pszNewRdnAttrVal, pszOldRdnAttrVal) != 0)
         {
-            if (pTmpMods->operation != MOD_OP_ADD)
+            // Change was like CN=User1,... to CN=User2,... then may want to
+            // modify CN if bDeleteOldRdn
+            if (modReq->bDeleteOldRdn)
             {
-                iRetVal = VMDIR_ERROR_UNWILLING_TO_PERFORM;
-                break;
+                retVal = VmDirAppendAMod(pOperation, MOD_OP_DELETE, pszOldRdnAttrName, (int) VmDirStringLenA(pszOldRdnAttrName), pszOldRdnAttrVal, VmDirStringLenA(pszOldRdnAttrVal));
+                BAIL_ON_VMDIR_ERROR( retVal );
             }
+
+            retVal = VmDirAppendAMod(pOperation, MOD_OP_ADD, pszNewRdnAttrName, (int)VmDirStringLenA(pszNewRdnAttrName), pszNewRdnAttrVal, VmDirStringLenA(pszNewRdnAttrVal));
+            BAIL_ON_VMDIR_ERROR( retVal );
+        }
+    }
+    else
+    {
+        // If change was like CN=User1,... to OU=MyOU,... then
+        // need to add attribute OU=MyOu and potentially delete attribute CN=User1
+        retVal = VmDirAppendAMod(pOperation, MOD_OP_ADD, pszNewRdnAttrName, (int)VmDirStringLenA(pszNewRdnAttrName), pszNewRdnAttrVal, VmDirStringLenA(pszNewRdnAttrVal));
+        BAIL_ON_VMDIR_ERROR( retVal );
+
+        if (modReq->bDeleteOldRdn)
+        {
+            retVal = VmDirAppendAMod(pOperation, MOD_OP_DELETE, pszOldRdnAttrName,(int) VmDirStringLenA(pszOldRdnAttrName), NULL, 0);
+            BAIL_ON_VMDIR_ERROR( retVal );
         }
     }
 
-    return iRetVal;
+cleanup:
+
+    VmDirFreeBervalContent(&parentdn);
+    VmDirFreeBervalContent(&NewDn);
+    VmDirFreeBervalContent(&OldRdn);
+    VmDirFreeBervalContent(&NewRdn);
+    VMDIR_SAFE_FREE_STRINGA(pszOldRdnAttrName);
+    VMDIR_SAFE_FREE_STRINGA(pszOldRdnAttrVal);
+    VMDIR_SAFE_FREE_STRINGA(pszNewRdnAttrName);
+    VMDIR_SAFE_FREE_STRINGA(pszNewRdnAttrVal);
+    return retVal;
+
+error:
+    goto cleanup;
+}
+
+static
+int
+GenerateNewParent(
+    PVDIR_ENTRY pEntry,
+    PVDIR_ATTRIBUTE pDnAttr
+    )
+{
+    int retVal = 0;
+    VDIR_BERVALUE  NewParent = VDIR_BERVALUE_INIT;
+
+    if (!pEntry->pdn.bvnorm_val)
+    {
+        VmDirFreeBervalContent(&pEntry->pdn);
+
+        retVal = VmDirGetParentDN(&pEntry->dn, &pEntry->pdn);
+        BAIL_ON_VMDIR_ERROR(retVal);
+    }
+
+    retVal = VmDirGetParentDN(&pDnAttr->vals[0], &NewParent);
+    BAIL_ON_VMDIR_ERROR(retVal);
+
+    if (pEntry->pdn.bvnorm_val == NULL ||
+        NewParent.bvnorm_val == NULL ||
+        VmDirStringCompareA(pEntry->pdn.bvnorm_val, NewParent.bvnorm_val, FALSE) != 0)
+    {
+        retVal = VmDirBervalContentDup(&NewParent, &pEntry->newpdn);
+        BAIL_ON_VMDIR_ERROR(retVal);
+    }
+
+cleanup:
+    VmDirFreeBervalContent(&NewParent);
+    return retVal;
+error:
+    goto cleanup;
+}
+
+static
+int
+_VmDirAttrValueMetaDataToAdd(
+    PVDIR_MODIFICATION   pMod,
+    int                  currentVersion,
+    PSTR                 pTimeStamp,
+    char *               usnChanged
+    )
+{
+    int retVal = 0;
+    VDIR_BERVALUE *pAVmeta = NULL;
+    char *p1 = NULL;
+    char *p2 = NULL;
+    int i=0, value_len = 0, av_meta_len = 0;
+
+    for (i=0; i<(int)pMod->attr.numVals; i++)
+    {
+        char av_meta_pre[VMDIR_MAX_ATTR_VALUE_META_DATA_LEN] = {0};
+
+        value_len = (int)pMod->attr.vals[i].lberbv_len;
+        p1 = strchr(pMod->attr.metaData, ':') + 1;
+        p2 = strchr((strchr(p1, ':') + 1), ':');
+        *p2 = '\0';
+
+        retVal = VmDirStringNPrintFA(av_meta_pre, sizeof(av_meta_pre), sizeof(av_meta_pre) - 1, "%s:%s:%s:%s:%s:%s:%d:%d:",
+                     pMod->attr.type.lberbv.bv_val, usnChanged, p1, gVmdirServerGlobals.invocationId.lberbv.bv_val,
+                     pTimeStamp, usnChanged, pMod->operation, value_len);
+        BAIL_ON_VMDIR_ERROR(retVal);
+
+        *p2 = ':';
+        retVal = VmDirAllocateMemory(sizeof(VDIR_BERVALUE), (PVOID)&pAVmeta);
+        BAIL_ON_VMDIR_ERROR(retVal);
+
+        av_meta_len = (int)strlen(av_meta_pre) + value_len;
+        retVal = VmDirAllocateMemory(av_meta_len, (PVOID)&pAVmeta->lberbv.bv_val);
+        BAIL_ON_VMDIR_ERROR(retVal);
+
+        pAVmeta->bOwnBvVal = TRUE;
+        pAVmeta->lberbv.bv_len = av_meta_len;
+        retVal = VmDirCopyMemory(pAVmeta->lberbv.bv_val, av_meta_len, av_meta_pre, (int)strlen(av_meta_pre));
+        BAIL_ON_VMDIR_ERROR(retVal);
+
+        retVal = VmDirCopyMemory((char *)pAVmeta->lberbv.bv_val+(int)strlen(av_meta_pre), value_len,
+                                  (char *)pMod->attr.vals[i].lberbv.bv_val, value_len);
+        BAIL_ON_VMDIR_ERROR(retVal);
+
+        retVal = dequePush(&pMod->attr.valueMetaDataToAdd, pAVmeta);
+        BAIL_ON_VMDIR_ERROR(retVal);
+        pAVmeta = NULL;
+    }
+
+cleanup:
+    return retVal;
+
+error:
+    VmDirFreeBerval(pAVmeta);
+    goto cleanup;
 }

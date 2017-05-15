@@ -33,16 +33,10 @@ extern "C" {
 #endif
 
 // opstatistic.c
-DWORD
+VOID
 VmDirOPStatisticUpdate(
-    PVMDIR_OPERATION_STATISTIC   pStatistic,
-    uint64_t                    iThisTimeInMilliSecs
-    );
-
-// connection.c
-void
-VmDirDeleteConnection(
-    VDIR_CONNECTION **  conn
+    ber_tag_t opTag,
+    uint64_t iThisTimeInMilliSecs
     );
 
 #ifdef __cplusplus

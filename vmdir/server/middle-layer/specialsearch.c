@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2017 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -16,38 +16,6 @@
 
 #include "includes.h"
 
-static
-BOOLEAN
-_VmDirIsSearchForSchemaEntry(
-    PVDIR_OPERATION     pOp
-    );
-
-static
-BOOLEAN
-_VmDirIsSearchForADClassSchema(
-    PVDIR_OPERATION     pOp,
-    PSTR*               ppszName
-    );
-
-static
-BOOLEAN
-_VmDirIsSearchForADAttributeSchema(
-    PVDIR_OPERATION     pOp,
-    PSTR*               ppszName
-    );
-
-static
-BOOLEAN
-_VmDirIsSearchForAllADAttributeSchema(
-    PVDIR_OPERATION     pOp
-    );
-
-static
-BOOLEAN
-_VmDirIsSearchForServerStatus(
-    PVDIR_OPERATION     pOp
-    );
-
 /*
  * Return TRUE if search request require special handling.
  * If TRUE, the request will be served within this function.
@@ -60,13 +28,23 @@ VmDirHandleSpecialSearch(
     PVDIR_LDAP_RESULT  pLdapResult
     )
 {
-    DWORD       dwError = 0;
-    BOOLEAN     bRetVal = TRUE;
-    VDIR_ENTRY  schemaEntry = {0};
-    VDIR_ENTRY  dseRootEntry = {0};
-    PVDIR_ENTRY pEntry = NULL;
-    PSTR        pszClassSchemaName = NULL;
-    PSTR        pszAttributeSchemaName = NULL;
+    DWORD   dwError = 0;
+    size_t  i = 0;
+    BOOLEAN bHasTxn = FALSE;
+    BOOLEAN bRefresh = FALSE;
+    PVDIR_ENTRY_ARRAY   pEntryArray = NULL;
+    VDIR_SPECIAL_SEARCH_ENTRY_TYPE entryType = REGULAR_SEARCH_ENTRY_TYPE;
+    VMDIR_INTEGRITY_CHECK_JOB_STATE integrityCheckStat = INTEGRITY_CHECK_JOB_NONE;
+
+    static PCSTR pszEntryType[] =
+    {
+            "DSE Root",
+            "Schema Entry",
+            "Server Status",
+            "Replication Status",
+            "Schema Repl Status",
+            "Integrity Check Status"
+    };
 
     if ( !pOp || !pLdapResult )
     {
@@ -74,106 +52,138 @@ VmDirHandleSpecialSearch(
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
+    pEntryArray = &pOp->internalSearchEntryArray;
+
     if (VmDirIsSearchForDseRootEntry( pOp ))
     {
-        dwError = pOp->pBEIF->pfnBESimpleIdToEntry(DSE_ROOT_ENTRY_ID, &dseRootEntry);
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                      "DSE Root Entry search failed.");
+        entryType = SPECIAL_SEARCH_ENTRY_TYPE_DSE_ROOT;
+        pEntryArray->iSize = 1;
 
-        dwError = VmDirBuildComputedAttribute( pOp, &dseRootEntry );
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                      "DSE Root Entry send failed.");
+        dwError = VmDirAllocateMemory(
+                sizeof(VDIR_ENTRY), (PVOID*)&pEntryArray->pEntry);
+        BAIL_ON_VMDIR_ERROR(dwError);
 
-        dwError = VmDirSendSearchEntry( pOp, &dseRootEntry );
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                      "DSE Root Entry send failed.");
+        dwError = pOp->pBEIF->pfnBESimpleIdToEntry(
+                DSE_ROOT_ENTRY_ID, pEntryArray->pEntry);
+        BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pLdapResult->pszErrMsg),
+                "%s Entry search failed.", pszEntryType[entryType]);
+
+        dwError = VmDirBuildComputedAttribute(pOp, pEntryArray->pEntry);
+        BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pLdapResult->pszErrMsg),
+                "%s Entry send failed.", pszEntryType[entryType]);
     }
-    else if (_VmDirIsSearchForSchemaEntry( pOp ))
+    else if (VmDirIsSearchForSchemaEntry( pOp ))
     {
-      dwError = pOp->pBEIF->pfnBESimpleIdToEntry(SUB_SCEHMA_SUB_ENTRY_ID, &schemaEntry);
-      BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                    "Schema Entry search failed.");
+        entryType = SPECIAL_SEARCH_ENTRY_TYPE_SCHEMA_ENTRY;
+        pEntryArray->iSize = 1;
 
-      dwError = VmDirSendSearchEntry( pOp, &schemaEntry );
-      BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                    "Schema Entry send failed.");
+        dwError = VmDirSubSchemaSubEntry(&pEntryArray->pEntry);
+        BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pLdapResult->pszErrMsg),
+                "%s Entry search failed.", pszEntryType[entryType]);
     }
-    else if (_VmDirIsSearchForADClassSchema( pOp, &pszClassSchemaName ))
+    else if (VmDirIsSearchForServerStatus(pOp))
     {
-        PVDIR_ENTRY pCachedADEntry = NULL;    // Do NOT free, we don't own pADEntry
+        entryType = SPECIAL_SEARCH_ENTRY_TYPE_SERVER_STATUS;
+        pEntryArray->iSize = 1;
 
-        dwError = VmDirADCompatibleSearchClassSchema(   pOp->pSchemaCtx,
-                                                        pszClassSchemaName,  // Do NOT free
-                                                        &pCachedADEntry);
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                      "Class Schema %s Entry search failed.",
-                                      VDIR_SAFE_STRING(pszClassSchemaName));
-
-        dwError = VmDirSendSearchEntry( pOp, pCachedADEntry );
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                      "Class Schema %s Entry send failed.",
-                                      VDIR_SAFE_STRING(pszClassSchemaName));
+        dwError = VmDirServerStatusEntry(&pEntryArray->pEntry);
+        BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pLdapResult->pszErrMsg),
+                "%s Entry search failed.", pszEntryType[entryType]);
     }
-    else if (_VmDirIsSearchForADAttributeSchema( pOp, &pszAttributeSchemaName ))
+    else if (VmDirIsSearchForReplicationStatus(pOp))
     {
-        PVDIR_ENTRY pCachedADEntry = NULL;    // Do NOT free, we don't own pADEntry
+        entryType = SPECIAL_SEARCH_ENTRY_TYPE_REPL_STATUS;
+        pEntryArray->iSize = 1;
 
-        dwError = VmDirADCompatibleSearchAttributeSchema(   pOp->pSchemaCtx,
-                                                            pszAttributeSchemaName, // Do NOT free
-                                                            &pCachedADEntry);
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                       "Attribute Schema %s Entry search failed.",
-                                       VDIR_SAFE_STRING(pszAttributeSchemaName));
+        dwError = VmDirReplicationStatusEntry(&pEntryArray->pEntry);
+        BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pLdapResult->pszErrMsg),
+                "%s Entry search failed.", pszEntryType[entryType]);
+    }
+    else if (VmDirIsSearchForSchemaReplStatus(pOp, &bRefresh))
+    {
+        entryType = SPECIAL_SEARCH_ENTRY_TYPE_SCHEMA_REPL_STATUS;
 
-        dwError = VmDirSendSearchEntry( pOp, pCachedADEntry );
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                      "Attribute Schema %s Entry send failed.",
-                                      VDIR_SAFE_STRING(pszAttributeSchemaName));
+        if (bRefresh)
+        {
+            dwError = VmDirSchemaReplStatusEntriesRefresh();
+            BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pLdapResult->pszErrMsg),
+                    "%s Entry refresh failed.", pszEntryType[entryType]);
+        }
+        else
+        {
+            dwError = VmDirSchemaReplStatusEntriesRetrieve(
+                    pEntryArray, pOp->request.searchReq.scope);
+            BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pLdapResult->pszErrMsg),
+                    "%s Entry search failed.", pszEntryType[entryType]);
+        }
     }
-    else if (_VmDirIsSearchForAllADAttributeSchema(pOp))
+    else if (VmDirIsSearchForIntegrityCheckStatus(pOp, &integrityCheckStat))
     {
-        dwError = VmDirADCompatibleSendAllAttributeSchema( pOp );  // find and send all attributeSchema entries back
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                      "All Attribute Schema Entry send failed.");
-    }
-    else if (_VmDirIsSearchForServerStatus(pOp))
-    {
-        dwError = VmDirServerStatusEntry(&pEntry);
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                      "Server Status Entry search failed.");
+        BOOLEAN bIsMember = FALSE;
 
-        dwError = VmDirSendSearchEntry( pOp, pEntry );
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pLdapResult->pszErrMsg),
-                                      "Server Status Entry send failed.");
+        entryType = SPECIAL_SEARCH_ENTRY_TYPE_INTEGRITY_CHECK_STATUS;
+
+        dwError = VmDirIsBindDnMemberOfSystemDomainAdmins(NULL, &pOp->conn->AccessInfo, &bIsMember);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        if (!bIsMember)
+        {
+            BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INSUFFICIENT_ACCESS);
+        }
+
+        if (integrityCheckStat == INTEGRITY_CHECK_JOB_START ||
+            integrityCheckStat == INTEGRITY_CHECK_JOB_RECHECK)
+        {
+            dwError = VmDirIntegrityCheckStart(integrityCheckStat);
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
+        else if (integrityCheckStat == INTEGRITY_CHECK_JOB_STOP)
+        {
+            VmDirIntegrityCheckStop();
+        }
+        else if (integrityCheckStat == INTEGRITY_CHECK_JOB_SHOW_SUMMARY)
+        {
+            dwError = VmDirIntegrityCheckShowStatus(&pEntryArray->pEntry);
+            BAIL_ON_VMDIR_ERROR(dwError);
+
+            if (pEntryArray->pEntry)
+            {
+                pEntryArray->iSize = 1;
+            }
+        }
     }
-    else
+
+    if (entryType != REGULAR_SEARCH_ENTRY_TYPE)
     {
-       bRetVal = FALSE;
+
+        /*
+         * Read txn for preventing server crash (PR 1634501)
+         */
+        dwError = pOp->pBEIF->pfnBETxnBegin(pOp->pBECtx, VDIR_BACKEND_TXN_READ);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        bHasTxn = TRUE;
+
+        for (i = 0; i < pEntryArray->iSize; i++)
+        {
+            dwError = VmDirSendSearchEntry(pOp, &pEntryArray->pEntry[i]);
+            BAIL_ON_VMDIR_ERROR_WITH_MSG(dwError, (pLdapResult->pszErrMsg),
+                    "%s Entry send failed.", pszEntryType[entryType]);
+        }
     }
 
 cleanup:
-
-    if (pEntry)
+    if (bHasTxn)
     {
-        VmDirFreeEntry(pEntry);
+        pOp->pBEIF->pfnBETxnCommit(pOp->pBECtx);
     }
 
-    if (dseRootEntry.dn.lberbv_val)
-    {
-        VmDirFreeEntryContent( &dseRootEntry );
-    }
-
-    if (schemaEntry.dn.lberbv_val)
-    {
-        VmDirFreeEntryContent( &schemaEntry );
-    }
-
-    return bRetVal;
+    return entryType != REGULAR_SEARCH_ENTRY_TYPE;
 
 error:
-
-    VmDirLog( LDAP_DEBUG_ANY, "VmDirHandleSpecialSearch: (%d)(%s)", dwError, VDIR_SAFE_STRING(pLdapResult->pszErrMsg) );
-    pLdapResult->errCode = dwError;
+    VmDirLog( LDAP_DEBUG_ANY, "VmDirHandleSpecialSearch: (%d)(%s)",
+            dwError, VDIR_SAFE_STRING(pLdapResult->pszErrMsg) );
+    pLdapResult->vmdirErrCode = dwError;
 
     goto cleanup;
 }
@@ -217,9 +227,8 @@ VmDirIsSearchForDseRootEntry(
  * subentry information is being requested.
 */
 
-static
 BOOLEAN
-_VmDirIsSearchForSchemaEntry(
+VmDirIsSearchForSchemaEntry(
     PVDIR_OPERATION  pOp
     )
 {
@@ -228,181 +237,34 @@ _VmDirIsSearchForSchemaEntry(
 
     pSearchReq = &(pOp->request.searchReq);
 
-    if ( pSearchReq->scope == LDAP_SCOPE_BASE && VmDirStringCompareA( pOp->reqDn.lberbv.bv_val, SUB_SCHEMA_SUB_ENTRY_DN, FALSE) == 0 &&
-         pSearchReq->filter->choice == LDAP_FILTER_EQUALITY                             &&
-         pSearchReq->filter->filtComp.ava.type.lberbv.bv_len == ATTR_OBJECT_CLASS_LEN   &&
-         pSearchReq->filter->filtComp.ava.type.lberbv.bv_val != NULL                    &&
-         VmDirStringNCompareA( ATTR_OBJECT_CLASS, pSearchReq->filter->filtComp.ava.type.lberbv.bv_val, ATTR_OBJECT_CLASS_LEN, FALSE) == 0 &&
-         pSearchReq->filter->filtComp.ava.value.lberbv.bv_len == OC_SUB_SCHEMA_LEN      &&
-         pSearchReq->filter->filtComp.ava.value.lberbv.bv_val != NULL                   &&
-         VmDirStringNCompareA( OC_SUB_SCHEMA, pSearchReq->filter->filtComp.ava.value.lberbv.bv_val, OC_SUB_SCHEMA_LEN, FALSE) == 0
-       )
+    // scope must be base
+    if (pSearchReq->scope == LDAP_SCOPE_BASE &&
+        VmDirStringCompareA( pOp->reqDn.lberbv.bv_val, SUB_SCHEMA_SUB_ENTRY_DN, FALSE) == 0)
     {
-        bRetVal = TRUE;
-    }
-
-    return bRetVal;
-}
-
-/*
- * For ADSI compatibility - trap ADSI ClassSchema query.
- * The search pattern is :
- * BASE:    SCHEMA_NAMING_CONTEXT (in vmdird case, cn=schemacontext)
- * SCOPE:   ONE
- * FILTER:  (&(lDAPDisplayName=VALUE_OF_OBJECTCLASS)(!(isdefunct=TRUE))
- */
-static
-BOOLEAN
-_VmDirIsSearchForADClassSchema(
-    PVDIR_OPERATION     pOp,
-    PSTR*               ppszName        // caller does not own returned *ppszName
-    )
-{
-    BOOLEAN         bRetVal = FALSE;
-    SearchReq*      pSearchReq = NULL;
-
-    pSearchReq = &(pOp->request.searchReq);
-
-    if (pSearchReq->scope == LDAP_SCOPE_ONE                                                         &&
-        pOp->reqDn.lberbv.bv_val != NULL                                                            &&
-        VmDirStringCompareA(pOp->reqDn.lberbv.bv_val, SCHEMA_NAMING_CONTEXT_DN, FALSE) == 0         &&
-        // (&  beginning AND Fiilter
-        pSearchReq->filter->choice ==  LDAP_FILTER_AND
-       )
-    {
-        PVDIR_FILTER pFilter1 = pSearchReq->filter->filtComp.complex;
-        if (// (lDAPDisplayName=XXX)
-            pFilter1 != NULL                                                                            &&
-            pFilter1->choice == LDAP_FILTER_EQUALITY                                                    &&
-            pFilter1->filtComp.ava.type.lberbv.bv_val != NULL                                           &&
-            VmDirStringCompareA(pFilter1->filtComp.ava.type.lberbv.bv_val, "lDAPDisplayName", FALSE) == 0
-           )
+        // filter can be (objectClass=subschema)
+        if (pSearchReq->filter->choice == LDAP_FILTER_EQUALITY                              &&
+            pSearchReq->filter->filtComp.ava.type.lberbv.bv_len == ATTR_OBJECT_CLASS_LEN    &&
+            pSearchReq->filter->filtComp.ava.type.lberbv.bv_val != NULL                     &&
+            VmDirStringNCompareA( ATTR_OBJECT_CLASS, pSearchReq->filter->filtComp.ava.type.lberbv.bv_val, ATTR_OBJECT_CLASS_LEN, FALSE) == 0 &&
+            pSearchReq->filter->filtComp.ava.value.lberbv.bv_len == OC_SUB_SCHEMA_LEN       &&
+            pSearchReq->filter->filtComp.ava.value.lberbv.bv_val != NULL                    &&
+            VmDirStringNCompareA( OC_SUB_SCHEMA, pSearchReq->filter->filtComp.ava.value.lberbv.bv_val, OC_SUB_SCHEMA_LEN, FALSE) == 0
+            )
         {
-            PVDIR_FILTER pFilter2 = pFilter1->next;
-            if (// (!(isDefunct=TRUE))
-                pFilter2 != NULL                                                                            &&
-                pFilter2->choice == LDAP_FILTER_NOT                                                         &&
-                pFilter2->filtComp.complex != NULL                                                          &&
-                pFilter2->filtComp.complex->choice == LDAP_FILTER_EQUALITY                                  &&
-                pFilter2->filtComp.complex->filtComp.ava.type.lberbv.bv_val != NULL                         &&
-                VmDirStringCompareA(pFilter2->filtComp.complex->filtComp.ava.type.lberbv.bv_val, "isDefunct", FALSE) == 0   &&
-                pFilter2->filtComp.complex->filtComp.ava.value.lberbv.bv_val != NULL                        &&
-                VmDirStringCompareA(pFilter2->filtComp.complex->filtComp.ava.value.lberbv.bv_val, "TRUE", FALSE) == 0
-               )
-            {
-                *ppszName = pFilter1->filtComp.ava.value.lberbv.bv_val;
-                bRetVal = TRUE;
-            }
+            bRetVal = TRUE;
+        }
+        // filter can be (objectClass=*)
+        else if (pSearchReq->filter->choice == LDAP_FILTER_PRESENT                              &&
+                 pSearchReq->filter->filtComp.present.lberbv.bv_len == ATTR_OBJECT_CLASS_LEN    &&
+                 pSearchReq->filter->filtComp.present.lberbv.bv_val != NULL                     &&
+                 VmDirStringNCompareA( ATTR_OBJECT_CLASS, pSearchReq->filter->filtComp.present.lberbv.bv_val, ATTR_OBJECT_CLASS_LEN, FALSE) == 0
+                 )
+        {
+            bRetVal = TRUE;
         }
     }
 
     return bRetVal;
-}
-
-/*
- * For ADSI compatibility - trap ADSI AttributeSchema query.
- * The search pattern is :
- * BASE:    SCHEMA_NAMING_CONTEXT (in vmdird case, cn=schemacontext)
- * SCOPE:   ONE
- * FILTER:  (&(objectclass=attributeschema)(lDAPDisplayName=VALUE_OF_ATTRIBUTETYPE)
- */
-static
-BOOLEAN
-_VmDirIsSearchForADAttributeSchema(
-    PVDIR_OPERATION     pOp,
-    PSTR*               ppszName        // caller does not own returned *ppszName
-    )
-{
-    BOOLEAN         bRetVal = FALSE;
-    SearchReq*      pSearchReq = &(pOp->request.searchReq);
-
-    if (pSearchReq->scope == LDAP_SCOPE_ONE                                                             &&
-        pOp->reqDn.lberbv.bv_val != NULL                                                                &&
-        VmDirStringCompareA(pOp->reqDn.lberbv.bv_val, SCHEMA_NAMING_CONTEXT_DN, FALSE) == 0             &&
-        // (&  beginning AND Fiilter
-        pSearchReq->filter->choice ==  LDAP_FILTER_AND
-       )
-    {
-        PVDIR_FILTER pFilter1 = pSearchReq->filter->filtComp.complex;
-        if (// (objectclass=attributeSchema)
-            pFilter1 != NULL                                                                                &&
-            pFilter1->choice == LDAP_FILTER_EQUALITY                                                        &&
-            pFilter1->filtComp.ava.type.lberbv.bv_val != NULL                                               &&
-            VmDirStringCompareA(pFilter1->filtComp.ava.type.lberbv.bv_val, "objectclass", FALSE) == 0       &&
-            pFilter1->filtComp.ava.value.lberbv.bv_val != NULL                                              &&
-            VmDirStringCompareA(pFilter1->filtComp.ava.value.lberbv.bv_val, "attributeSchema", FALSE) == 0
-           )
-        {
-            PVDIR_FILTER pFilter2 = pFilter1->next;
-            if (// (lDAPDisplayName=XXX)
-                pFilter2 != NULL                                                                                &&
-                pFilter2->choice == LDAP_FILTER_EQUALITY                                                        &&
-                pFilter2->filtComp.ava.type.lberbv.bv_val != NULL                                               &&
-                VmDirStringCompareA(pFilter2->filtComp.ava.type.lberbv.bv_val, "lDAPDisplayName", FALSE) == 0   &&
-                pFilter2->filtComp.ava.value.lberbv.bv_val != NULL
-               )
-            {
-                *ppszName = pFilter2->filtComp.ava.value.lberbv.bv_val;
-                bRetVal = TRUE;
-            }
-        }
-    }
-
-    return bRetVal;
-}
-
-/*
- * For ADSI compatibility - trap ADSI AttributeSchema query.
- * The search pattern is :
- * BASE:    SCHEMA_NAMING_CONTEXT (in vmdird case, cn=schemacontext)
- * SCOPE:   ONE
- * FILTER:  (&(objectclass=attributeschema)(!(isdefunct=TRUE))
- */
-static
-BOOLEAN
-_VmDirIsSearchForAllADAttributeSchema(
-    PVDIR_OPERATION     pOp
-    )
-{
-    BOOLEAN         bRetVal = FALSE;
-    SearchReq*      pSearchReq = &(pOp->request.searchReq);
-
-    if (pSearchReq->scope == LDAP_SCOPE_ONE                                                             &&
-        pOp->reqDn.lberbv.bv_val != NULL                                                                &&
-        VmDirStringCompareA(pOp->reqDn.lberbv.bv_val, SCHEMA_NAMING_CONTEXT_DN, FALSE) == 0             &&
-        // (&  beginning AND Fiilter
-        pSearchReq->filter->choice ==  LDAP_FILTER_AND
-       )
-    {
-        PVDIR_FILTER    pFilter1 = pSearchReq->filter->filtComp.complex;
-        if (// (objectclass=attributeschema)
-            pFilter1 != NULL                                                                                &&
-            pFilter1->choice == LDAP_FILTER_EQUALITY                                                        &&
-            pFilter1->filtComp.ava.type.lberbv.bv_val != NULL                                               &&
-            VmDirStringCompareA(pFilter1->filtComp.ava.type.lberbv.bv_val, "objectclass", FALSE) == 0       &&
-            pFilter1->filtComp.ava.value.lberbv.bv_val != NULL                                              &&
-            VmDirStringCompareA(pFilter1->filtComp.ava.value.lberbv.bv_val, "attributeSchema", FALSE) == 0
-           )
-        {
-            PVDIR_FILTER    pFilter2 = pFilter1->next;
-            if (// (!(isDefunct=TRUE))
-                pFilter2 != NULL                                                                                &&
-                pFilter2->choice == LDAP_FILTER_NOT                                                             &&
-                pFilter2->filtComp.complex != NULL                                                              &&
-                pFilter2->filtComp.complex->choice == LDAP_FILTER_EQUALITY                                      &&
-                pFilter2->filtComp.complex->filtComp.ava.type.lberbv.bv_val != NULL                             &&
-                VmDirStringCompareA(pFilter2->filtComp.complex->filtComp.ava.type.lberbv.bv_val, "isDefunct", FALSE) == 0     &&
-                pFilter2->filtComp.complex->filtComp.ava.value.lberbv.bv_val != NULL                            &&
-                VmDirStringCompareA(pFilter2->filtComp.complex->filtComp.ava.value.lberbv.bv_val, "TRUE", FALSE) == 0
-               )
-            {
-                bRetVal = TRUE;
-            }
-        }
-    }
-
-    return bRetVal;
-
 }
 
 /*
@@ -412,9 +274,8 @@ _VmDirIsSearchForAllADAttributeSchema(
  * SCOPE:   BASE
  * FILTER:  (objectclass=*)
  */
-static
 BOOLEAN
-_VmDirIsSearchForServerStatus(
+VmDirIsSearchForServerStatus(
     PVDIR_OPERATION     pOp
     )
 {
@@ -447,4 +308,153 @@ _VmDirIsSearchForServerStatus(
 
     return bRetVal;
 
+}
+
+/*
+ * For replication runtime status
+ * The search pattern is :
+ * BASE:    cn=replicationstatus
+ * SCOPE:   BASE
+ * FILTER:  (objectclass=*)
+ */
+BOOLEAN
+VmDirIsSearchForReplicationStatus(
+    PVDIR_OPERATION     pOp
+    )
+{
+    BOOLEAN         bRetVal = FALSE;
+    SearchReq*      pSearchReq = &(pOp->request.searchReq);
+    PVDIR_FILTER    pFilter = pSearchReq ? pSearchReq->filter: NULL;
+
+    if (pSearchReq != NULL
+        &&
+        pFilter != NULL
+        &&
+        pSearchReq->scope == LDAP_SCOPE_BASE
+        &&
+        (
+         pOp->reqDn.lberbv.bv_val != NULL                                               &&
+         VmDirStringCompareA(pOp->reqDn.lberbv.bv_val, REPLICATION_STATUS_DN, FALSE) == 0
+        )
+        &&
+        (
+         pFilter->choice == LDAP_FILTER_PRESENT                                         &&
+         pFilter->filtComp.present.lberbv.bv_len == ATTR_OBJECT_CLASS_LEN               &&
+         pFilter->filtComp.present.lberbv.bv_val != NULL                                &&
+         VmDirStringNCompareA( ATTR_OBJECT_CLASS, pFilter->filtComp.present.lberbv.bv_val, ATTR_OBJECT_CLASS_LEN, FALSE) == 0
+        )
+        )
+    {
+        bRetVal = TRUE;
+    }
+
+    return bRetVal;
+
+}
+
+/*
+ * For schema replication status
+ * The search pattern is:
+ * BASE:    cn=schemareplstatus
+ * FILTER:  (objectclass=*)
+ * SCOPE:   BASE - returns the pseudo entry that tells if refresh is in progress
+ *          ONELEVEL - returns the status entries
+ *          SUBTREE - returns the pseudo entry + status entries
+ *
+ * Optional:
+ * ATTRS:   refresh - trigger server to refresh schema replication status
+ */
+BOOLEAN
+VmDirIsSearchForSchemaReplStatus(
+    PVDIR_OPERATION     pOp,
+    PBOOLEAN            pbRefresh
+    )
+{
+    BOOLEAN         bRetVal = FALSE;
+    SearchReq*      pSearchReq = &(pOp->request.searchReq);
+    PSTR            pszDN = pOp->reqDn.lberbv.bv_val;
+    PVDIR_FILTER    pFilter = pSearchReq ? pSearchReq->filter : NULL;
+
+    if (pSearchReq != NULL                                                  &&
+        pszDN != NULL                                                       &&
+        VmDirStringCompareA(pszDN, SCHEMA_REPL_STATUS_DN, FALSE) == 0       &&
+        pFilter != NULL                                                     &&
+        pFilter->choice == LDAP_FILTER_PRESENT                              &&
+        pFilter->filtComp.present.lberbv.bv_len == ATTR_OBJECT_CLASS_LEN    &&
+        pFilter->filtComp.present.lberbv.bv_val != NULL                     &&
+        VmDirStringNCompareA(ATTR_OBJECT_CLASS, pFilter->filtComp.present.lberbv.bv_val, ATTR_OBJECT_CLASS_LEN, FALSE) == 0)
+    {
+        bRetVal = TRUE;
+    }
+
+    if (pbRefresh && pSearchReq->attrs)
+    {
+        PSTR pszAttr = pSearchReq->attrs[0].lberbv.bv_val;
+        if (VmDirStringCompareA(pszAttr, "refresh", FALSE) == 0)
+        {
+            *pbRefresh = TRUE;
+        }
+    }
+
+    return bRetVal;
+}
+
+/*
+ * For integrity check status
+ * The search pattern is:
+ * BASE:    cn=integritycheckstatus
+ * FILTER:  (objectclass=*)
+ * SCOPE:   BASE - with optional attribute operation=start|stop|recheck
+ *          ONELEVEL - returns job summary with optional attribute detail
+ *
+ */
+BOOLEAN
+VmDirIsSearchForIntegrityCheckStatus(
+    PVDIR_OPERATION                     pOp,
+    PVMDIR_INTEGRITY_CHECK_JOB_STATE    pState
+    )
+{
+    BOOLEAN         bRetVal = FALSE;
+    SearchReq*      pSearchReq = &(pOp->request.searchReq);
+    PSTR            pszDN = pOp->reqDn.lberbv.bv_val;
+    PVDIR_FILTER    pFilter = pSearchReq ? pSearchReq->filter : NULL;
+
+    if (pSearchReq != NULL                                                  &&
+        pszDN != NULL                                                       &&
+        VmDirStringCompareA(pszDN, INTEGRITY_CHECK_STATUS_DN, FALSE) == 0   &&
+        pFilter != NULL                                                     &&
+        pFilter->choice == LDAP_FILTER_PRESENT                              &&
+        pFilter->filtComp.present.lberbv.bv_len == ATTR_OBJECT_CLASS_LEN    &&
+        pFilter->filtComp.present.lberbv.bv_val != NULL                     &&
+        VmDirStringNCompareA(ATTR_OBJECT_CLASS, pFilter->filtComp.present.lberbv.bv_val, ATTR_OBJECT_CLASS_LEN, FALSE) == 0)
+    {
+        bRetVal = TRUE;
+    }
+
+    if (pSearchReq->scope == LDAP_SCOPE_BASE && pState && pSearchReq->attrs)
+    {
+        PSTR pszAttr = pSearchReq->attrs[0].lberbv.bv_val;
+        if (VmDirStringCompareA(pszAttr, "start", FALSE) == 0)
+        {
+            *pState = INTEGRITY_CHECK_JOB_START;
+        }
+        else if (VmDirStringCompareA(pszAttr, "stop", FALSE) == 0)
+        {
+            *pState = INTEGRITY_CHECK_JOB_STOP;
+        }
+        else if (VmDirStringCompareA(pszAttr, "recheck", FALSE) == 0)
+        {
+            *pState = INTEGRITY_CHECK_JOB_RECHECK;
+        }
+        else
+        {
+            *pState = INTEGRITY_CHECK_JOB_NONE;
+        }
+    }
+    else if (pSearchReq->scope == LDAP_SCOPE_ONELEVEL && pState )
+    {
+        *pState = INTEGRITY_CHECK_JOB_SHOW_SUMMARY;
+    }
+
+    return bRetVal;
 }

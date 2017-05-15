@@ -29,6 +29,8 @@
 
 #include "includes.h"
 
+int _forceCRTManifestCUR = 0;
+
 DWORD
 VmcaDbInitialize(
     PCSTR pszDbPath

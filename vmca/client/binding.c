@@ -1,3 +1,17 @@
+/*
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
 #include "includes.h"
 
 #ifndef HOST_NAME_MAX
@@ -23,7 +37,7 @@ VMCARpcCreateSrpAuthIdentity(
     OM_uint32 min = 0;
     OM_uint32 maj = 0;
     const gss_OID_desc gss_srp_password_oid =
-        {GSS_SRP_PASSWORD_LEN, (void *) GSS_SRP_PASSWORD_OID};
+        {GSSAPI_SRP_CRED_OPT_PW_LEN, (void *) GSSAPI_SRP_CRED_OPT_PW};
     const gss_OID_desc spnego_mech_oid =
         {SPNEGO_OID_LENGTH, (void *) SPNEGO_OID};
     gss_buffer_desc name_buf = {0};
@@ -91,19 +105,11 @@ VMCARpcCreateSrpAuthIdentity(
 
     gss_pwd.value = (char *) password;
     gss_pwd.length = strlen(gss_pwd.value);
-#ifdef _WIN32 /* Really _MIT_KRB5_1_11 */
     maj = gss_set_cred_option(
               &min,
               &cred_handle,
               (gss_OID) &gss_srp_password_oid,
               &gss_pwd);
-#else
-    maj = gssspi_set_cred_option(
-              &min,
-              cred_handle,
-              (gss_OID) &gss_srp_password_oid,
-              &gss_pwd);
-#endif
     if (maj)
     {
         goto error;

@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -93,7 +93,7 @@ main(
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Lotus Vmkdcd: starting...");
 
 
-    if ( ! bPatchSchema && VmDirdGetRunMode() != VMDIR_RUNMODE_RESTORE )
+    if ( ! bPatchSchema && VmDirdGetTargetState() != VMDIRD_STATE_RESTORE )
     {   // Normal server startup route
 
         dwError = VmKdcServiceStartup();
@@ -105,10 +105,10 @@ main(
         dwError = VmDirNotifyLikewiseServiceManager();
         BAIL_ON_VMDIR_ERROR(dwError);
 
-        VmDirdStateSet( VMDIRD_STATE_NORMAL );
-        VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Lotus Vmdird: running..., run mode = %s",
-              (VmDirdGetRunMode() == VMDIR_RUNMODE_RESTORE) ? VMDIR_RUN_MODE_RESTORE :
-              ((VmDirdGetRunMode() == VMDIR_RUNMODE_STANDALONE) ? VMDIR_RUN_MODE_STANDALONE : "normal" ) );
+        VmDirdStateSet( VmDirdGetTargetState() );
+        VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL,
+                        "Lotus Vmdird: running... state (%d)",
+                        VmDirdState());
 
         // main thread waits on signals
         dwError = VmDirHandleSignals();
@@ -119,34 +119,33 @@ main(
 
 cleanup:
 
-   if ( bShutdownKDCService )
-   {
-       VmKdcServiceShutdown();
-       VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Lotus Vmkdcd: stop" );
-   }
+    if ( bShutdownKDCService )
+    {
+        VmKdcServiceShutdown();
+        VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Lotus Vmkdcd: stop" );
+    }
 
-   if ( bVmDirInit )
-   {
-       VmDirdStateSet(VMDIRD_STATE_SHUTDOWN);
-       VmDirShutdown(&bWaitTimeOut);
-       if (bWaitTimeOut)
-       {
-           VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Lotus Vmdird: stop" );
-           goto done;
-       }
+    if ( bVmDirInit )
+    {
+        VmDirdStateSet(VMDIRD_STATE_SHUTDOWN);
+        VmDirShutdown(&bWaitTimeOut);
+        if (bWaitTimeOut)
+        {
+            VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Lotus Vmdird: stop" );
+            goto done;
+        }
 
-       VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Lotus Vmdird: stop" );
-   }
+        VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Lotus Vmdird: stop" );
+    }
 
-   VmDirLogTerminate();
+    VmDirLogTerminate();
 
-   VmDirSrvFreeConfig();
+    VmDirSrvFreeConfig();
 
 done:
-   return dwError;
+    return dwError;
 
 error:
-
     goto cleanup;
 }
 

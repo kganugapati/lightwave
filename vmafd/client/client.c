@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -16,6 +16,18 @@
 
 #include "includes.h"
 
+static
+VOID
+VmAfdFreeServer(
+    PVMAFD_SERVER pServer
+    );
+
+static
+PVOID
+VmAfdHeartbeatWorker(
+    PVOID pThreadArgs
+    );
+
 DWORD
 VmAfdOpenServerA(
     PCSTR pszServerName,
@@ -25,7 +37,6 @@ VmAfdOpenServerA(
 {
     DWORD dwError = 0;
     PVMAFD_SERVER pServer = NULL;
-    BOOLEAN bIsLocalHost = TRUE;
 
     BAIL_ON_VMAFD_INVALID_POINTER(ppServer, dwError);
 
@@ -36,49 +47,14 @@ VmAfdOpenServerA(
         BAIL_ON_VMAFD_ERROR(dwError);
     }
 
-    dwError = VmAfdAllocateMemory(
-                  sizeof(VMAFD_SERVER),
-                  (PVOID *)&pServer);
+    dwError = VmAfdOpenServerWithTimeoutA(
+                                pszServerName,
+                                pszUserName,
+                                pszPassword,
+                                0,
+                                &pServer
+                                );
     BAIL_ON_VMAFD_ERROR(dwError);
-
-    if (pszServerName)
-    {
-        dwError = VmAfdAllocateStringA(
-                      pszServerName,
-                      &pServer->pszServerName);
-        BAIL_ON_VMAFD_ERROR(dwError);
-    }
-
-    if (pszUserName)
-    {
-        dwError = VmAfdAllocateStringA(
-                      pszUserName,
-                      &pServer->pszUserName);
-        BAIL_ON_VMAFD_ERROR(dwError);
-    }
-
-    bIsLocalHost = VmAfdIsLocalHost(pszServerName);
-    if (!bIsLocalHost && pszUserName && pszPassword)
-    {
-        dwError = VmAfdCreateBindingHandleAuthA(
-                      pszServerName,
-                      NULL,
-                      pszUserName,
-                      NULL,
-                      pszPassword,
-                      &pServer->hBinding);
-        BAIL_ON_VMAFD_ERROR(dwError);
-
-        dwError = VmAfdAllocateStringA(
-                      pszServerName,
-                      &pServer->pszServerName);
-        BAIL_ON_VMAFD_ERROR(dwError);
-
-        dwError = VmAfdAllocateStringA(
-                      pszUserName,
-                      &pServer->pszUserName);
-        BAIL_ON_VMAFD_ERROR(dwError);
-    }
 
     *ppServer = pServer;
 
@@ -102,6 +78,120 @@ VmAfdOpenServerW(
     PCWSTR pwszUserName,
     PCWSTR pwszPassword,
     PVMAFD_SERVER *ppServer)
+{
+    DWORD dwError = 0;
+    PVMAFD_SERVER pServer = NULL;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(ppServer, dwError);
+
+    if ((pwszServerName && !pwszPassword) ||
+        (!pwszServerName && pwszPassword))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdOpenServerWithTimeoutW(
+                  pwszServerName,
+                  pwszUserName,
+                  pwszPassword,
+                  0,
+                  &pServer);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppServer = pServer;
+
+cleanup:
+
+    return dwError;
+error:
+
+    if (pServer)
+    {
+        VmAfdCloseServer(pServer);
+    }
+    goto cleanup;
+}
+
+DWORD
+VmAfdOpenServerWithTimeoutA(
+    PCSTR pszServerName,
+    PCSTR pszUserName,
+    PCSTR pszPassword,
+    DWORD dwTimeout,
+    PVMAFD_SERVER *ppServer)
+{
+    DWORD dwError = 0;
+    PVMAFD_SERVER pServer = NULL;
+    BOOLEAN bIsLocalHost = TRUE;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(ppServer, dwError);
+
+    if ((pszServerName && !pszPassword) ||
+        (!pszServerName && pszPassword))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateMemory(
+                  sizeof(VMAFD_SERVER),
+                  (PVOID *)&pServer);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    bIsLocalHost = VmAfdIsLocalHost(pszServerName);
+    if (!bIsLocalHost && pszUserName && pszPassword)
+    {
+        dwError = VmAfdCreateBindingHandleAuthA(
+                      pszServerName,
+                      NULL,
+                      pszUserName,
+                      NULL,
+                      pszPassword,
+                      &pServer->hBinding);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = VmAfdAllocateStringA(
+                      pszServerName,
+                      &pServer->pszServerName);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = VmAfdAllocateStringA(
+                      pszUserName,
+                      &pServer->pszUserName);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        rpc_mgmt_set_com_timeout(pServer->hBinding, dwTimeout, &dwError);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    pServer->refCount = 1;
+
+    *ppServer = pServer;
+
+cleanup:
+
+    return dwError;
+
+error:
+
+    if (pServer)
+    {
+        VmAfdCloseServer(pServer);
+    }
+
+    goto cleanup;
+
+}
+
+DWORD
+VmAfdOpenServerWithTimeoutW(
+    PCWSTR pwszServerName,
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword,
+    DWORD  dwTimeout,
+    PVMAFD_SERVER *ppServer)
+
 {
     DWORD dwError = 0;
     PVMAFD_SERVER pServer = NULL;
@@ -136,10 +226,11 @@ VmAfdOpenServerW(
         BAIL_ON_VMAFD_ERROR(dwError);
     }
 
-    dwError = VmAfdOpenServerA(
+    dwError = VmAfdOpenServerWithTimeoutA(
                   pszServerName,
                   pszUserName,
                   pszPassword,
+                  dwTimeout,
                   &pServer);
     BAIL_ON_VMAFD_ERROR(dwError);
 
@@ -161,6 +252,7 @@ error:
     }
 
     goto cleanup;
+
 }
 
 VOID
@@ -169,13 +261,7 @@ VmAfdCloseServer(
 {
     if (pServer)
     {
-        if (pServer->hBinding)
-        {
-            VmAfdFreeBindingHandle(&pServer->hBinding);
-        }
-        VMAFD_SAFE_FREE_STRINGA(pServer->pszServerName);
-        VMAFD_SAFE_FREE_STRINGA(pServer->pszUserName);
-        VMAFD_SAFE_FREE_MEMORY(pServer);
+        VmAfdReleaseServer(pServer);
     }
 }
 
@@ -862,6 +948,104 @@ error:
 }
 
 DWORD
+VmAfdGetRHTTPProxyPortA(
+    PCSTR pszServerName, /* IN     OPTIONAL */
+    PDWORD pdwPort       /* IN OUT          */
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszServerName = NULL;
+    DWORD dwPort = 0;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(pdwPort, dwError);
+
+    if (pszServerName)
+    {
+        dwError = VmAfdAllocateStringWFromA(pszServerName, &pwszServerName);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdGetRHTTPProxyPortW(pwszServerName, &dwPort);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *pdwPort = dwPort;
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszServerName);
+
+    return dwError;
+
+error:
+
+    if (pdwPort)
+    {
+        *pdwPort = 0;
+    }
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdGetRHTTPProxyPortW(
+    PCWSTR pwszServerName, /* IN     OPTIONAL */
+    PDWORD pdwPort         /* IN OUT          */
+    )
+{
+    DWORD dwError = 0;
+    handle_t hBinding = NULL;
+    PCWSTR pwszServerEndpoint = NULL;
+    DWORD dwPort = 0;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(pdwPort, dwError);
+
+    if (VmAfdIsLocalHostW(pwszServerName))
+    {
+        dwError = VmAfdLocalGetRHTTPProxyPort(&dwPort);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+    else
+    {
+        dwError = VmAfdCreateBindingHandleW(
+                        pwszServerName,
+                        pwszServerEndpoint,
+                        &hBinding);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        DCETHREAD_TRY
+        {
+            dwError = VmAfdRpcGetRHTTPProxyPort(hBinding, &dwPort);
+        }
+        DCETHREAD_CATCH_ALL(THIS_CATCH)
+        {
+            dwError = VmAfdRpcGetErrorCode(THIS_CATCH);
+        }
+        DCETHREAD_ENDTRY;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    *pdwPort = dwPort;
+
+cleanup:
+
+    if (hBinding)
+    {
+        VmAfdFreeBindingHandle(&hBinding);
+    }
+
+    return dwError;
+
+error:
+
+    if (pdwPort)
+    {
+        *pdwPort = 0;
+    }
+
+    goto cleanup;
+}
+
+DWORD
 VmAfdSetRHTTPProxyPortA(
     PCSTR pszServerName, /* IN     OPTIONAL */
     DWORD dwPort         /* IN              */
@@ -1275,12 +1459,126 @@ error:
     {
         *ppszDCName = NULL;
     }
+    VMAFD_SAFE_FREE_MEMORY (pszDCName);
 
     goto cleanup;
 }
 
 DWORD
 VmAfdGetDCNameW(
+    PCWSTR pwszServerName,  /* IN     OPTIONAL */
+    PWSTR* ppwszDCName      /*    OUT          */
+)
+{
+    DWORD dwError = 0;
+    PWSTR  pwszDCNameRet = NULL;
+    PCDC_DC_INFO_W pDomainControllerInfo = NULL;
+    PVMAFD_SERVER pServer = NULL;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(ppwszDCName, dwError);
+
+    if (VmAfdIsLocalHostW(pwszServerName))
+    {
+        dwError = VmAfdOpenServerW(NULL, NULL, NULL, &pServer);
+    }
+    else
+    {
+        dwError = ERROR_NOT_SUPPORTED;
+    }
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = CdcGetDCNameW(
+                          pServer,
+                          NULL,
+                          NULL,
+                          NULL,
+                          0,
+                          &pDomainControllerInfo
+                          );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringW(
+                              pDomainControllerInfo->pszDCName,
+                              &pwszDCNameRet
+                              );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppwszDCName = pwszDCNameRet;
+
+cleanup:
+
+    if (pDomainControllerInfo)
+    {
+        VmAfdFreeDomainControllerInfoW(pDomainControllerInfo);
+    }
+
+    if (pServer)
+    {
+        VmAfdCloseServer(pServer);
+    }
+
+    return dwError;
+
+error:
+
+    if (ppwszDCName)
+    {
+        *ppwszDCName = NULL;
+    }
+
+    VMAFD_SAFE_FREE_MEMORY(pwszDCNameRet);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdGetDCNameExA(
+    PCSTR pszServerName,    /* IN     OPTIONAL */
+    PSTR* ppszDCName        /*    OUT          */
+)
+{
+    DWORD dwError = 0;
+    PWSTR pwszServerName = NULL;
+    PWSTR pwszDCName = NULL;
+    PSTR  pszDCName = NULL;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(ppszDCName, dwError);
+
+    if (pszServerName)
+    {
+        dwError = VmAfdAllocateStringWFromA(pszServerName, &pwszServerName);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdGetDCNameW(pwszServerName, &pwszDCName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringAFromW(pwszDCName, &pszDCName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppszDCName = pszDCName;
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszDCName);
+    VMAFD_SAFE_FREE_MEMORY(pwszServerName);
+
+    return dwError;
+
+error:
+
+    if (ppszDCName)
+    {
+        *ppszDCName = NULL;
+    }
+
+    VMAFD_SAFE_FREE_MEMORY(pszDCName);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdGetDCNameExW(
     PCWSTR pwszServerName,  /* IN     OPTIONAL */
     PWSTR* ppwszDCName      /*    OUT          */
 )
@@ -1657,6 +1955,211 @@ error:
 }
 
 DWORD
+VmAfdGetSiteNameA(
+    PCSTR  pszServerName,  /* IN     OPTIONAL */
+    PSTR*  ppszSiteName    /*    OUT          */
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszServerName = NULL;
+    PWSTR pwszSiteName  = NULL;
+    PSTR  pszSiteName = NULL;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(ppszSiteName, dwError);
+
+    if (pszServerName)
+    {
+        dwError = VmAfdAllocateStringWFromA(pszServerName, &pwszServerName);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdGetSiteNameW(pwszServerName, &pwszSiteName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringAFromW(pwszSiteName, &pszSiteName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppszSiteName = pszSiteName;
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszSiteName);
+    VMAFD_SAFE_FREE_MEMORY(pwszServerName);
+
+    return dwError;
+
+error:
+
+    if (ppszSiteName)
+    {
+        *ppszSiteName = NULL;
+    }
+
+    VMAFD_SAFE_FREE_MEMORY(pszSiteName);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdGetSiteNameW(
+    PCWSTR pwszServerName, /* IN     OPTIONAL */
+    PWSTR* ppwszSiteName   /*    OUT          */
+    )
+{
+    DWORD dwError = 0;
+    PWSTR  pwszSiteName = NULL;
+    PWSTR  pwszSiteNameRet = NULL;
+    handle_t hBinding = NULL;
+    PCWSTR pwszServerEndpoint = NULL;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(ppwszSiteName, dwError);
+
+    if (VmAfdIsLocalHostW(pwszServerName))
+    {
+        dwError = VmAfdLocalGetSiteName(&pwszSiteNameRet);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+    else
+    {
+        dwError = VmAfdCreateBindingHandleW(
+                        pwszServerName,
+                        pwszServerEndpoint,
+                        &hBinding);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        DCETHREAD_TRY
+        {
+            dwError = VmAfdRpcGetSiteName(hBinding, &pwszSiteName);
+        }
+        DCETHREAD_CATCH_ALL(THIS_CATCH)
+        {
+            dwError = VmAfdRpcGetErrorCode(THIS_CATCH);
+        }
+        DCETHREAD_ENDTRY;
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = VmAfdAllocateStringW(pwszSiteName, &pwszSiteNameRet);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    *ppwszSiteName = pwszSiteNameRet;
+
+cleanup:
+
+    if (hBinding)
+    {
+        VmAfdFreeBindingHandle(&hBinding);
+    }
+
+    VMAFD_RPC_SAFE_FREE_MEMORY(pwszSiteName);
+    return dwError;
+
+error:
+
+    if (ppwszSiteName)
+    {
+        *ppwszSiteName = NULL;
+    }
+
+    VMAFD_SAFE_FREE_MEMORY(pwszSiteNameRet);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdGetSiteNameHA(
+    PVMAFD_SERVER pServer,
+    PSTR*  ppszSiteName
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszSiteName  = NULL;
+    PSTR  pszSiteName = NULL;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(pServer, dwError);
+    BAIL_ON_VMAFD_INVALID_POINTER(ppszSiteName, dwError);
+
+    dwError = VmAfdGetSiteNameHW(pServer, &pwszSiteName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringAFromW(pwszSiteName, &pszSiteName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppszSiteName = pszSiteName;
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszSiteName);
+
+    return dwError;
+
+error:
+
+    if (ppszSiteName)
+    {
+        *ppszSiteName = NULL;
+    }
+
+    VMAFD_SAFE_FREE_MEMORY(pszSiteName);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdGetSiteNameHW(
+    PVMAFD_SERVER pServer,
+    PWSTR* ppwszSiteName
+    )
+{
+    DWORD dwError = 0;
+    PWSTR  pwszSiteName = NULL;
+    PWSTR  pwszSiteNameRet = NULL;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(pServer, dwError);
+    BAIL_ON_VMAFD_INVALID_POINTER(ppwszSiteName, dwError);
+
+    if (!pServer->hBinding)
+    {
+        dwError = VmAfdLocalGetSiteName(&pwszSiteNameRet);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+    else
+    {
+        DCETHREAD_TRY
+        {
+            dwError = VmAfdRpcGetSiteName(pServer->hBinding, &pwszSiteName);
+        }
+        DCETHREAD_CATCH_ALL(THIS_CATCH)
+        {
+            dwError = VmAfdRpcGetErrorCode(THIS_CATCH);
+        }
+        DCETHREAD_ENDTRY;
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = VmAfdAllocateStringW(pwszSiteName, &pwszSiteNameRet);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    *ppwszSiteName = pwszSiteNameRet;
+
+cleanup:
+
+    VMAFD_RPC_SAFE_FREE_MEMORY(pwszSiteName);
+    return dwError;
+
+error:
+
+    if (ppwszSiteName)
+    {
+        *ppwszSiteName = NULL;
+    }
+
+    VMAFD_SAFE_FREE_MEMORY(pwszSiteNameRet);
+
+    goto cleanup;
+}
+
+DWORD
 VmAfdGetMachineIDA(
     PCSTR  pszServerName,  /* IN     OPTIONAL */
     PSTR*  ppszMachineID    /*    OUT          */
@@ -1988,7 +2491,7 @@ error:
 
 DWORD
 VmAfdDemoteVmDirA(
-    PCSTR pszServerName,    /* IN              */
+    PCSTR pszServerName,    /* IN     OPTIONAL */
     PCSTR pszUserName,      /* IN              */
     PCSTR pszPassword       /* IN              */
 )
@@ -1998,16 +2501,18 @@ VmAfdDemoteVmDirA(
     PWSTR pwszUserName = NULL;
     PWSTR pwszPassword = NULL;
 
-    if (IsNullOrEmptyString(pszServerName) ||
-            IsNullOrEmptyString(pszUserName) ||
-            IsNullOrEmptyString(pszPassword))
+    if ( IsNullOrEmptyString(pszUserName) ||
+	 IsNullOrEmptyString(pszPassword))
     {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMAFD_ERROR(dwError);
     }
 
-    dwError = VmAfdAllocateStringWFromA(pszServerName, &pwszServerName);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    if (pszServerName)
+    {
+	dwError = VmAfdAllocateStringWFromA(pszServerName, &pwszServerName);
+	BAIL_ON_VMAFD_ERROR(dwError);
+    }
 
     dwError = VmAfdAllocateStringWFromA(pszUserName, &pwszUserName);
     BAIL_ON_VMAFD_ERROR(dwError);
@@ -2036,16 +2541,15 @@ error:
 
 DWORD
 VmAfdDemoteVmDirW(
-    PCWSTR pwszServerName,  /* IN              */
+    PCWSTR pwszServerName,  /* IN     OPTIONAL */
     PCWSTR pwszUserName,    /* IN              */
     PCWSTR pwszPassword     /* IN              */
 )
 {
     DWORD dwError = 0;
 
-    if (IsNullOrEmptyString(pwszServerName) ||
-            IsNullOrEmptyString(pwszUserName) ||
-            IsNullOrEmptyString(pwszPassword))
+    if (IsNullOrEmptyString(pwszUserName) ||
+	IsNullOrEmptyString(pwszPassword))
     {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMAFD_ERROR(dwError);
@@ -2066,6 +2570,82 @@ error:
     VmAfdLog(VMAFD_DEBUG_ANY, "VmAfdDemoteVmDirW failed. Error(%u)", dwError);
 
     goto cleanup;
+}
+
+DWORD
+VmAfdJoinValidateDomainCredentialsA(
+    PCSTR pszDomainName,     /* IN              */
+    PCSTR pszUserName,       /* IN              */
+    PCSTR pszPassword        /* IN              */
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszUserName = NULL;
+    PWSTR pwszPassword = NULL;
+    PWSTR pwszDomainName = NULL;
+
+    if (IsNullOrEmptyString(pszDomainName) ||
+        IsNullOrEmptyString(pszUserName) ||
+        IsNullOrEmptyString(pszPassword))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateStringWFromA(pszDomainName, &pwszDomainName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringWFromA(pszUserName, &pwszUserName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringWFromA(pszPassword, &pwszPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdJoinValidateDomainCredentialsW(
+                   pwszDomainName,
+                   pwszUserName,
+                   pwszPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszUserName);
+    VMAFD_SAFE_FREE_MEMORY(pwszPassword);
+    VMAFD_SAFE_FREE_MEMORY(pwszDomainName);
+
+    return dwError;
+
+error:
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdJoinValidateDomainCredentialsW(
+    PCWSTR pwszDomainName,     /* IN              */
+    PCWSTR pwszUserName,       /* IN              */
+    PCWSTR pwszPassword        /* IN              */
+    )
+{
+    DWORD dwError = 0;
+
+    if (IsNullOrEmptyString(pwszDomainName) ||
+        IsNullOrEmptyString(pwszUserName) ||
+        IsNullOrEmptyString(pwszPassword))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdLocalJoinValidateDomainCredentials(
+                      pwszDomainName,
+                      pwszUserName,
+                      pwszPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+error:
+
+    return dwError;
 }
 
 DWORD
@@ -2185,10 +2765,123 @@ error:
 }
 
 DWORD
+VmAfdJoinVmDir2A(
+    PCSTR            pszDomainName,  /* IN              */
+    PCSTR            pszUserName,    /* IN              */
+    PCSTR            pszPassword,    /* IN              */
+    PCSTR            pszMachineName, /* IN     OPTIONAL */
+    PCSTR            pszOrgUnit,     /* IN     OPTIONAL */
+    VMAFD_JOIN_FLAGS dwFlags         /* IN              */
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszDomainName = NULL;
+    PWSTR pwszUserName = NULL;
+    PWSTR pwszPassword = NULL;
+    PWSTR pwszMachineName = NULL;
+    PWSTR pwszOrgUnit = NULL;
+
+    if (IsNullOrEmptyString(pszUserName) ||
+        IsNullOrEmptyString(pszPassword) ||
+        IsNullOrEmptyString(pszDomainName))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateStringWFromA(pszUserName, &pwszUserName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringWFromA(pszPassword, &pwszPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (pszMachineName)
+    {
+        dwError = VmAfdAllocateStringWFromA(pszMachineName, &pwszMachineName);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateStringWFromA(pszDomainName, &pwszDomainName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (pszOrgUnit)
+    {
+        dwError = VmAfdAllocateStringWFromA(pszOrgUnit, &pwszOrgUnit);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdJoinVmDir2W(
+                  pwszDomainName,
+                  pwszUserName,
+                  pwszPassword,
+                  pwszMachineName,
+                  pwszOrgUnit,
+                  dwFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszDomainName);
+    VMAFD_SAFE_FREE_MEMORY(pwszUserName);
+    VMAFD_SAFE_FREE_MEMORY(pwszPassword);
+    VMAFD_SAFE_FREE_MEMORY(pwszMachineName);
+    VMAFD_SAFE_FREE_MEMORY(pwszOrgUnit);
+
+    return dwError;
+
+error:
+
+    VmAfdLog(VMAFD_DEBUG_ANY, "VmAfdJoinVmDir2A failed. Error(%u)", dwError);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdJoinVmDir2W(
+    PCWSTR           pwszDomainName,  /* IN            */
+    PCWSTR           pwszUserName,    /* IN            */
+    PCWSTR           pwszPassword,    /* IN            */
+    PCWSTR           pwszMachineName, /* IN   OPTIONAL */
+    PCWSTR           pwszOrgUnit,     /* IN   OPTIONAL */
+    VMAFD_JOIN_FLAGS dwFlags          /* IN            */
+    )
+{
+    DWORD dwError = 0;
+
+    if (IsNullOrEmptyString(pwszUserName) ||
+            IsNullOrEmptyString(pwszPassword) ||
+            IsNullOrEmptyString(pwszDomainName))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdLocalJoinVmDir2(
+                      pwszDomainName,
+                      pwszUserName,
+                      pwszPassword,
+                      pwszMachineName,
+                      pwszOrgUnit,
+                      dwFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+
+    return dwError;
+
+error:
+
+    VmAfdLog(VMAFD_DEBUG_ANY, "VmAfdJoinVmDir2W failed. Error(%u)", dwError);
+
+    goto cleanup;
+}
+
+DWORD
 VmAfdLeaveVmDirA(
     PCSTR pszServerName,    /* IN              */
     PCSTR pszUserName,      /* IN              */
-    PCSTR pszPassword       /* IN              */
+    PCSTR pszPassword,      /* IN              */
+    DWORD dwLeaveFlags      /* IN              */
 )
 {
     DWORD dwError = 0;
@@ -2218,7 +2911,8 @@ VmAfdLeaveVmDirA(
     dwError = VmAfdLeaveVmDirW(
                   pwszServerName,
                   pwszUserName,
-                  pwszPassword);
+                  pwszPassword,
+                  dwLeaveFlags);
     BAIL_ON_VMAFD_ERROR(dwError);
 
 cleanup:
@@ -2238,22 +2932,17 @@ DWORD
 VmAfdLeaveVmDirW(
     PCWSTR pwszServerName,  /* IN              */
     PCWSTR pwszUserName,    /* IN              */
-    PCWSTR pwszPassword     /* IN              */
+    PCWSTR pwszPassword,    /* IN              */
+    DWORD dwLeaveFlags      /* IN              */
 )
 {
     DWORD dwError = 0;
 
-    if (IsNullOrEmptyString(pwszUserName) ||
-        IsNullOrEmptyString(pwszPassword))
-    {
-        dwError = ERROR_INVALID_PARAMETER;
-        BAIL_ON_VMAFD_ERROR(dwError);
-    }
-
     dwError = VmAfdLocalLeaveVmDir(
                       pwszServerName,
                       pwszUserName,
-                      pwszPassword);
+                      pwszPassword,
+                      dwLeaveFlags);
     BAIL_ON_VMAFD_ERROR(dwError);
 
 cleanup:
@@ -2263,6 +2952,129 @@ cleanup:
 error:
 
     VmAfdLog(VMAFD_DEBUG_ANY, "VmAfdLeaveVmDirW failed. Error(%u)", dwError);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdCreateComputerAccountA(
+    PCSTR            pszUserName,       /* IN              */
+    PCSTR            pszPassword,       /* IN              */
+    PCSTR            pszMachineName,    /* IN              */
+    PCSTR            pszOrgUnit,        /* IN     OPTIONAL */
+    PSTR*            ppszOutPassword    /* OUT             */
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszUserName = NULL;
+    PWSTR pwszPassword = NULL;
+    PWSTR pwszMachineName = NULL;
+    PWSTR pwszOrgUnit = NULL;
+    PWSTR pwszOutPassword = NULL;
+    PSTR  pszOutPassword = NULL;
+
+    if (IsNullOrEmptyString(pszUserName) ||
+        IsNullOrEmptyString(pszPassword) ||
+        IsNullOrEmptyString(pszMachineName))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateStringWFromA(pszUserName, &pwszUserName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringWFromA(pszPassword, &pwszPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringWFromA(pszMachineName, &pwszMachineName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (pszOrgUnit)
+    {
+        dwError = VmAfdAllocateStringWFromA(pszOrgUnit, &pwszOrgUnit);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdCreateComputerAccountW(
+                  pwszUserName,
+                  pwszPassword,
+                  pwszMachineName,
+                  pwszOrgUnit,
+                  &pwszOutPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringAFromW(
+                  pwszOutPassword,
+                  &pszOutPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (ppszOutPassword)
+    {
+        *ppszOutPassword = pszOutPassword;
+    }
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszUserName);
+    VMAFD_SAFE_FREE_MEMORY(pwszPassword);
+    VMAFD_SAFE_FREE_MEMORY(pwszMachineName);
+    VMAFD_SAFE_FREE_MEMORY(pwszOrgUnit);
+    VMAFD_SAFE_FREE_MEMORY(pwszOutPassword);
+
+    return dwError;
+
+error:
+
+    VMAFD_SAFE_FREE_STRINGA(pszOutPassword);
+
+    VmAfdLog(VMAFD_DEBUG_ANY, "VmAfdCreateComputerAccountA failed. Error(%u)", dwError);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdCreateComputerAccountW(
+    PCWSTR           pwszUserName,      /* IN            */
+    PCWSTR           pwszPassword,      /* IN            */
+    PCWSTR           pwszMachineName,   /* IN            */
+    PCWSTR           pwszOrgUnit,       /* IN   OPTIONAL */
+    PWSTR*           ppwszOutPassword   /* OUT           */
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszOutPassword = NULL;
+
+    if (IsNullOrEmptyString(pwszUserName) ||
+        IsNullOrEmptyString(pwszPassword) ||
+        IsNullOrEmptyString(pwszMachineName))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdLocalCreateComputerAccount(
+                  pwszUserName,
+                  pwszPassword,
+                  pwszMachineName,
+                  pwszOrgUnit,
+                  &pwszOutPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (ppwszOutPassword)
+    {
+        *ppwszOutPassword = pwszOutPassword;
+    }
+
+cleanup:
+
+    return dwError;
+
+error:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszOutPassword);
+
+    VmAfdLog(VMAFD_DEBUG_ANY, "VmAfdCreateComputerAccountW failed. Error(%u)", dwError);
 
     goto cleanup;
 }
@@ -2555,6 +3367,44 @@ error:
 }
 
 DWORD
+VmAfdGetDCList (
+    PCSTR  pszServerName,
+    PCSTR  pszDomain,
+    PDWORD pdwServerCount,
+    PVMAFD_DC_INFO_W *ppVmAfdDCInfoList
+    )
+{
+   DWORD dwError = 0;
+
+   if (!pdwServerCount || !ppVmAfdDCInfoList
+          || !pszDomain )
+   {
+       dwError = ERROR_INVALID_PARAMETER;
+       BAIL_ON_VMAFD_ERROR(dwError);
+   }
+   if (pszServerName == NULL || (strlen(pszServerName) == 0)
+            || VmAfdIsLocalHost(pszServerName))
+   {
+       dwError = VmAfdLocalGetDCList(
+                           pszDomain,
+                           pdwServerCount,
+                           ppVmAfdDCInfoList
+                           );
+       BAIL_ON_VMAFD_ERROR(dwError);
+   }
+   else
+   {
+       dwError = ERROR_INVALID_PARAMETER;
+       BAIL_ON_VMAFD_ERROR(dwError);
+   }
+cleanup:
+    return dwError;
+error:
+    goto cleanup;
+}
+
+
+DWORD
 VmAfdQueryADW(
     PCWSTR pwszServerName,         /* IN       OPTIONAL  */
     PWSTR *ppwszComputer,          /*    OUT             */
@@ -2744,6 +3594,123 @@ cleanup:
 error:
 
     VmAfdLog(VMAFD_DEBUG_ANY, "VmAfdForceReplicationW failed. Error(%u)", dwError);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdGetPNIDForUrlA(
+    PCSTR pszServerName,
+    PSTR* ppszPNIDUrl
+    )
+{
+    DWORD  dwError = 0;
+    PWSTR  pwszServerName = NULL;
+    PWSTR  pwszPNIDUrl = NULL;
+    PSTR   pszPNIDUrl = NULL;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(ppszPNIDUrl, dwError);
+
+    if (pszServerName)
+    {
+        dwError = VmAfdAllocateStringWFromA(pszServerName, &pwszServerName);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdGetPNIDForUrlW(
+                    pwszServerName,
+                    &pwszPNIDUrl);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringAFromW(pwszPNIDUrl, &pszPNIDUrl);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppszPNIDUrl = pszPNIDUrl;
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszServerName);
+    VMAFD_SAFE_FREE_MEMORY(pwszPNIDUrl);
+
+    return dwError;
+
+error:
+
+    if (ppszPNIDUrl)
+    {
+        *ppszPNIDUrl = NULL;
+    }
+
+    VMAFD_SAFE_FREE_MEMORY(pszPNIDUrl);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdGetPNIDForUrlW(
+    PCWSTR pwszServerName,
+    PWSTR* ppwszPNIDUrl
+    )
+{
+    DWORD  dwError = 0;
+    PWSTR  pwszPNID = NULL;
+    PWSTR  pwszPNIDUrl = NULL;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(ppwszPNIDUrl, dwError);
+
+    dwError = VmAfdGetPNIDW(pwszServerName, &pwszPNID);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (VmAfdCheckIfIPV6AddressW(pwszPNID))
+    {
+        SIZE_T length = 0;
+        WCHAR  delimiters[] = { '[', ']', 0 };
+        PWSTR  pwszWCursor = NULL;
+        PWSTR  pwszRCursor = pwszPNID;
+
+        dwError = VmAfdGetStringLengthW(pwszPNID, &length);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        length += 2;
+
+        dwError = VmAfdAllocateMemory(
+                      (length + 1) * sizeof(WCHAR),
+                      (PVOID*)&pwszPNIDUrl);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        pwszWCursor = pwszPNIDUrl;
+
+        *pwszWCursor++ = delimiters[0];
+
+        for (; pwszRCursor && *pwszRCursor; pwszRCursor++)
+        {
+            *pwszWCursor++ = *pwszRCursor;
+        }
+
+        *pwszWCursor++ = delimiters[1];
+    }
+    else
+    {
+        pwszPNIDUrl = pwszPNID;
+        pwszPNID = NULL;
+    }
+
+    *ppwszPNIDUrl = pwszPNIDUrl;
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszPNID);
+
+    return dwError;
+
+error:
+
+    if (ppwszPNIDUrl)
+    {
+        *ppwszPNIDUrl = NULL;
+    }
+
+    VMAFD_SAFE_FREE_MEMORY(pwszPNIDUrl);
 
     goto cleanup;
 }
@@ -3139,3 +4106,706 @@ error:
 
     goto cleanup;
 }
+
+DWORD
+VmAfdStartHeartbeatA(
+    PCSTR            pszServiceName,
+    DWORD            dwServicePort,
+    PVMAFD_HB_HANDLE *ppHandle
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszServiceName = NULL;
+    PVMAFD_HB_HANDLE pHandle = NULL;
+
+    if (IsNullOrEmptyString(pszServiceName) ||
+        !ppHandle
+       )
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateStringWFromA(
+                                  pszServiceName,
+                                  &pwszServiceName
+                                  );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdStartHeartbeatW(
+                                pwszServiceName,
+                                dwServicePort,
+                                &pHandle
+                                );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppHandle = pHandle;
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszServiceName);
+    return dwError;
+error:
+
+    if (ppHandle)
+    {
+        *ppHandle = NULL;
+    }
+    if (pHandle)
+    {
+        VmAfdStopHeartbeat(pHandle);
+    }
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdStartHeartbeatW(
+    PCWSTR           pwszServiceName,
+    DWORD            dwServicePort,
+    PVMAFD_HB_HANDLE *ppHandle
+    )
+{
+    DWORD dwError = 0;
+    PVMAFD_HB_HANDLE pHandle = NULL;
+
+    if (IsNullOrEmptyString(pwszServiceName) ||
+        !ppHandle
+       )
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateMemory(
+                          sizeof(VMAFD_HB_HANDLE),
+                          (PVOID*)&pHandle
+                          );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdLocalPostHeartbeat(pwszServiceName, dwServicePort);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringW(
+                              pwszServiceName,
+                              &pHandle->pszServiceName
+                              );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    pHandle->dwPort = dwServicePort;
+    pHandle->condStopHeartbeat = (pthread_cond_t) PTHREAD_COND_INITIALIZER;
+    pHandle->mutStopHeartbeat = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
+
+    dwError = pthread_create(
+                      &pHandle->threadHandle,
+                      NULL,
+                      &VmAfdHeartbeatWorker,
+                      (PVOID) pHandle
+                      );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    pHandle->pThreadHandle = &pHandle->threadHandle;
+
+    *ppHandle = pHandle;
+
+cleanup:
+
+    return dwError;
+error:
+
+    if (ppHandle)
+    {
+        *ppHandle = NULL;
+    }
+    if (pHandle)
+    {
+        VmAfdStopHeartbeat(pHandle);
+    }
+    goto cleanup;
+}
+
+DWORD
+VmAfdGetHeartbeatStatusA(
+    PVMAFD_SERVER       pServer,
+    PVMAFD_HB_STATUS_A* ppHeartbeatStatus
+    )
+{
+    DWORD dwError = 0;
+    PVMAFD_HB_STATUS_A pHeartbeatStatus = NULL;
+    PVMAFD_HB_STATUS_W pwHeartbeatStatus = NULL;
+
+    if (!ppHeartbeatStatus || !pServer)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdGetHeartbeatStatusW(
+                                  pServer,
+                                  &pwHeartbeatStatus
+                                  );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdHeartbeatStatusAFromW(
+                                  pwHeartbeatStatus,
+                                  &pHeartbeatStatus
+                                  );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppHeartbeatStatus = pHeartbeatStatus;
+
+cleanup:
+
+    if (pwHeartbeatStatus)
+    {
+        VmAfdFreeHeartbeatStatusW(pwHeartbeatStatus);
+    }
+    return dwError;
+error:
+
+    if (ppHeartbeatStatus)
+    {
+        *ppHeartbeatStatus = NULL;
+    }
+    if (pHeartbeatStatus)
+    {
+        VmAfdFreeHeartbeatStatusA(pHeartbeatStatus);
+    }
+    goto cleanup;
+}
+
+DWORD
+VmAfdGetHeartbeatStatusW(
+    PVMAFD_SERVER       pServer,
+    PVMAFD_HB_STATUS_W* ppHeartbeatStatus
+    )
+{
+    DWORD dwError = 0;
+    PVMAFD_HB_STATUS_W pHeartbeatStatus = NULL;
+    PVMAFD_HB_STATUS_W pRpcHeartbeatStatus = NULL;
+
+    if (!pServer || !ppHeartbeatStatus)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    if (!pServer->hBinding)
+    {
+        dwError = VmAfdLocalGetHeartbeatStatus(&pHeartbeatStatus);
+    }
+    else
+    {
+        DCETHREAD_TRY
+        {
+            dwError = VmAfdRpcGetHeartbeatStatus(
+                                          pServer->hBinding,
+                                          &pRpcHeartbeatStatus
+                                          );
+        }
+        DCETHREAD_CATCH_ALL(THIS_CATCH)
+        {
+            dwError = VmAfdRpcGetErrorCode(THIS_CATCH);
+        }
+        DCETHREAD_ENDTRY;
+
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = VmAfdAllocateFromRpcHeartbeatStatus(
+                                          pRpcHeartbeatStatus,
+                                          &pHeartbeatStatus
+                                          );
+    }
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppHeartbeatStatus = pHeartbeatStatus;
+
+cleanup:
+
+    if (pRpcHeartbeatStatus)
+    {
+        VmAfdRpcClientFreeHeartbeatStatus(pRpcHeartbeatStatus);
+    }
+    return dwError;
+error:
+
+    if (ppHeartbeatStatus)
+    {
+        *ppHeartbeatStatus = NULL;
+    }
+    if (pHeartbeatStatus)
+    {
+        VmAfdFreeHeartbeatStatusW(pHeartbeatStatus);
+    }
+    goto cleanup;
+}
+
+VOID
+VmAfdFreeHeartbeatStatusA(
+    PVMAFD_HB_STATUS_A pHeartbeatStatus
+    )
+{
+    if (pHeartbeatStatus)
+    {
+        VmAfdFreeHbStatusA(pHeartbeatStatus);
+    }
+}
+
+VOID
+VmAfdFreeHeartbeatStatusW(
+    PVMAFD_HB_STATUS_W pHeartbeatStatus
+    )
+{
+    if (pHeartbeatStatus)
+    {
+        VmAfdFreeHbStatusW(pHeartbeatStatus);
+    }
+}
+
+VOID
+VmAfdStopHeartbeat(
+    PVMAFD_HB_HANDLE pHandle
+    )
+{
+    if (pHandle)
+    {
+        pthread_cond_signal(&pHandle->condStopHeartbeat);
+        if (pHandle->pThreadHandle)
+        {
+            pthread_join(*pHandle->pThreadHandle,NULL);
+
+            pHandle->pThreadHandle = NULL;
+
+        }
+        pthread_cond_destroy(&pHandle->condStopHeartbeat);
+        pthread_mutex_destroy(&pHandle->mutStopHeartbeat);
+        VMAFD_SAFE_FREE_MEMORY(pHandle->pszServiceName);
+        VMAFD_SAFE_FREE_MEMORY(pHandle);
+    }
+}
+
+DWORD
+VmAfdRefreshSiteName(
+    VOID
+    )
+{
+    DWORD dwError = 0;
+
+    dwError = VmAfdLocalRefreshSiteName();
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+
+    return dwError;
+error:
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdConfigureDNSA(
+    PCSTR pszUserName,
+    PCSTR pszPassword
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszUserName = NULL;
+    PWSTR pwszPassword = NULL;
+
+    BAIL_ON_VMAFD_EMPTY_STRING(pszUserName, dwError);
+    BAIL_ON_VMAFD_EMPTY_STRING(pszPassword, dwError);
+
+    dwError = VmAfdAllocateStringWFromA(
+                pszUserName,
+                &pwszUserName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringWFromA(
+                pszPassword,
+                &pwszPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdConfigureDNSW(pwszUserName, pwszPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+error:
+
+    VMAFD_SAFE_FREE_MEMORY(pwszUserName);
+    VMAFD_SAFE_FREE_MEMORY(pwszPassword);
+
+    return dwError;
+}
+
+DWORD
+VmAfdConfigureDNSW(
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword
+    )
+{
+    DWORD dwError = 0;
+
+    BAIL_ON_VMAFD_EMPTY_STRING(pwszUserName, dwError);
+    BAIL_ON_VMAFD_EMPTY_STRING(pwszPassword, dwError);
+
+    dwError = VmAfdLocalConfigureDNSW(pwszUserName, pwszPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+error:
+    return dwError;
+}
+
+PVMAFD_SERVER
+VmAfdAcquireServer(
+    PVMAFD_SERVER pServer
+    )
+{
+    if (pServer)
+    {
+        InterlockedIncrement(&pServer->refCount);
+    }
+
+    return pServer;
+}
+
+VOID
+VmAfdReleaseServer(
+    PVMAFD_SERVER pServer
+    )
+{
+    if (pServer && InterlockedDecrement(&pServer->refCount) == 0)
+    {
+        VmAfdFreeServer(pServer);
+    }
+}
+
+
+DWORD
+VmAfdGetErrorMsgByCode(
+    DWORD dwErrorCode,
+    PSTR *pszErrMsg
+    )
+{
+    return VmAfdGetErrorString(
+                      dwErrorCode,
+                      pszErrMsg);
+}
+
+static
+VOID
+VmAfdFreeServer(
+    PVMAFD_SERVER pServer
+    )
+{
+    if (pServer)
+    {
+        if (pServer->hBinding)
+        {
+            VmAfdFreeBindingHandle(&pServer->hBinding);
+        }
+        VMAFD_SAFE_FREE_STRINGA(pServer->pszServerName);
+        VMAFD_SAFE_FREE_STRINGA(pServer->pszUserName);
+        VMAFD_SAFE_FREE_MEMORY(pServer);
+    }
+}
+
+static
+PVOID
+VmAfdHeartbeatWorker(
+    PVOID pThreadArgs
+    )
+{
+    DWORD dwError = 0;
+    PVMAFD_HB_HANDLE pInfo = NULL;
+    BOOL bCanceled = FALSE;
+    struct timespec ts = {0};
+
+    pInfo = (PVMAFD_HB_HANDLE)pThreadArgs;
+
+    do
+    {
+        dwError = VmAfdLocalPostHeartbeat(
+                                      pInfo->pszServiceName,
+                                      pInfo->dwPort
+                                      );
+        dwError = 0;
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        pthread_mutex_lock(&pInfo->mutStopHeartbeat);
+
+        ts.tv_sec = time(NULL) + VMAFD_HEARTBEAT_INTERVAL;
+        dwError = pthread_cond_timedwait(
+                                     &pInfo->condStopHeartbeat,
+                                     &pInfo->mutStopHeartbeat,
+                                     &ts
+                                     );
+
+        if (dwError != ETIMEDOUT)
+        {
+            bCanceled = TRUE;
+        }
+        pthread_mutex_unlock(&pInfo->mutStopHeartbeat);
+    } while(!bCanceled);
+
+
+cleanup:
+
+    return NULL;
+error:
+
+    goto cleanup;
+}
+
+DWORD
+VmAfdAllocateFromRpcHeartbeatStatus(
+   PVMAFD_HB_STATUS_W   pHeartbeatStatusSrc,
+   PVMAFD_HB_STATUS_W *ppHeartbeatStatusDest
+   )
+{
+    DWORD dwError = 0;
+    PVMAFD_HB_STATUS_W pHeartbeatStatusDest = NULL;
+
+    if (!pHeartbeatStatusSrc ||
+        !ppHeartbeatStatusDest
+       )
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateMemory(
+                            sizeof(VMAFD_HB_STATUS_W),
+                            (PVOID *)&pHeartbeatStatusDest
+                            );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    pHeartbeatStatusDest->bIsAlive = pHeartbeatStatusSrc->bIsAlive;
+
+    if (pHeartbeatStatusSrc->pHeartbeatInfoArr)
+    {
+        DWORD dwIndex = 0;
+
+        dwError = VmAfdAllocateMemory(
+                         sizeof(VMAFD_HB_INFO_W)*pHeartbeatStatusSrc->dwCount,
+                         (PVOID *)&pHeartbeatStatusDest->pHeartbeatInfoArr
+                         );
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        pHeartbeatStatusDest->dwCount = pHeartbeatStatusSrc->dwCount;
+
+        for (; dwIndex < pHeartbeatStatusSrc->dwCount; ++dwIndex)
+        {
+            PVMAFD_HB_INFO_W pSrc =
+                        &pHeartbeatStatusSrc->pHeartbeatInfoArr[dwIndex];
+            PVMAFD_HB_INFO_W pDst=
+                        &pHeartbeatStatusDest->pHeartbeatInfoArr[dwIndex];
+
+            pDst->dwPort = pSrc->dwPort;
+            pDst->dwLastHeartbeat = pSrc->dwLastHeartbeat;
+            pDst->bIsAlive = pSrc->bIsAlive;
+
+            if (pSrc->pszServiceName)
+            {
+                dwError = VmAfdAllocateStringW(
+                                      pSrc->pszServiceName,
+                                      &pDst->pszServiceName
+                                      );
+                BAIL_ON_VMAFD_ERROR(dwError);
+            }
+         }
+    }
+
+    *ppHeartbeatStatusDest = pHeartbeatStatusDest;
+
+cleanup:
+
+    return dwError;
+error:
+
+    if (ppHeartbeatStatusDest)
+    {
+        *ppHeartbeatStatusDest = NULL;
+    }
+    if (pHeartbeatStatusDest)
+    {
+        VmAfdFreeHeartbeatStatusW(pHeartbeatStatusDest);
+    }
+    goto cleanup;
+}
+
+VOID
+VmAfdRpcClientFreeHeartbeatStatus(
+   PVMAFD_HB_STATUS_W pHeartbeatStatus
+   )
+{
+    if (pHeartbeatStatus)
+    {
+        if (pHeartbeatStatus->pHeartbeatInfoArr)
+        {
+            DWORD dwIndex = 0;
+
+            for (; dwIndex < pHeartbeatStatus->dwCount; ++dwIndex)
+            {
+                PVMAFD_HB_INFO_W pCursor=
+                              &pHeartbeatStatus->pHeartbeatInfoArr[dwIndex];
+
+                if (pCursor->pszServiceName)
+                {
+                    VmAfdRpcClientFreeMemory(pCursor->pszServiceName);
+                }
+            }
+
+            VmAfdRpcClientFreeMemory(pHeartbeatStatus->pHeartbeatInfoArr);
+        }
+
+        VmAfdRpcClientFreeMemory(pHeartbeatStatus);
+    }
+}
+
+DWORD
+VmAfdHeartbeatStatusAFromW(
+    PVMAFD_HB_STATUS_W  pwHeartbeatStatus,
+    PVMAFD_HB_STATUS_A* ppHeartbeatStatus
+    )
+{
+    DWORD dwError = 0;
+    PVMAFD_HB_STATUS_A pHeartbeatStatus = NULL;
+
+    if (!pwHeartbeatStatus || !ppHeartbeatStatus)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateMemory(
+                            sizeof(VMAFD_HB_STATUS_A),
+                            (PVOID *)&pHeartbeatStatus
+                            );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (pwHeartbeatStatus->dwCount)
+    {
+        DWORD dwIndex = 0;
+
+        dwError = VmAfdAllocateMemory(
+                            sizeof(VMAFD_HB_INFO_A)*pwHeartbeatStatus->dwCount,
+                            (PVOID*)&pHeartbeatStatus->pHeartbeatInfoArr
+                            );
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        for (; dwIndex < pwHeartbeatStatus->dwCount; ++dwIndex)
+        {
+            PVMAFD_HB_INFO_W pCurrHeartbeatInfoW =
+                              &pwHeartbeatStatus->pHeartbeatInfoArr[dwIndex];
+            PVMAFD_HB_INFO_A pCurrHeartbeatInfoA =
+                              &pHeartbeatStatus->pHeartbeatInfoArr[dwIndex];
+
+            dwError = VmAfdAllocateStringAFromW(
+                              pCurrHeartbeatInfoW->pszServiceName,
+                              &pCurrHeartbeatInfoA->pszServiceName
+                              );
+            BAIL_ON_VMAFD_ERROR(dwError);
+
+            pCurrHeartbeatInfoA->dwPort = pCurrHeartbeatInfoW->dwPort;
+            pCurrHeartbeatInfoA->dwLastHeartbeat =
+                                 pCurrHeartbeatInfoW->dwLastHeartbeat;
+            pCurrHeartbeatInfoA->bIsAlive = pCurrHeartbeatInfoW->bIsAlive;
+        }
+    }
+
+    pHeartbeatStatus->dwCount = pwHeartbeatStatus->dwCount;
+    pHeartbeatStatus->bIsAlive = pwHeartbeatStatus->bIsAlive;
+
+    *ppHeartbeatStatus = pHeartbeatStatus;
+
+cleanup:
+
+    return dwError;
+error:
+
+    if (ppHeartbeatStatus)
+    {
+        *ppHeartbeatStatus = NULL;
+    }
+    if (pHeartbeatStatus)
+    {
+        VmAfdFreeHeartbeatStatusA(pHeartbeatStatus);
+    }
+    goto cleanup;
+}
+
+DWORD
+VmAfdChangePNIDA(
+    PCSTR pszUserName,
+    PCSTR pszPassword,
+    PCSTR pszPNID
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszUserName = NULL;
+    PWSTR pwszPassword = NULL;
+    PWSTR pwszPNID = NULL;
+
+    if (IsNullOrEmptyString(pszUserName) ||
+        IsNullOrEmptyString(pszPassword) ||
+        IsNullOrEmptyString(pszPNID))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VmAfdAllocateStringWFromA(pszUserName, &pwszUserName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringWFromA(pszPassword, &pwszPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringWFromA(pszPNID, &pwszPNID);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdChangePNIDW(pwszUserName, pwszPassword, pwszPNID);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    VMAFD_SAFE_FREE_MEMORY(pwszPNID);
+    VMAFD_SAFE_FREE_MEMORY(pwszUserName);
+    VMAFD_SAFE_FREE_MEMORY(pwszPassword);
+    return dwError;
+
+error:
+    goto cleanup;
+}
+
+DWORD
+VmAfdChangePNIDW(
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword,
+    PCWSTR pwszPNID
+    )
+{
+    DWORD dwError = 0;
+
+    dwError = VmAfdLocalChangePNID(pwszUserName, pwszPassword, pwszPNID);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    return dwError;
+
+error:
+    VmAfdLog(VMAFD_DEBUG_ANY, "%s failed. Error(%u)", __FUNCTION__, dwError);
+    goto cleanup;
+}
+
+VOID
+VmAfdFreeString(
+    PSTR pszString)
+{
+    VMAFD_SAFE_FREE_STRINGA(pszString);
+}
+
+VOID
+VmAfdFreeWString(
+    PWSTR pwszString)
+{
+    VMAFD_SAFE_FREE_STRINGW(pwszString);
+}
+

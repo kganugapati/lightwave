@@ -54,11 +54,6 @@ VmAfdCertUpdateThrSleep(
     DWORD dwSleepSecs
     );
 
-static
-DWORD
-VmAfdRootFetchTask(
-    BOOLEAN bForceFlush
-    );
 
 static
 DWORD
@@ -113,7 +108,7 @@ VmAfdProcessCACerts(
     PVECS_SERV_STORE     pCertStore,
     CERT_ENTRY_TYPE      entryType,
     PVMAFD_CA_CERT_ARRAY pCACertArray,
-    BOOLEAN              bForceFlush
+    BOOLEAN              bLogOnDuplicate
     );
 
 DWORD
@@ -125,6 +120,8 @@ VmAfdInitCertificateThread(
    PVMAFD_THREAD pThread = NULL;
 
    VmAfdLog(VMAFD_DEBUG_ANY, "Starting Roots Fetch Thread, %s", __FUNCTION__);
+
+   (DWORD)VecsSrvFlushCertsToDisk();
 
    dwError = VmAfdAllocateMemory(
                 sizeof(VMAFD_THREAD),
@@ -183,6 +180,7 @@ error:
     {
         VmAfdShutdownCertificateThread(pThread);
     }
+    VmAfdLog(VMAFD_DEBUG_ANY, "Starting Roots Fetch Thread failed with error: [%d]", dwError);
     goto cleanup;
 }
 
@@ -225,6 +223,92 @@ VmAfdShutdownCertificateThread(
     VmAfdFreeMemory(pThread);
 }
 
+DWORD
+VmAfdRootFetchTask(
+    BOOLEAN bLogOnDuplicate
+    )
+{
+    DWORD dwError = 0;
+    LDAP* pLotus = NULL;
+    PVMAFD_ROOT_FETCH_ARG   pArgs = NULL;
+    PVMAFD_CA_CERT_ARRAY    pCACerts = NULL;
+    PVECS_SERV_STORE        pCertStore = NULL;
+    PVECS_SERV_STORE        pCrlStore = NULL;
+    WCHAR trustedRootsStoreName[] = TRUSTED_ROOTS_STORE_NAME_W;
+    WCHAR crlStoreName[] = CRL_STORE_NAME_W;
+    BOOL bIsLocked = FALSE;
+
+    dwError = VmAfdGetStore(trustedRootsStoreName, &pCertStore);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdGetStore(crlStoreName, &pCrlStore);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdGetThreadArgs(&pArgs);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdLDAPConnect(
+                pArgs->pszDCName,
+                pArgs->nPort,
+                pArgs->pszUpn,
+                pArgs->pszPassword,
+                &pLotus);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    VMAFD_LOCK_MUTEX(bIsLocked, &gVmafdGlobals.pCertUpdateMutex);
+
+    dwError = VmAfdQueryCACerts(pLotus, NULL, TRUE, &pCACerts);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdProcessCACerts(pCertStore,
+                CERT_ENTRY_TYPE_TRUSTED_CERT, pCACerts, bLogOnDuplicate);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdProcessCACerts(pCrlStore,
+                CERT_ENTRY_TYPE_REVOKED_CERT_LIST, pCACerts, bLogOnDuplicate);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsSrvFlushSSLCertFromDB(bLogOnDuplicate);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    VMAFD_UNLOCK_MUTEX(bIsLocked, &gVmafdGlobals.pCertUpdateMutex);
+
+cleanup:
+
+    VMAFD_UNLOCK_MUTEX(bIsLocked, &gVmafdGlobals.pCertUpdateMutex);
+    if (pCACerts)
+    {
+        VecsFreeCACertArray(pCACerts);
+    }
+
+    if (pCertStore != NULL)
+    {
+        VecsSrvReleaseCertStore(pCertStore);
+    }
+
+    if (pCrlStore != NULL)
+    {
+        VecsSrvReleaseCertStore(pCrlStore);
+    }
+
+    if (pLotus)
+    {
+        VmAfdLdapClose(pLotus);
+    }
+
+    if (pArgs)
+    {
+        VmAfdFreeThreadArgs(pArgs);
+    }
+
+    return dwError;
+
+error :
+
+    goto cleanup;
+}
+
+
 static
 PVOID
 VmAfdHandleCertUpdates(
@@ -238,6 +322,7 @@ VmAfdHandleCertUpdates(
     {
         DWORD   dwSleepSecs = VmAfdGetSleepInterval() ;
         BOOLEAN bShutdown = FALSE;
+        VMAFD_DOMAIN_STATE vmafdState = VMAFD_DOMAIN_STATE_NONE;
 
         bShutdown = VmAfdToShutdownCertUpdateThr(pThrArgs);
         if (bShutdown)
@@ -245,15 +330,26 @@ VmAfdHandleCertUpdates(
             break;
         }
 
-        dwError = VmAfdRootFetchTask(pThrArgs->forceFlush);
+        dwError = VmAfSrvGetDomainState (&vmafdState);
         if (dwError)
         {
-            VmAfdLog(
-                VMAFD_DEBUG_ANY,
-                "Failed to update trusted roots. Error [%u]",
-                dwError);
+            vmafdState = VMAFD_DOMAIN_STATE_NONE;
+            dwError = 0;
         }
-        pThrArgs->forceFlush = FALSE;
+
+        if (vmafdState == VMAFD_DOMAIN_STATE_CONTROLLER ||
+            vmafdState == VMAFD_DOMAIN_STATE_CLIENT)
+        {
+            dwError = VmAfdRootFetchTask(pThrArgs->forceFlush);
+            if (dwError)
+            {
+                VmAfdLog(
+                    VMAFD_DEBUG_ANY,
+                    "Failed to update trusted roots. Error [%u]",
+                    dwError);
+            }
+            pThrArgs->forceFlush = FALSE;
+        }
 
         dwError = VmAfdCertUpdateThrSleep(pThrArgs, dwSleepSecs);
         if (dwError == ETIMEDOUT)
@@ -633,7 +729,7 @@ VmAfdProcessCACerts(
     PVECS_SERV_STORE     pStore,
     CERT_ENTRY_TYPE      entryType,
     PVMAFD_CA_CERT_ARRAY pCACertArray,
-    BOOLEAN              bForceFlush
+    BOOLEAN              bLogOnDuplicate
     )
 {
     DWORD   dwError = 0;
@@ -711,25 +807,31 @@ VmAfdProcessCACerts(
                             pVecsCertContainer, nFound);
                 BAIL_ON_VMAFD_ERROR(dwError);
 
-                if (bForceFlush)
+                if (bLogOnDuplicate)
                 {
                     VmAfdLog(VMAFD_DEBUG_ANY,
                         "VmAfdProcessCACerts: force flushing.");
+                }
 
-                    if (entryType == CERT_ENTRY_TYPE_TRUSTED_CERT
-                            && pStore->dwStoreId == VECS_TRUSTED_ROOT_STORE_ID)
-                    {
-                        dwError = VecsSrvFlushCertificate(pStore,
-                                pVecsCertContainer->certificates[nFound].pCert);
-                        BAIL_ON_VMAFD_ERROR (dwError);
-                    }
-                    else if (entryType == CERT_ENTRY_TYPE_REVOKED_CERT_LIST
-                            && pStore->dwStoreId == VECS_CRL_STORE_ID)
-                    {
-                        dwError = VecsSrvFlushCrl(pStore,
-                                pVecsCertContainer->certificates[nFound].pCert);
-                        BAIL_ON_VMAFD_ERROR (dwError);
-                    }
+                if (entryType == CERT_ENTRY_TYPE_TRUSTED_CERT
+                        && pStore->dwStoreId == VECS_TRUSTED_ROOT_STORE_ID)
+                {
+                    dwError = VecsSrvFlushRootCertificate(
+                               pStore,
+                               pVecsCertContainer->certificates[nFound].pCert,
+                               bLogOnDuplicate
+                               );
+                    BAIL_ON_VMAFD_ERROR (dwError);
+                }
+                else if (entryType == CERT_ENTRY_TYPE_REVOKED_CERT_LIST
+                        && pStore->dwStoreId == VECS_CRL_STORE_ID)
+                {
+                    dwError = VecsSrvFlushCrl(
+                                pStore,
+                                pVecsCertContainer->certificates[nFound].pCert,
+                                bLogOnDuplicate
+                                );
+                    BAIL_ON_VMAFD_ERROR (dwError);
                 }
             }
 
@@ -766,81 +868,6 @@ error :
     goto cleanup;
 }
 
-static
-DWORD
-VmAfdRootFetchTask(
-    BOOLEAN bForceFlush
-    )
-{
-    DWORD dwError = 0;
-    LDAP* pLotus = NULL;
-    PVMAFD_ROOT_FETCH_ARG   pArgs = NULL;
-    PVMAFD_CA_CERT_ARRAY    pCACerts = NULL;
-    PVECS_SERV_STORE        pCertStore = NULL;
-    PVECS_SERV_STORE        pCrlStore = NULL;
-    WCHAR trustedRootsStoreName[] = TRUSTED_ROOTS_STORE_NAME_W;
-    WCHAR crlStoreName[] = CRL_STORE_NAME_W;
-
-    dwError = VmAfdGetStore(trustedRootsStoreName, &pCertStore);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    dwError = VmAfdGetStore(crlStoreName, &pCrlStore);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    dwError = VmAfdGetThreadArgs(&pArgs);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    dwError = VmAfdLDAPConnect(
-                pArgs->pszDCName,
-                pArgs->nPort,
-                pArgs->pszUpn,
-                pArgs->pszPassword,
-                &pLotus);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    dwError = VmAfdQueryCACerts(pLotus, NULL, TRUE, &pCACerts);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    dwError = VmAfdProcessCACerts(pCertStore,
-                CERT_ENTRY_TYPE_TRUSTED_CERT, pCACerts, bForceFlush);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    dwError = VmAfdProcessCACerts(pCrlStore,
-                CERT_ENTRY_TYPE_REVOKED_CERT_LIST, pCACerts, bForceFlush);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-cleanup:
-
-    if (pCACerts)
-    {
-        VecsFreeCACertArray(pCACerts);
-    }
-
-    if (pCertStore != NULL)
-    {
-        VecsSrvReleaseCertStore(pCertStore);
-    }
-
-    if (pCrlStore != NULL)
-    {
-        VecsSrvReleaseCertStore(pCrlStore);
-    }
-
-    if (pLotus)
-    {
-        VmAfdLdapClose(pLotus);
-    }
-
-    if (pArgs)
-    {
-        VmAfdFreeThreadArgs(pArgs);
-    }
-    return dwError;
-
-error :
-
-    goto cleanup;
-}
 
 static
 DWORD
@@ -867,7 +894,7 @@ VmAfdGetThreadArgs(
         BAIL_ON_VMAFD_ERROR(dwError);
     }
 
-    dwError = VmAfSrvGetDCName(&pwszDCName);
+    dwError = VmAfSrvGetAffinitizedDC(&pwszDCName);
     BAIL_ON_VMAFD_ERROR(dwError);
 
     dwError = VmAfSrvGetMachineAccountInfo(

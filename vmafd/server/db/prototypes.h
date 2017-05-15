@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -33,16 +33,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* certificates.c */
-
-DWORD
-VecsDbQueryAllCertificates(
-    PVECS_DB_CONTEXT            pDbContext,
-    PVECS_DB_CERTIFICATE_ENTRY* ppCertEntryArray,
-    PDWORD                      pdwCount
-    );
-
 
 /* database.c */
 
@@ -117,7 +107,7 @@ DWORD
 VecsBindWideString(
     sqlite3_stmt* pSqlStatement,
     PSTR pszParamName,
-    PWSTR pszValue
+    PCWSTR pszValue
     );
 
 
@@ -175,20 +165,64 @@ VecsCheckifTableExists(
     const char *psztableName,
     PDWORD bExist);
 
+/* dbcontext.c */
 DWORD
-VecsDbQueryCertificateByAlias(
-    PVECS_DB_CONTEXT            pDbContext,
-    PVECS_DB_CERTIFICATE_ENTRY* ppCertEntryArray,
-    PDWORD                      pdwCount,
-    PCWSTR                      pwszAlias
+VecsDbCreateContext(
+    PVECS_DB_CONTEXT* ppDbContext,
+    VMAFD_DB_MODE     vmafdOpenMode
     );
 
 DWORD
-VecsDbGetCertificateCount(  PVECS_DB_CONTEXT pDbContext,
-                            PCWSTR pwszAlias,
-                            DWORD *pdwCount );
+VecsDbCtxBeginTransaction(
+    PVECS_DB_CONTEXT	pDbContext
+    );
+
+DWORD
+VecsDbCtxCommitTransaction(
+    PVECS_DB_CONTEXT	pDbContext
+    );
+
+DWORD
+VecsDbCtxRollbackTransaction(
+    PVECS_DB_CONTEXT	pDbContext
+    );
 
 /* libmain.c */
+
+/* regdbutil.c */
+
+DWORD
+VmAfdRegGetString(
+    PCSTR    pszSubKey,      /* IN     */
+    PCSTR    pszValueName,   /* IN     */
+    PWSTR*   ppwszValue      /*    OUT */
+    );
+
+DWORD
+VmAfdRegSetString(
+    PCSTR    pszSubKeyParam, /* IN     */
+    PCSTR    pszValueName,   /* IN     */
+    PCWSTR   pwszValue       /* IN     */
+    );
+
+DWORD
+VmAfdRegGetInteger(
+    PCSTR    pszValueName,   /* IN     */
+    PDWORD   pdwValue        /*    OUT */
+    );
+
+DWORD
+VmAfdRegSetInteger(
+    PCSTR    pszValueName,   /* IN     */
+    DWORD    dwValue         /* IN     */
+    );
+
+DWORD
+VmAfdRegDeleteValue(
+    PCSTR    pszSubKey,      /* IN     */
+    PCSTR    pszValueName   /* IN     */
+    );
+
 
 #ifdef __cplusplus
 }

@@ -103,11 +103,23 @@
 
 #endif
 
+#define SUPPORTED_STATUS_COUNT    7
+
 #define VMDIR_RPC_FLAG_ALLOW_NCALRPC         0x01
 #define VMDIR_RPC_FLAG_ALLOW_TCPIP           0x02
 #define VMDIR_RPC_FLAG_REQUIRE_AUTH_NCALRPC  0x04
 #define VMDIR_RPC_FLAG_REQUIRE_AUTH_TCPIP    0x08
 #define VMDIR_RPC_FLAG_REQUIRE_AUTHZ         0x10
+
+//
+// For every N tombstones that we reap we'll sleep X seconds to prevent us from
+// taxing the server too much.
+//
+#define TOMBSTONE_REAPING_THROTTLE_COUNT 20
+#define TOMBSTONE_REAPING_THROTTLE_SLEEP (1 * 1000)
+#define VDIR_REAP_EXPIRED_ENTRIES_BATCH 2000
+
+#define VDIR_INTEGRITY_CHECK_BATCH     1000
 
 /*
  * Table to define and initialize VMDIR configuration data.
@@ -123,21 +135,21 @@
  *
  */
 
-#define VMDIR_REG_KEY_LDAP_PORT             "LdapPort"
-#define VMDIR_REG_KEY_ALLOW_INSECURE_AUTH   "AllowInsecureAuthentication"
-#define VMDIR_REG_KEY_ADMIN_PASSWD          "AdministratorPassword"
-#define VMDIR_REG_KEY_LDAP_LISTEN_PORTS     "LdapListenPorts"
-#define VMDIR_REG_KEY_LDAPS_LISTEN_PORTS    "LdapsListenPorts"
-#define VMDIR_REG_KEY_LDAP_CONNECT_PORTS    "LdapConnectPorts"
-#define VMDIR_REG_KEY_LDAPS_CONNECT_PORTS   "LdapsConnectPorts"
-#define VMDIR_REG_KEY_LDAP_RECV_TIMEOUT_SEC "LdapRecvTimeoutSec"
-#define VMDIR_REG_KEY_ALLOW_ADMIN_LOCKOUT   "AllowAdminLockout"
-#define VMDIR_REG_KEY_MAX_OP_THREADS        "MaxLdapOpThrs"
-
 #define VMDIR_CONFIG_INIT_TABLE_INITIALIZER                      \
 {                                                                \
     {                                                            \
         /*.pszName        = */ VMDIR_REG_KEY_ALLOW_INSECURE_AUTH,\
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_BOOLEAN,  \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 1,                                \
+        /*.dwDefault      = */ 0,                                \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_DISABLE_VECS,       \
         /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_BOOLEAN,  \
         /*.RegDataType    = */ REG_DWORD,                        \
         /*.dwMin          = */ 0,                                \
@@ -190,7 +202,18 @@
         /*.dwValue        = */ 0,                                \
         /*.pszDefault     = */ DEFAULT_LDAPS_PORT_STR "\000" LEGACY_DEFAULT_LDAPS_PORT_STR "\000", \
         /*.pszValue       = */ NULL                              \
-    },                                                            \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_REST_LISTEN_PORT,   \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_STRING,   \
+        /*.RegDataType    = */ REG_SZ,                           \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 0,                                \
+        /*.dwDefault      = */ 0,                                \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ DEFAULT_REST_PORT_STR,            \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
     {                                                            \
         /*.pszName        = */ VMDIR_REG_KEY_LDAP_RECV_TIMEOUT_SEC,  \
         /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_DWORD,    \
@@ -214,6 +237,27 @@
         /*.pszValue       = */ NULL                              \
     },                                                           \
     {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_MAX_INDEX_SCAN,     \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_DWORD,    \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 32,                               \
+        /*.dwMax          = */ 8192,                             \
+        /*.dwDefault      = */ 512,                              \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {   /*.pszName        = */ VMDIR_REG_KEY_SMALL_CANDIDATE_SET, \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_DWORD,    \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 16,                               \
+        /*.dwMax          = */ 8192,                             \
+        /*.dwDefault      = */ 32,                              \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
         /*.pszName        = */ VMDIR_REG_KEY_ALLOW_ADMIN_LOCKOUT,  \
         /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_BOOLEAN,  \
         /*.RegDataType    = */ REG_DWORD,                        \
@@ -223,5 +267,115 @@
         /*.dwValue        = */ 0,                                \
         /*.pszDefault     = */ NULL,                             \
         /*.pszValue       = */ NULL                              \
-    }                                                            \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_MAX_SIZELIMIT_SCAN, \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_DWORD,    \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ UINT32_MAX,                       \
+        /*.dwDefault      = */ 0,                                \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_ALLOW_IMPORT_OP_ATTR,\
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_BOOLEAN,  \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 1,                                \
+        /*.dwDefault      = */ 0,                                \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_LDAP_SEARCH_TIMEOUT_SEC,  \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_DWORD,    \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 65535,                            \
+        /*.dwDefault      = */ 120,                              \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_TRACK_LAST_LOGIN_TIME,\
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_BOOLEAN,  \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 1,                                \
+        /*.dwDefault      = */ 0,                                \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_PAGED_SEARCH_READ_AHEAD,  \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_BOOLEAN,  \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 1,                                \
+        /*.dwDefault      = */ 0,                                \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_COPY_DB_WRITES_MIN, \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_DWORD,    \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 100000,                           \
+        /*.dwDefault      = */ 1,                                \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_COPY_DB_INTERVAL_IN_SEC, \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_DWORD,    \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 600,                              \
+        /*.dwDefault      = */ 0,                                \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_COPY_DB_BLOCK_WRITE_IN_SEC, \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_DWORD,    \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 600,                              \
+        /*.dwDefault      = */ 30,                               \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_TOMBSTONE_EXPIRATION_IN_SEC, \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_DWORD,    \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 0xFFFFFFFF,                       \
+        /*.dwDefault      = */ 45 * 24 * 60 * 60,                \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
+    {                                                            \
+        /*.pszName        = */ VMDIR_REG_KEY_TOMBSTONE_REAPING_FREQ_IN_SEC, \
+        /*.Type           = */ VMDIR_CONFIG_VALUE_TYPE_DWORD,    \
+        /*.RegDataType    = */ REG_DWORD,                        \
+        /*.dwMin          = */ 0,                                \
+        /*.dwMax          = */ 0xFFFFFFFF,                       \
+        /*.dwDefault      = */ 24 * 60 * 60,                     \
+        /*.dwValue        = */ 0,                                \
+        /*.pszDefault     = */ NULL,                             \
+        /*.pszValue       = */ NULL                              \
+    },                                                           \
 }

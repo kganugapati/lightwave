@@ -1,3 +1,16 @@
+/*
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
 #include "certool.h"
 #include <vmca.h>
 #include <vmcacommon.h>
@@ -42,7 +55,6 @@ _HandleOpenServer(
                   (PCSTR) argSrpUpn.c_str(),
                   NULL,
                   (PCSTR) argSrpPwd.c_str(),
-
                   0, //flags
                   NULL, // Reserved
                   &hServer);
@@ -250,8 +262,7 @@ HandleCreateSelfSignedCA()
     PVMCA_CSR pCSR = NULL;
     PVMCA_CERTIFICATE pCertificate = NULL;
     PSTR pszDefaultDomainName = NULL;
-    PSTR pszServer = "localhost";
-    std::string caDN;
+    PCSTR pszServer = "localhost";
     char hostName [HOST_NAME_MAX] = {0,};
     unsigned long dwMask = 0;
     time_t now = 0;
@@ -321,8 +332,6 @@ HandleCreateSelfSignedCA()
     WSACleanup();
 #endif
 
-    caDN.append("CA");
-
     dwError = VmAfdGetDomainNameA(
                                   pszServer,
                                   &pszDefaultDomainName
@@ -338,14 +347,14 @@ HandleCreateSelfSignedCA()
     // Don't fail , this avoids the failure due the race condition.
 
     dwError = VMCAInitPKCS10DataWithDCA(
-                              caDN.c_str(),
+                              cfgName.c_str(),
                               pszDefaultDomainName,
                               hostName,
-                              NULL,
-                              NULL,
+                              cfgOrgUnit.c_str(),
+                              cfgState.c_str(),
                               cfgCountry.c_str(),
-                              NULL,
-                              NULL,
+                              cfgEmail.c_str(),
+                              cfgIPAddress.c_str(),
                               pCertReqData);
     if (dwError != 0)
     {
@@ -1034,11 +1043,11 @@ HandleGenCISCert()
     PSTR pszDomainName = NULL;
     PSTR pszOrgUnit    = NULL;
     PSTR pszMachineID  = NULL;
-    PSTR format = "%s@%s";
+    PCSTR format = "%s@%s";
     int ret = 0;
     PSTR pszCert = NULL;
     PSTR pszPrivateKey = NULL;
-    PSTR pszLocalHost = "localhost";
+    PCSTR pszLocalHost = "localhost";
     std::string vecsAlias(cfgName);
 #ifndef __NO_AFD__
     PVECS_STORE pStore = NULL;
@@ -1378,27 +1387,6 @@ error :
     return dwError;
 }
 
-
-DWORD
-HandleLogin()
-{
-  DWORD dwError = 0;
-  dwError = VMCALoginUser(
-    (PSTR) argDomainName.c_str(),
-    (PSTR) argUserName.c_str(),
-    (PSTR) argPassword.c_str());
- return dwError;
-}
-
-
-DWORD
-HandleLogout()
-{
-  DWORD dwError = 0;
-  dwError = VMCALogout();
-  return dwError;
-}
-
 DWORD
 HandleVecsEnum()
 {
@@ -1699,4 +1687,111 @@ cleanup:
 error:
     goto cleanup;
 
+}
+
+DWORD
+HandleSetServerOption()
+{
+    DWORD   dwError = 0;
+    unsigned int    dwOption = 0;
+    PVMCA_SERVER_CONTEXT    hServer = NULL;
+
+    if (std::strcmp(argOption.c_str(), VMCA_OPTION_MULTIPLE_SAN) == 0) {
+        dwOption = VMCA_SERVER_OPT_ALLOW_MULTIPLE_SAN;
+    }
+    else
+    {
+        std::cerr << "Unrecognizable server option: " << argOption << std::endl;
+        dwError = VMCA_ARGUMENT_ERROR;
+        BAIL_ON_ERROR(dwError);
+    }
+
+    dwError = _HandleOpenServer(&hServer);
+    BAIL_ON_ERROR(dwError);
+
+    // Call into VMCA Server to set server option
+    dwError =  VMCASetServerOptionHA(
+            hServer, (PCSTR)argServerName.c_str(), dwOption);
+    BAIL_ON_ERROR(dwError);
+
+error:
+    if (hServer)
+    {
+        VMCACloseServer(hServer);
+    }
+    return dwError;
+}
+
+DWORD
+HandleUnsetServerOption()
+{
+    DWORD   dwError = 0;
+    unsigned int    dwOption = 0;
+    PVMCA_SERVER_CONTEXT    hServer = NULL;
+
+    if (std::strcmp(argOption.c_str(), VMCA_OPTION_MULTIPLE_SAN) == 0) {
+        dwOption = VMCA_SERVER_OPT_ALLOW_MULTIPLE_SAN;
+    }
+    else
+    {
+        std::cerr << "Unrecognizable server option: " << argOption << std::endl;
+        dwError = VMCA_ARGUMENT_ERROR;
+        BAIL_ON_ERROR(dwError);
+    }
+
+    dwError = _HandleOpenServer(&hServer);
+    BAIL_ON_ERROR(dwError);
+
+    // Call into VMCA Server to unset server option
+    dwError =  VMCAUnsetServerOptionHA(
+            hServer, (PCSTR)argServerName.c_str(), dwOption);
+    BAIL_ON_ERROR(dwError);
+
+error:
+    if (hServer)
+    {
+        VMCACloseServer(hServer);
+    }
+    return dwError;
+}
+
+DWORD
+HandleGetServerOption()
+{
+    DWORD   dwError = 0;
+    DWORD   i = 0;
+    unsigned int    dwOption = 0;
+    PVMCA_SERVER_CONTEXT    hServer = NULL;
+
+    dwError = _HandleOpenServer(&hServer);
+    BAIL_ON_ERROR(dwError);
+
+    // Call into VMCA Server to get server option
+    dwError =  VMCAGetServerOptionHA(
+            hServer, (PCSTR)argServerName.c_str(), &dwOption);
+    BAIL_ON_ERROR(dwError);
+
+    // Print enabled options
+    for (i = 1; i < VMCA_SERVER_OPT_COUNT; i <<= 1)
+    {
+        if (dwOption & i)
+        {
+            switch (i)
+            {
+            case VMCA_SERVER_OPT_ALLOW_MULTIPLE_SAN:
+                std::cout << VMCA_OPTION_MULTIPLE_SAN << std::endl;
+                break;
+
+            default:
+                break;
+            }
+        }
+    }
+
+error:
+    if (hServer)
+    {
+        VMCACloseServer(hServer);
+    }
+    return dwError;
 }

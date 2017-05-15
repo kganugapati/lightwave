@@ -1,3 +1,17 @@
+/*
+ * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
 #include "includes.h"
 #include <krb5-crypto/includes.h>
 
@@ -121,9 +135,18 @@ VmDirKeyTabOpen(
         dwError = EINVAL;
         BAIL_ON_VMDIR_ERROR(dwError);
     }
-    fseek(ktfp, sizeof(size_16), SEEK_SET);
 
-    pKeyTab->ktOffset = sizeof(size_16);
+    if (ktMode == 3)
+    {
+        fseek(ktfp, 0, SEEK_END);
+        pKeyTab->ktOffset = ftell(ktfp);
+    }
+    else
+    {
+        fseek(ktfp, sizeof(size_16), SEEK_SET);
+        pKeyTab->ktOffset = sizeof(size_16);
+    }
+
     pKeyTab->ktType = 1; // Only support file KT for now
     pKeyTab->ktfp = ktfp;
     pKeyTab->ktMode = ktMode;

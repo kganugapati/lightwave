@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -27,6 +27,19 @@ static
 USN
 VmDirBackendHighestCommittedUSN(
     PVDIR_BACKEND_CTX   pBECtx
+    );
+
+static
+USN
+VmDirBackendGetMaxOriginatingUSN(
+    PVDIR_BACKEND_CTX   pBECtx
+    );
+
+static
+VOID
+VmDirBackendSetMaxOriginatingUSN(
+    PVDIR_BACKEND_CTX   pBECtx,
+    USN                 maxOriginatingUSN
     );
 
 static
@@ -53,22 +66,18 @@ VmDirBackendConfig(
     PVDIR_BACKEND_USN_LIST  pUSNList = NULL;
 
     gVdirBEGlobals.pszBERootDN = "";
+    gVdirBEGlobals.usnFirstNext = USN_SEQ_INITIAL_VALUE;
     gVdirBEGlobals.pBE = NULL;
 
-#ifdef HAVE_DB_H
-    gVdirBEGlobals.pBE = BdbBEInterface();
-#endif
-
-#ifdef HAVE_TCBDB_H
-    gVdirBEGlobals.pBE = VmDirTCBEInterface();
-#endif
-
-#ifdef HAVE_MDB_STORE
     gVdirBEGlobals.pBE = VmDirMDBBEInterface();
-#endif
 
     gVdirBEGlobals.pBE->pfnBEGetLeastOutstandingUSN = VmDirBackendLeastOutstandingUSN;
+
     gVdirBEGlobals.pBE->pfnBEGetHighestCommittedUSN = VmDirBackendHighestCommittedUSN;
+
+    gVdirBEGlobals.pBE->pfnBEGetMaxOriginatingUSN = VmDirBackendGetMaxOriginatingUSN;
+
+    gVdirBEGlobals.pBE->pfnBESetMaxOriginatingUSN = VmDirBackendSetMaxOriginatingUSN;
 
     dwError = VmDirAllocateUSNList(&pUSNList);
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -105,6 +114,7 @@ VmDirBackendContentFree(
     if (pBE)
     {
         VmDirFreeUSNList(pBE->pBEUSNList);
+        pBE->pBEUSNList = NULL;
     }
 }
 
@@ -177,11 +187,24 @@ VmDirBackendInitUSNList(
     dwError = pBE->pfnBEGetNextUSN(&beCtx, &tmpUSN);
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    gVdirBEGlobals.usnFirstNext = tmpUSN;
+    VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Next available local USN: %lu", tmpUSN);
+
 error:
 
     VmDirBackendCtxContentFree(&beCtx);
 
     return dwError;
+}
+
+VOID
+VmDirBackendGetFirstNextUSN(
+    USN *pUSN
+    )
+{
+    assert(pUSN != NULL);
+
+    *pUSN = gVdirBEGlobals.usnFirstNext;
 }
 
 /*
@@ -206,7 +229,7 @@ VmDirBackendSetMaxOutstandingUSN(
 
     VMDIR_UNLOCK_MUTEX(bInLock, pBECtx->pBE->pBEUSNList->pMutex);
 
-    VmDirLog( LDAP_DEBUG_TRACE, "set max outstanding USN (%u)", maxOutstandingUSN);
+    VMDIR_LOG_DEBUG( LDAP_DEBUG_TRACE, "set max outstanding USN (%u)", maxOutstandingUSN);
 
     return;
 }
@@ -259,7 +282,7 @@ VmDirBackendAddOutstandingUSN(
 
             if (iNewSize > BE_OUTSTANDING_USN_LIST_SIZE * 4)
             {   // we should not get here normally.  log message if we did.
-                VmDirLog( LDAP_DEBUG_ANY, "Outstanding USN list size (%ld)", iNewSize);
+                VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "Outstanding USN list size (%ld)", iNewSize);
             }
         }
 
@@ -270,7 +293,7 @@ VmDirBackendAddOutstandingUSN(
 
         VMDIR_UNLOCK_MUTEX(bInLock, pUSNList->pMutex);
 
-        VmDirLog( LDAP_DEBUG_TRACE, "add outstanding USN (%u).",  pBECtx->wTxnUSN);
+        VMDIR_LOG_DEBUG( LDAP_DEBUG_TRACE, "add outstanding USN (%u).",  pBECtx->wTxnUSN);
     }
 
 cleanup:
@@ -338,18 +361,126 @@ VmDirBackendRemoveOutstandingUSN(
 
         VMDIR_UNLOCK_MUTEX(bInLock, pUSNList->pMutex);
 
-        VmDirLog( LDAP_DEBUG_TRACE, "rm outstanding USN (%u)(%u)(%u)(%u)",
+        VMDIR_LOG_DEBUG( LDAP_DEBUG_TRACE, "rm outstanding USN (%u)(%u)(%u)(%u)",
                   pBECtx->wTxnUSN, minPendingUSN, iPendingCnt, localMaxOutstandingUSN);
     }
 
     if (! bFoundTarget)
     {
-        VmDirLog( LDAP_DEBUG_ANY, "Remove outstanding USN (%ld) not found", pBECtx->wTxnUSN);
+        VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "Remove outstanding USN (%ld) not found", pBECtx->wTxnUSN);
     }
 
     // Do NOT reset pBECtx->wTxnUSN here because we could be retry loop.
 
     return;
+}
+
+DWORD
+VmDirBackendUniqKeyGetValue(
+    PCSTR       pKey,
+    PSTR*       ppValue
+    )
+{
+    DWORD               dwError = 0;
+    VDIR_BACKEND_CTX    beCtx = {0};
+    BOOLEAN             bHasTxn = FALSE;
+    PSTR                pValue = NULL;
+
+    if (!pKey || !ppValue)
+    {
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
+    }
+
+    beCtx.pBE = VmDirBackendSelect(NULL);
+    dwError = beCtx.pBE->pfnBETxnBegin(&beCtx, VDIR_BACKEND_TXN_READ);
+    BAIL_ON_VMDIR_ERROR(dwError);
+    bHasTxn = TRUE;
+
+    dwError = beCtx.pBE->pfnBEUniqKeyGetValue(
+                            &beCtx, pKey, &pValue);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    *ppValue = pValue;
+    pValue = NULL;
+
+cleanup:
+    if (bHasTxn)
+    {
+        beCtx.pBE->pfnBETxnCommit(&beCtx);
+    }
+    VMDIR_SAFE_FREE_MEMORY(pValue);
+    VmDirBackendCtxContentFree(&beCtx);
+
+    return dwError;
+
+error:
+    VMDIR_LOG_INFO( LDAP_DEBUG_BACKEND,
+                    "%s error (%d)", __FUNCTION__, dwError );
+    goto cleanup;
+}
+
+DWORD
+VmDirBackendUniqKeySetValue(
+    PCSTR       pKey,
+    PCSTR       pValue,
+    BOOLEAN     bForce
+    )
+{
+    DWORD               dwError = 0;
+    VDIR_BACKEND_CTX    beCtx = {0};
+    BOOLEAN             bHasTxn = FALSE;
+    PSTR                pLocalValue = NULL;
+
+    if (!pKey || !pValue)
+    {
+        dwError = VMDIR_ERROR_GENERIC;
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_PARAMETER);
+    }
+
+    beCtx.pBE = VmDirBackendSelect(NULL);
+    dwError = beCtx.pBE->pfnBETxnBegin(&beCtx, VDIR_BACKEND_TXN_WRITE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+    bHasTxn = TRUE;
+
+    if (!bForce)
+    {
+        // Maybe MDB has option to force set already?
+        // for now, query to see if key exists.
+        dwError = beCtx.pBE->pfnBEUniqKeyGetValue(
+                                &beCtx, pKey, &pLocalValue);
+        if (dwError == 0)
+        {
+            BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_TYPE_OR_VALUE_EXISTS);
+        }
+
+        if (dwError == VMDIR_ERROR_NOT_FOUND)
+        {
+            dwError = 0;
+        }
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = beCtx.pBE->pfnBEUniqKeySetValue(
+                            &beCtx, pKey, pValue);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    beCtx.pBE->pfnBETxnCommit(&beCtx);
+    bHasTxn = FALSE;
+
+cleanup:
+    if (bHasTxn)
+    {
+        beCtx.pBE->pfnBETxnAbort(&beCtx);
+    }
+    VMDIR_SAFE_FREE_MEMORY(pLocalValue);
+    VmDirBackendCtxContentFree(&beCtx);
+
+    return dwError;
+
+error:
+    VMDIR_LOG_INFO( LDAP_DEBUG_BACKEND,
+                    "%s error (%d)", __FUNCTION__, dwError );
+    goto cleanup;
 }
 
 /*
@@ -430,6 +561,54 @@ VmDirBackendHighestCommittedUSN(
     VMDIR_UNLOCK_MUTEX(bInLock, pUSNList->pMutex);
 
     return ((minPendingUSN > 0) ? minPendingUSN - 1 : maxOutstandingUSN - 1);
+}
+
+static
+VOID
+VmDirBackendSetMaxOriginatingUSN(
+    PVDIR_BACKEND_CTX   pBECtx,
+    USN                 maxOriginatingUSN
+    )
+{
+    BOOLEAN     bInLock = FALSE;
+
+    assert( pBECtx && pBECtx->pBE && pBECtx->pBE->pBEUSNList);
+
+    VMDIR_LOCK_MUTEX(bInLock, pBECtx->pBE->pBEUSNList->pMutex);
+
+    pBECtx->pBE->pBEUSNList->maxOriginatingUSN = maxOriginatingUSN;
+
+    VMDIR_UNLOCK_MUTEX(bInLock, pBECtx->pBE->pBEUSNList->pMutex);
+
+    VMDIR_LOG_DEBUG( LDAP_DEBUG_TRACE,
+                     "Set max originating USN (%u)",
+                     maxOriginatingUSN);
+
+    return;
+}
+
+static
+USN
+VmDirBackendGetMaxOriginatingUSN(
+    PVDIR_BACKEND_CTX   pBECtx
+    )
+{
+    BOOLEAN     bInLock = FALSE;
+    USN maxOriginatingUSN = 0;
+
+    assert( pBECtx && pBECtx->pBE && pBECtx->pBE->pBEUSNList);
+
+    VMDIR_LOCK_MUTEX(bInLock, pBECtx->pBE->pBEUSNList->pMutex);
+
+    maxOriginatingUSN = pBECtx->pBE->pBEUSNList->maxOriginatingUSN;
+
+    VMDIR_UNLOCK_MUTEX(bInLock, pBECtx->pBE->pBEUSNList->pMutex);
+
+    VMDIR_LOG_DEBUG( LDAP_DEBUG_TRACE,
+                     "Get max originating USN (%u)",
+                     maxOriginatingUSN);
+
+    return maxOriginatingUSN;
 }
 
 static

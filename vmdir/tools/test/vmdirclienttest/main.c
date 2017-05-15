@@ -1,3 +1,18 @@
+/*
+ * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
+
 #include "includes.h"
 
 /* Example of why you don't call public APIs internally */
@@ -6,6 +21,14 @@ VmDirCreateBindingHandleA(
     PCSTR      pszNetworkAddress,
     PCSTR      pszNetworkEndpoint,
     handle_t   *ppBinding
+    );
+
+DWORD
+TestVmDirLdapGetResults(
+    LDAP    *pLd,
+    int      msgid,
+    uint64_t startTime,
+    BOOLEAN  displayTimeTaken
     );
 
 #define SIZE_256    256
@@ -231,141 +254,7 @@ error:
 void
 TestVmDirDBFileTransfer()
 {
-#define VMDIR_DB_READ_BLOCK_SIZE     10000000
-#define VMDIR_MDB_DATA_FILE_NAME "data.mdb"
-
-    DWORD       dwError = 0;
-    char        pszServerName[VMDIR_MAX_HOSTNAME_LEN];
-#if 0
-    PCSTR       pszServerEndpoint = NULL;
-#endif
-    PVMDIR_SERVER_CONTEXT hServer = NULL;
-    FILE *      pFileHandle = NULL;
-    UINT32      writeSize = 0;
-    UINT32      dwCount = 0;
-    FILE *      pFile = NULL;
-    char        dbLocalFilename[VMDIR_MAX_FILE_NAME_LEN] = {0};
-    PBYTE       pReadBuffer = NULL;
-    PSTR        pszLocalErrorMsg = NULL;
-    char        dbRemoteFilename[VMDIR_MAX_FILE_NAME_LEN] = {0};
-
-#ifndef _WIN32
-    const char  *dbHomeDir = VMDIR_DB_DIR;
-    const char   fileSeperator = '/';
-#else
-    _TCHAR      dbHomeDir[MAX_PATH];
-    const char   fileSeperator = '\\';
-
-    dwError = VmDirMDBGetHomeDir(dbHomeDir);
-    BAIL_ON_VMDIR_ERROR ( dwError );
-#endif
-
-    printf("Enter partner hostname: ");
-    scanf("%s", pszServerName);
-
-    printf( "TestVmDirDBFileTransfer: Connecting to the replication partner (%s) ...\n", pszServerName );
-
-    dwError = VmDirOpenServerA(
-                  pszServerName,
-                  NULL,
-                  NULL,
-                  NULL,
-                  0,
-                  NULL,
-                  &hServer);
-    BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pszLocalErrorMsg),
-            "TestVmDirDBFileTransfer: VmDirOpenServerA() call failed with error: %d, host name = %s",
-            dwError, pszServerName);
-
-    printf( "TestVmDirDBFileTransfer: Setting vmdir state to VMDIRD_READ_ONLY \n" );
-
-    dwError = VmDirSetState( hServer, VMDIRD_STATE_READ_ONLY );
-
-    BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pszLocalErrorMsg),
-                "TestVmDirDBFileTransfer: VmDirSetState() call failed with error: %d", dwError  );
-
-    dwError = VmDirStringPrintFA( dbRemoteFilename, VMDIR_MAX_FILE_NAME_LEN, "%s%c%s", dbHomeDir, fileSeperator,
-                                  VMDIR_MDB_DATA_FILE_NAME );
-
-    BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pszLocalErrorMsg),
-            "TestVmDirDBFileTransfer: VmDirStringPrintFA() call failed with error: %d", dwError );
-
-    dwError = VmDirStringPrintFA( dbLocalFilename, VMDIR_MAX_FILE_NAME_LEN, "%s%s", dbRemoteFilename, ".partner" );
-
-    BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pszLocalErrorMsg),
-            "TestVmDirDBFileTransfer: VmDirStringPrintFA() call failed with error: %d", dwError );
-
-    // Open local file
-    if ((pFile = fopen(dbLocalFilename, "wb")) == NULL)
-    {
-        dwError = errno;
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pszLocalErrorMsg),
-            "TestVmDirDBFileTransfer: fopen() call failed, DB file: %s, error: %s.", dbLocalFilename, strerror(errno) );
-    }
-
-    printf( "TestVmDirDBFileTransfer: Opening the REMOTE DB file ... : %s\n", dbRemoteFilename );
-
-    dwError = VmDirOpenDBFile( hServer, dbRemoteFilename, &pFileHandle );
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    for (;;)
-    {
-        printf( "TestVmDirDBFileTransfer: Reading the REMOTE DB file (%p) ..., buffer size (%d)\n",
-                pFileHandle, VMDIR_DB_READ_BLOCK_SIZE );
-
-        dwCount = VMDIR_DB_READ_BLOCK_SIZE;
-
-        dwError = VmDirReadDBFile( hServer, pFileHandle, &dwCount, &pReadBuffer );
-
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pszLocalErrorMsg),
-                "TestVmDirDBFileTransfer: VmDirReadDBFile() call failed, error: %d", dwError );
-
-        printf( "TestVmDirDBFileTransfer: Writing the LOCAL DB file ... : %s, buf size (%d)\n",
-                dbLocalFilename, dwCount );
-
-        writeSize = (UINT32)fwrite(pReadBuffer, 1, dwCount, pFile);
-
-        VMDIR_SAFE_FREE_MEMORY(pReadBuffer);
-
-        if(writeSize < dwCount)
-        {
-            dwError = -1;
-            BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, (pszLocalErrorMsg),
-                    "TestVmDirDBFileTransfer: fwrite() call failed, recvSize: %d, writeSize: %d.",
-                    dwCount, writeSize );
-        }
-        if (dwCount < VMDIR_DB_READ_BLOCK_SIZE)
-        {
-            printf( "DONE copying the file %s \n", dbLocalFilename );
-            break;
-        }
-    }
-
-    printf( "TestVmDirDBFileTransfer: Closing the REMOTE DB file (%p) ...\n", pFileHandle );
-
-    dwError = VmDirCloseDBFile( hServer, pFileHandle );
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-cleanup:
-    if (hServer)
-    {
-        printf( "TestVmDirDBFileTransfer: Setting vmdir state to VMDIRD_NORMAL \n" );
-
-        dwError = VmDirSetState( hServer, VMDIRD_STATE_NORMAL );
-        VmDirCloseServer(hServer);
-    }
-    if (pFile != NULL)
-    {
-        fclose(pFile);
-    }
-    VMDIR_SAFE_FREE_MEMORY(pszLocalErrorMsg);
-    VMDIR_SAFE_FREE_MEMORY(pReadBuffer);
-
-    return;
-
-error:
-    printf( "%s\n", pszLocalErrorMsg ? pszLocalErrorMsg : "Hmmm ... no local error message."  );
-    goto cleanup;
+    printf("TestVmDirDBFileTransfer is not implemented yet.\n");
 }
 
 void
@@ -390,6 +279,85 @@ cleanup:
 error:
     printf( "%s\n", pszLocalErrorMsg ? pszLocalErrorMsg : "Hmmm ... no local error message."  );
     goto cleanup;
+}
+
+DWORD
+TestVmDirGenerateNewUserAttributes(
+    PSTR    newDN,
+    PSTR    newSN,
+    PSTR    newCN,
+    DWORD   value
+    )
+{
+    char  *pPartialDN = ",cn=users,dc=vsphere,dc=local";
+    char  *pUser = "cn=newuser";
+    PSTR   pUserCount = NULL;
+    size_t newsize = 0;
+    DWORD  dwError = 0;
+
+    VmDirAllocateStringPrintf(&pUserCount, "%d", value);
+
+    dwError = VmDirStringCpyA(newDN, VmDirStringLenA(pUser)+1, pUser);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    newsize = SIZE_256 - VmDirStringLenA(newDN);
+    dwError = VmDirStringCatA(newDN, newsize, pUserCount);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (newSN != NULL)
+    {
+        //generateSN
+        dwError = VmDirStringCpyA(newSN, VmDirStringLenA(newDN)+1, newDN);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    if (newCN != NULL)
+    {
+        //generateCN
+        dwError = VmDirStringCpyA(newCN, VmDirStringLenA(newDN)+1, newDN);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+    //generateDN
+    newsize = SIZE_256 - VmDirStringLenA(newDN);
+    dwError = VmDirStringCatA(newDN, newsize, pPartialDN);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+cleanup:
+    VMDIR_SAFE_FREE_MEMORY(pUserCount);
+    return dwError;
+
+error:
+   printf(" \n TestVmDirGenerateNewUserDn failed. (%d)\n", dwError);
+   goto cleanup;
+}
+
+DWORD
+TestVmDirGenerateModifyCN(
+    PSTR   newCN,
+    DWORD  value
+    )
+{
+    PSTR   pUserCount = NULL;
+    char   *pUser = "newuser_";
+    DWORD  dwError = 0;
+    size_t newsize = 0;
+
+    VmDirAllocateStringPrintf(&pUserCount, "%d", value);
+
+    dwError = VmDirStringCpyA(newCN, VmDirStringLenA(pUser)+1, pUser);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    newsize = SIZE_256 - VmDirStringLenA(newCN);
+    dwError = VmDirStringCatA(newCN, newsize, pUserCount);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+cleanup:
+    VMDIR_SAFE_FREE_MEMORY(pUserCount);
+    return dwError;
+
+error:
+   printf(" \n TestVmDirGenerateModifyCN failed. (%d)\n", dwError);
+   goto cleanup;
 }
 
 #ifndef _WIN32

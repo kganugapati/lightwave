@@ -27,19 +27,17 @@
 
 #include "includes.h"
 
+#ifndef VMKDC_DEFAULT_KVNO
+#define VMKDC_DEFAULT_KVNO 1
+#endif
+
 static
 DWORD
 _VmDirKrbCreateKeyBlob(
     PVDIR_BERVALUE      pBervPrincipalName,
     PVDIR_BERVALUE      pBervPasswd,
+    DWORD               dwKvno,
     PVDIR_BERVALUE      pOutKeyBlob
-    );
-
-static
-DWORD
-_VmDirIsValidUPNRealm(
-    PCSTR       pszUPN,
-    PCSTR       pszRealm
     );
 
 /*
@@ -176,9 +174,12 @@ VmDirKrbUPNKeySet(
     )
 {
     DWORD           dwError = 0;
-    BOOLEAN         bHasKrbPrincipal = FALSE;
     VDIR_BERVALUE   bervKeyBlob = VDIR_BERVALUE_INIT;
     PVDIR_ATTRIBUTE pAttrUPN = NULL;
+    DWORD           kvno = VMKDC_DEFAULT_KVNO;
+    PVDIR_ATTRIBUTE pOldKeyBlob = NULL;
+    VDIR_ENTRY_ARRAY    entryArray = {0};
+    PSTR            pszUpnName = NULL;
 
     if ( !pOperation || !pEntry || !pBervPasswd )
     {
@@ -194,26 +195,52 @@ VmDirKrbUPNKeySet(
          gVmdirKrbGlobals.pszRealm != NULL
        )
     {
-        dwError = _VmDirIsValidUPNRealm(pAttrUPN->vals[0].lberbv.bv_val, gVmdirKrbGlobals.pszRealm);
-        if (dwError == 0 )
+        pOldKeyBlob = VmDirFindAttrByName(pEntry, ATTR_KRB_PRINCIPAL_KEY);
+        if (pOldKeyBlob && pOldKeyBlob->numVals == 1 &&
+            pAttrUPN->vals[0].lberbv.bv_len > 0)
         {
-            bHasKrbPrincipal = TRUE;
+            /* Decode existing key to get kvno value */
+            dwError = VmDirKeySetGetKvno(
+                          pAttrUPN->vals[0].lberbv.bv_val,
+                          (DWORD) pAttrUPN->vals[0].lberbv.bv_len,
+                          &kvno);
         }
-        else if (dwError == ERROR_INVALID_REALM)
-        {
-            dwError = 0;    // Pass through key generation if UPN NOT under supported krb realm
-        }
-        BAIL_ON_VMDIR_ERROR(dwError);
-    }
 
-    if (bHasKrbPrincipal)
-    {
+        pszUpnName = pAttrUPN[0].vals[0].lberbv.bv_val;
+
+        /* Lookup UPN to obtain KRB_PRINCIPAL_KEY */
+        dwError = VmDirSimpleEqualFilterInternalSearch(
+                      "",
+                      LDAP_SCOPE_SUBTREE,
+                      ATTR_KRB_UPN,
+                      pszUpnName,
+                      &entryArray);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        if (entryArray.iSize == 1)
+        {
+            pOldKeyBlob = VmDirFindAttrByName(&(entryArray.pEntry[0]), ATTR_KRB_PRINCIPAL_KEY);
+        }
+
+        if (pOldKeyBlob && pOldKeyBlob->numVals == 1 &&
+            pOldKeyBlob->vals[0].lberbv.bv_len > 0)
+        {
+            /* Decode existing key to get kvno value */
+            dwError = VmDirKeySetGetKvno(
+                          pOldKeyBlob->vals[0].lberbv.bv_val,
+                          (DWORD) pOldKeyBlob->vals[0].lberbv.bv_len,
+                          &kvno);
+            BAIL_ON_VMDIR_ERROR(dwError);
+            kvno++;
+        }
+
         if ( pBervPasswd->lberbv.bv_len > 0 )
         {
             // create key blob
             dwError = _VmDirKrbCreateKeyBlob(
                             &(pAttrUPN->vals[0]),
                             pBervPasswd,
+                            kvno,
                             &bervKeyBlob);
             BAIL_ON_VMDIR_ERROR(dwError);
 
@@ -286,6 +313,7 @@ DWORD
 _VmDirKrbCreateKeyBlob(
         PVDIR_BERVALUE      pBervPrincipalName,
         PVDIR_BERVALUE      pBervPasswd,
+        DWORD               dwKvno,
         PVDIR_BERVALUE      pOutKeyBlob
     )
 {
@@ -305,6 +333,7 @@ _VmDirKrbCreateKeyBlob(
                       pBervPasswd->lberbv.bv_val,
                       gVmdirKrbGlobals.bervMasterKey.lberbv.bv_val,
                       (DWORD)gVmdirKrbGlobals.bervMasterKey.lberbv.bv_len,
+                      dwKvno,
                       &pKeyBlob,
                       &dwKeyLen);
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -324,33 +353,4 @@ error:
     VMDIR_SAFE_FREE_MEMORY(pKeyBlob);
 
     goto cleanup;
-}
-
-/*
- *  1. UPN must have contain '@REALM' information
- *  2. REALM must be the same as supported REALM
- */
-static
-DWORD
-_VmDirIsValidUPNRealm(
-    PCSTR       pszUPN,
-    PCSTR       pszRealm
-    )
-{
-    DWORD       dwError = 0;
-    PSTR        pszSep = NULL;
-
-    pszSep = VmDirStringChrA(pszUPN, VMDIR_UPN_REALM_SEPARATOR);
-    if ( pszSep == NULL
-         ||
-         VmDirStringCompareA(pszSep+ 1, pszRealm, FALSE) != 0
-       )
-    {
-        dwError = ERROR_INVALID_REALM;
-        BAIL_ON_VMDIR_ERROR(dwError);
-    }
-
-error:
-
-    return dwError;
 }

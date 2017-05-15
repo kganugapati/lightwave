@@ -1,5 +1,8 @@
 SUBDIRS = \
     cli \
+    cdc-cli \
     dir-cli \
+    sl-cli \
     vdcpromo \
-    vecs-cli
+    vecs-cli \
+    domainjoin

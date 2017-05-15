@@ -29,11 +29,13 @@
 #include <ifaddrs.h>
 
 #include <config.h>
+#include <limits.h>
 
 #include <vmdirsys.h>
 
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 
 // OpenLDAP ber library include files
 #include <lber.h>
@@ -60,20 +62,25 @@
 #include <vmacl.h>
 #include <indexcfg.h>
 #include <backend.h>
+#include <mdbstore.h>
 #include <middlelayer.h>
 #include <replication.h>
 #include <vmkdcserver.h>
 #include <vmdirserver.h>
 #include <ldaphead.h>
+#include <resthead.h>
+#include <vmevent.h>
 
 #include "defines.h"
 #include "structs.h"
 
 #include "vmdir_h.h"
 #include "vmdirftp_h.h"
+#include "vmdirdbcp_h.h"
 #include "srp_verifier_h.h"
-#include "prototypes.h"
+#include "vmdirsuperlog_h.h"
 
+#include "prototypes.h"
 #include "externs.h"
 
 #else
@@ -81,7 +88,6 @@
 #pragma once
 
 #include "targetver.h"
-#define WIN32_LEAN_AND_MEAN // Exclude rarely-used stuff from Windows headers
 
 #include <windows.h>
 #include <stdio.h>
@@ -90,12 +96,8 @@
 #include <stddef.h>
 #include <tchar.h>
 #include <errno.h>
-#if !defined(HAVE_DCERPC_WIN32)
-#include <winsvc.h>
-#include <rpc.h>
-#else
+#include <sys/stat.h>
 #include <dce/rpc.h>
-#endif
 #include <assert.h>
 #include <Ws2tcpip.h>
 #include <Sddl.h>
@@ -109,7 +111,10 @@
 #include <lber_pvt.h>
 #include <lber-int.h>
 
-#include "banned.h"
+#define LW_STRICT_NAMESPACE
+#include <lw/types.h>
+#include <lw/hash.h>
+#include <lw/security-types.h>
 
 #include <vmdir.h>
 #include <vmdirtypes.h>
@@ -125,21 +130,28 @@
 #include <vmacl.h>
 #include <indexcfg.h>
 #include <backend.h>
+#include <mdbstore.h>
 #include <middlelayer.h>
 #include <replication.h>
 #include <vmkdcserver.h>
 #include <vmdirserver.h>
 #include <ldaphead.h>
+#include <vmevent.h>
 
 #include "defines.h"
 #include "structs.h"
 
 #include "vmdir_h.h"
 #include "vmdirftp_h.h"
+#include "vmdirdbcp_h.h"
 #include "srp_verifier_h.h"
+#include "vmdirsuperlog_h.h"
+
 #include "prototypes.h"
 
 #include "externs.h"
+
+#include "banned.h"
 
 #endif
 

@@ -36,7 +36,6 @@ extern "C" {
 #define BE_REAL_EID_SIZE(eId)  4 /* (eId <= 0xff ? 1 : (eId <= 0xffff ? 2 : (eId <= 0xffffff ? 3 : (eId <= 0xffffffff ?
                                     4 : 5)))) */
 
-#define BE_DB_MAX_INDEX_ATTRIBUTE       256
 #define BE_MAX_DB_NAME_LEN              100
 
 #define BE_DB_FLAGS_ZERO                0
@@ -86,14 +85,38 @@ typedef enum
 
 } VDIR_BACKEND_TXN_MODE;
 
+typedef struct _VDIR_BACKEND_INDEX_ITERATOR
+{
+    PVOID   pIterator;
+    BOOLEAN bHasNext;
+
+} VDIR_BACKEND_INDEX_ITERATOR, *PVDIR_BACKEND_INDEX_ITERATOR;
+
+typedef struct _VDIR_BACKEND_PARENT_ID_INDEX_ITERATOR
+{
+    PVOID   pIterator;
+    BOOLEAN bHasNext;
+
+} VDIR_BACKEND_PARENT_ID_INDEX_ITERATOR, *PVDIR_BACKEND_PARENT_ID_INDEX_ITERATOR;
+
+typedef struct _VDIR_BACKEND_ENTRYBLOB_ITERATOR
+{
+    PVOID   pIterator;
+    BOOLEAN bHasNext;
+    ENTRYID startEID;
+    ENTRYID maxEID;
+
+} VDIR_BACKEND_ENTRYBLOB_ITERATOR, *PVDIR_BACKEND_ENTRYBLOB_ITERATOR;
+
+typedef struct _VDIR_BACKEND_USN_LIST*          PVDIR_BACKEND_USN_LIST;
+
 /*
  * Next backend generated entry id
  * return error -
  * ERROR_BACKEND_ERROR:             all others
  */
 typedef DWORD (*PFN_BACKEND_MAX_ENTRY_ID)(
-                    PVDIR_BACKEND_CTX   pBECtx,
-                    ENTRYID*            pEId
+                    ENTRYID*        pEId
                     );
 /*
  * Convenient id to entry lookup
@@ -159,6 +182,21 @@ typedef DWORD (*PFN_BACKEND_DN_TO_ENTRY_ID)(
                     VDIR_BERVALUE*              pDn,
                     ENTRYID*                    pEId
                     );
+
+/*
+ * ObjectGUID to entry id lookup
+ * return error -
+ * ERROR_BACKEND_ENTRY_NOT_FOUND:   entry not found
+ * ERROR_BACKEND_DEADLOCK:          deadlock
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef DWORD (*PFN_BACKEND_OBJECTGUID_TO_ENTRY_ID)(
+                    PVDIR_BACKEND_CTX           pBECtx,
+                    PCSTR                       pszObjectGUID,
+                    ENTRYID*                    pEId
+                    );
+
+
 /*
  * Add entry
  * return error -
@@ -223,23 +261,10 @@ typedef DWORD (*PFN_BACKEND_CHK_IS_LEAF_ENTRY)(
  * ERROR_BACKEND_ENTRY_NOTFOUND:    no entry found
  * ERROR_BACKEND_ERROR:             all others
  */
-//ERROR_BACKEND_ENTRY_NOTFOUND
 typedef DWORD (*PFN_BACKEND_GET_CANDIDATES)(
                     PVDIR_BACKEND_CTX   pBECtx,
-                    VDIR_FILTER*        pFilter
-                    );
-/*
- * Add indices for a range of entries
- * return error -
- * ERROR_BACKEND_MAX_RETRY:         max deadlock retry fail
- * ERROR_DATA_CONSTRAIN_VIOLATION:  data constraint violation
- * ERROR_BACKEND_ERROR:             all others
- */
-typedef DWORD (*PFN_BACKEND_ENTRY_ADD_INDICES)(
-                    PVDIR_CFG_ATTR_INDEX_DESC*  ppIndexDesc,
-                    DWORD   dwNumIndices,
-                    DWORD   dwStartEntryId,
-                    DWORD   dwBatchSize
+                    VDIR_FILTER*        pFilter,
+                    ENTRYID             eStartingId
                     );
 /*
  * Begin a transaction
@@ -275,29 +300,123 @@ typedef DWORD (*PFN_BACKEND_INIT)(
                     VOID
                     );
 /*
- * Open database
- * return error -
- * ERROR_BACKEND_ERROR:             all others
- */
-typedef DWORD (*PFN_BACKEND_DB_OPEN)(
-                    VOID
-                    );
-/*
  * Open index database
  * return error -
  * ERROR_BACKEND_ERROR:             all others
  */
 typedef DWORD (*PFN_BACKEND_INDEX_OPEN)(
-                    VOID
+                    PVDIR_INDEX_CFG     pIndexCfg
                     );
 /*
- * Add new index database
+ * Check if index database exists
  * return error -
  * ERROR_BACKEND_ERROR:             all others
  */
-typedef DWORD (*PFN_BACKEND_INDEX_ADD)(
-                    PVDIR_CFG_ATTR_INDEX_DESC   pIndexDesc
+typedef BOOLEAN (*PFN_BACKEND_INDEX_EXIST)(
+                    PVDIR_INDEX_CFG     pIndexCfg
                     );
+/*
+ * Delete index database
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef DWORD (*PFN_BACKEND_INDEX_DELETE)(
+                    PVDIR_INDEX_CFG     pIndexCfg
+                    );
+/*
+ * Populate indices with entries in the given range
+ * return error -
+ * ERROR_BACKEND_MAX_RETRY:         max deadlock retry fail
+ * ERROR_DATA_CONSTRAIN_VIOLATION:  data constraint violation
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef DWORD (*PFN_BACKEND_INDEX_POPULATE)(
+                    PLW_HASHMAP pIndexCfgs,
+                    ENTRYID     startEntryId,
+                    DWORD       dwBatchSize
+                    );
+/*
+ * Initialize index table iterator
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef DWORD (*PFN_BACKEND_INDEX_ITERATOR_INIT)(
+                    PVDIR_INDEX_CFG                 pIndexCfg,
+                    PSTR                            pszInitVal,
+                    PVDIR_BACKEND_INDEX_ITERATOR*   ppIterator
+                    );
+/*
+ * Iterate value and eid pairs in the index table
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef DWORD (*PFN_BACKEND_INDEX_ITERATE)(
+                    PVDIR_BACKEND_INDEX_ITERATOR    pIterator,
+                    PSTR*                           ppszVal,
+                    ENTRYID*                        pEId
+                    );
+/*
+ * Free index table iterator
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef VOID (*PFN_BACKEND_INDEX_ITERATOR_FREE)(
+                    PVDIR_BACKEND_INDEX_ITERATOR    pIterator
+                    );
+/*
+ * Initialize index table iterator
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef DWORD (*PFN_BACKEND_PARENT_ID_INDEX_ITERATOR_INIT)(
+                    ENTRYID                                 parentId,
+                    PVDIR_BACKEND_PARENT_ID_INDEX_ITERATOR* ppIterator
+                    );
+/*
+ * Iterate value and eid pairs in the index table
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef DWORD (*PFN_BACKEND_PARENT_ID_INDEX_ITERATE)(
+                    PVDIR_BACKEND_PARENT_ID_INDEX_ITERATOR  pIterator,
+                    ENTRYID*                                pEntryId
+                    );
+/*
+ * Free index table iterator
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef VOID (*PFN_BACKEND_PARENT_ID_INDEX_ITERATOR_FREE)(
+                    PVDIR_BACKEND_PARENT_ID_INDEX_ITERATOR  pIterator
+                    );
+
+/*
+ * Initialize blob table iterator
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef DWORD (*PFN_BACKEND_ENTRYBLOB_ITERATOR_INIT)(
+                    ENTRYID                             eId,
+                    PVDIR_BACKEND_ENTRYBLOB_ITERATOR*   ppIterator
+                    );
+/*
+ * Iterate eid in the blob table
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef DWORD (*PFN_BACKEND_ENTRYBLOB_ITERATE)(
+                    PVDIR_BACKEND_ENTRYBLOB_ITERATOR    pIterator,
+                    ENTRYID*                            pEntryId
+                    );
+/*
+ * Free blob table iterator
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef VOID (*PFN_BACKEND_ENTRYBLOB_ITERATOR_FREE)(
+                    PVDIR_BACKEND_ENTRYBLOB_ITERATOR  pIterator
+                    );
+
 /*
  * Shutdown backend
  * return error -
@@ -331,7 +450,71 @@ typedef USN (*PFN_BACKEND_GET_LEAST_OUTSTANDING_USN)(
 typedef USN (*PFN_BACKEND_GET_HIGHEST_COMMITTED_USN)(
                     PVDIR_BACKEND_CTX);
 
-typedef struct _VDIR_BACKEND_USN_LIST*   PVDIR_BACKEND_USN_LIST;
+typedef USN (*PFN_BACKEND_GET_MAX_ORIGINATING_USN)(
+                    PVDIR_BACKEND_CTX);
+
+
+typedef VOID (*PFN_BACKEND_SET_MAX_ORIGINATING_USN)(
+                    PVDIR_BACKEND_CTX, USN);
+
+typedef DWORD (*PFN_BACKEND_DUPKEY_GET_VALUES)(
+                    PVDIR_BACKEND_CTX,
+                    PCSTR,
+                    PVMDIR_STRING_LIST*);
+
+typedef DWORD (*PFN_BACKEND_DUPKEY_SET_VALUES)(
+                    PVDIR_BACKEND_CTX,
+                    PCSTR,
+                    PVMDIR_STRING_LIST);
+
+typedef DWORD (*PFN_BACKEND_UNIQKEY_GET_VALUE)(
+                    PVDIR_BACKEND_CTX,
+                    PCSTR,
+                    PSTR*);
+
+typedef DWORD (*PFN_BACKEND_UNIQKEY_SET_VALUE)(
+                    PVDIR_BACKEND_CTX,
+                    PCSTR,
+                    PCSTR);
+
+typedef DWORD (*PFN_BACKEND_CONFIGURE_FSYNC)(
+                    BOOLEAN);
+
+typedef DWORD (*PFN_BACKEND_GET_ATTR_VALUE_META_DATA)(
+                    PVDIR_BACKEND_CTX,
+                    ENTRYID,
+                    short,
+                    PDEQUE
+                    );
+
+typedef DWORD (*PFN_BACKEND_GET_ALL_ATTR_VALUE_META_DATA)(
+                    PVDIR_BACKEND_CTX,
+                    ENTRYID,
+                    PDEQUE
+                    );
+
+typedef DWORD (*PFN_BACKEND_UPDATE_ATTR_VALUE_META_DATA)(
+                    PVDIR_BACKEND_CTX,
+                    ENTRYID,
+                    short,
+                    ULONG ulOPMask,
+                    PDEQUE
+                    );
+
+typedef DWORD (*PFN_BACKEND_DELETE_ALL_ATTR_VALUE_META_DATA)(
+                    PVDIR_BACKEND_CTX,
+                    PVDIR_SCHEMA_CTX,
+                    ENTRYID
+                    );
+
+/*
+ * Apply new matching rules to indices during schema upgrade
+ * return error -
+ * ERROR_BACKEND_ERROR:             all others
+ */
+typedef DWORD (*PFN_BACKEND_APPLY_INDICES_NEW_MR)(
+                    VOID
+                    );
 
 /*******************************************************************************
  * if success, interface function return 0.
@@ -344,30 +527,79 @@ typedef struct _VDIR_BACKEND_INTERFACE
 
     //////////////////////////////////////////////////////////////////////
     // backend life cycle functions
-    // 1. start up calling order: beInit->beDBOpen->beIndexOpen
-    // 2. live session: could call beIndexAdd to add new indices
-    // 3. shutdown calling order: beShutdown
     //////////////////////////////////////////////////////////////////////
     /*
      * initialize backend
      */
     PFN_BACKEND_INIT                pfnBEInit;
     /*
-     * open database
+     * shutdown backend
      */
-    PFN_BACKEND_DB_OPEN             pfnBEDBOpen;
+    PFN_BACKEND_SHUTDOWN            pfnBEShutdown;
+
+    //////////////////////////////////////////////////////////////////////
+    // index management functions
+    //////////////////////////////////////////////////////////////////////
     /*
      * open index database
      */
     PFN_BACKEND_INDEX_OPEN          pfnBEIndexOpen;
     /*
-     * add a new index database
+     * check if index exists
      */
-    PFN_BACKEND_INDEX_ADD           pfnBEIndexAdd;
+    PFN_BACKEND_INDEX_EXIST         pfnBEIndexExist;
     /*
-     * shutdown backend
+     * delete a index database
      */
-    PFN_BACKEND_SHUTDOWN            pfnBEShutdown;
+    PFN_BACKEND_INDEX_DELETE        pfnBEIndexDelete;
+    /*
+     * populate indices with entries in the given range
+     */
+    PFN_BACKEND_INDEX_POPULATE      pfnBEIndexPopulate;
+    /*
+     * initialize index table enumerator
+     */
+    PFN_BACKEND_INDEX_ITERATOR_INIT pfnBEIndexIteratorInit;
+    /*
+     * enumerate value and eid pairs in the index table
+     */
+    PFN_BACKEND_INDEX_ITERATE       pfnBEIndexIterate;
+    /*
+     * Free index table enumerator
+     */
+    PFN_BACKEND_INDEX_ITERATOR_FREE pfnBEIndexIteratorFree;
+
+    //////////////////////////////////////////////////////////////////////
+    // Index iterator
+    //////////////////////////////////////////////////////////////////////
+    /*
+     * initialize index table enumerator
+     */
+    PFN_BACKEND_PARENT_ID_INDEX_ITERATOR_INIT   pfnBEParentIdIndexIteratorInit;
+    /*
+     * enumerate value and eid pairs in the index table
+     */
+    PFN_BACKEND_PARENT_ID_INDEX_ITERATE         pfnBEParentIdIndexIterate;
+    /*
+     * Free index table enumerator
+     */
+    PFN_BACKEND_PARENT_ID_INDEX_ITERATOR_FREE   pfnBEParentIdIndexIteratorFree;
+
+    //////////////////////////////////////////////////////////////////////
+    // EntryBlob iterator
+    //////////////////////////////////////////////////////////////////////
+    /*
+     * initialize blob table enumerator
+     */
+    PFN_BACKEND_ENTRYBLOB_ITERATOR_INIT   pfnBEEntryBlobIteratorInit;
+    /*
+     * enumerate eid  in the blob table
+     */
+    PFN_BACKEND_ENTRYBLOB_ITERATE         pfnBEEntryBlobIterate;
+    /*
+     * Free blob table enumerator
+     */
+    PFN_BACKEND_ENTRYBLOB_ITERATOR_FREE   pfnBEEntryBlobIteratorFree;
 
     //////////////////////////////////////////////////////////////////////
     // transaction related functions
@@ -393,7 +625,6 @@ typedef struct _VDIR_BACKEND_INTERFACE
      * get entry with ID
      */
     PFN_BACKEND_SIMPLE_ID_TO_ENTRY    pfnBESimpleIdToEntry;
-
     /*
      * get entry with DN
      */
@@ -410,6 +641,10 @@ typedef struct _VDIR_BACKEND_INTERFACE
      * get ID with DN
      */
     PFN_BACKEND_DN_TO_ENTRY_ID        pfnBEDNToEntryId;
+    /*
+     * get ID with ObjectGUID
+     */
+    PFN_BACKEND_OBJECTGUID_TO_ENTRY_ID pfnBEObjectGUIDToEntryId;
     /*
      * verify DN referenced attribute integrity, i.e. referred DN exists
      */
@@ -434,11 +669,6 @@ typedef struct _VDIR_BACKEND_INTERFACE
      * modify entry
      */
     PFN_BACKEND_ENTRY_MODIFY          pfnBEEntryModify;
-    /*
-     *  add new indices for a range of entries
-     *  called via indexingthr to scan whole db to add new indices
-     */
-    PFN_BACKEND_ENTRY_ADD_INDICES     pfnBEEntryAddIndices;
 
     //////////////////////////////////////////////////////////////////////
     // entry id (sequence) function
@@ -473,6 +703,68 @@ typedef struct _VDIR_BACKEND_INTERFACE
     PFN_BACKEND_GET_NEXT_USN        pfnBEGetNextUSN;
 
     //////////////////////////////////////////////////////////////////////
+    // generic read/write functions
+    //////////////////////////////////////////////////////////////////////
+    /*
+     * There are two dbs for generic purpose, one allows duplicate keys
+     * and the other does not. These dbs compare key lexically.
+     *
+     * Get values from the duplicate key based db
+     */
+    PFN_BACKEND_DUPKEY_GET_VALUES           pfnBEDupKeyGetValues;
+    /*
+     * Set values in the duplicate key based db
+     */
+    PFN_BACKEND_DUPKEY_SET_VALUES           pfnBEDupKeySetValues;
+    /*
+     * Get value from the unique key based db
+     */
+    PFN_BACKEND_UNIQKEY_GET_VALUE           pfnBEUniqKeyGetValue;
+    /*
+     * Set value in the unique key based db
+     */
+    PFN_BACKEND_UNIQKEY_SET_VALUE           pfnBEUniqKeySetValue;
+
+    //////////////////////////////////////////////////////////////////////
+    // configuration functions
+    //////////////////////////////////////////////////////////////////////
+    /*
+     * Turn fsync on/off
+     */
+    PFN_BACKEND_CONFIGURE_FSYNC             pfnBEConfigureFsync;
+
+    //////////////////////////////////////////////////////////////////////
+    // support concurrent multi value attribute add and delete
+    //////////////////////////////////////////////////////////////////////
+    /*
+     * Read attribute value meta data for an entry's attribute
+     */
+    PFN_BACKEND_GET_ATTR_VALUE_META_DATA        pfnBEGetAttrValueMetaData;
+
+    /*
+     * Read all attribute value meta data for an entry
+     */
+    PFN_BACKEND_GET_ALL_ATTR_VALUE_META_DATA    pfnBEGetAllAttrValueMetaData;
+
+    /*
+     * Update attribute value meta data for an entry's attribute
+     */
+    PFN_BACKEND_UPDATE_ATTR_VALUE_META_DATA     pfnBEUpdateAttrValueMetaData;
+
+    /*
+     * Delete all attribute value meta data for an entry
+     */
+    PFN_BACKEND_DELETE_ALL_ATTR_VALUE_META_DATA pfnBEDeleteAllAttrValueMetaData;
+
+    //////////////////////////////////////////////////////////////////////
+    // Upgrade specific (from 6.5 or lower)
+    //////////////////////////////////////////////////////////////////////
+    /*
+     * Apply new matching rules to indices during schema upgrade
+     */
+    PFN_BACKEND_APPLY_INDICES_NEW_MR        pfnBEApplyIndicesNewMR;
+
+    //////////////////////////////////////////////////////////////////////
     // function to get the least outstanding USN in BACKEND_USN_LIST
     // replication can trust and search USN change below this number
     //////////////////////////////////////////////////////////////////////
@@ -490,6 +782,22 @@ typedef struct _VDIR_BACKEND_INTERFACE
     PFN_BACKEND_GET_HIGHEST_COMMITTED_USN   pfnBEGetHighestCommittedUSN;
 
     //////////////////////////////////////////////////////////////////////
+    // function to get the maximum originating USN
+    //////////////////////////////////////////////////////////////////////
+    /*
+     * Get Max Originating USN
+     */
+    PFN_BACKEND_GET_MAX_ORIGINATING_USN   pfnBEGetMaxOriginatingUSN;
+
+    //////////////////////////////////////////////////////////////////////
+    // function to set the maximum originating USN
+    //////////////////////////////////////////////////////////////////////
+    /*
+     * Set Max Originating USN
+     */
+    PFN_BACKEND_SET_MAX_ORIGINATING_USN   pfnBESetMaxOriginatingUSN;
+
+    //////////////////////////////////////////////////////////////////////
     // Structure to hold all outstanding USNs
     //////////////////////////////////////////////////////////////////////
     PVDIR_BACKEND_USN_LIST                  pBEUSNList;
@@ -501,13 +809,18 @@ typedef struct _VDIR_BACKEND_GLOBALS
     // NOTE: order of fields MUST stay in sync with struct initializer...
     PCSTR                           pszBERootDN;
     PVDIR_BACKEND_INTERFACE         pBE;
-
+    USN                             usnFirstNext;
 } VDIR_BACKEND_GLOBALS, *PVDIR_BACKEND_GLOBALS;
 
 // backend.c
 DWORD
 VmDirBackendConfig(
     VOID);
+
+VOID
+VmDirBackendGetFirstNextUSN(
+    USN *pUSN
+    );
 
 PVDIR_BACKEND_INTERFACE
 VmDirBackendSelect(
@@ -547,6 +860,29 @@ VmDirBackendAddOutstandingUSN(
 VOID
 VmDirBackendRemoveOutstandingUSN(
     PVDIR_BACKEND_CTX      pBECtx
+    );
+
+DWORD
+VmDirBackendAddOriginatingUSN(
+    PVDIR_BACKEND_CTX      pBECtx
+    );
+
+VOID
+VmDirBackendRemoveOriginatingUSN(
+    PVDIR_BACKEND_CTX      pBECtx
+    );
+
+DWORD
+VmDirBackendUniqKeyGetValue(
+    PCSTR       pKey,
+    PSTR*       ppValue
+    );
+
+DWORD
+VmDirBackendUniqKeySetValue(
+    PCSTR       pKey,
+    PCSTR       pValue,
+    BOOLEAN     bForce
     );
 
 // util.c

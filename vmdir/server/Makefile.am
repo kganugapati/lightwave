@@ -7,19 +7,7 @@
 #         Sriram Nambakam (snambakam@vmware.com)
 #
 
-STOREDIRS =
-
-#if HAVE_TC_STORE
-#    STOREDIRS += tokyocabinet-store
-#endif
-
-#if HAVE_BDB_STORE
-#    STOREDIRS += bdb-store
-#endif
-
-if HAVE_MDB_STORE
-    STOREDIRS += mdb-store
-endif
+STOREDIRS = mdb-store
 
 SUBDIRS = \
     kdcsrvcommon \
@@ -36,5 +24,5 @@ SUBDIRS = \
     schema \
     acl \
     vmkdc \
-    vmdir
-
+    vmdir \
+    vmkdc_mit_tools

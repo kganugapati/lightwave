@@ -39,11 +39,19 @@ VmDirCleanupGlobals(
 VOID
 VmDirShutdown(
     PBOOLEAN pbWaitTimeOut
-)
+    )
 {
     PVDIR_BACKEND_INTERFACE pBE = NULL;
 
     pBE = VmDirBackendSelect(NULL);
+
+#if 0
+    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: stop REST listening threads", __func__);
+    VmDirRESTServerShutdown();
+#endif
+
+    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: stop LDAP listening threads", __func__);
+    VmDirShutdownConnAcceptThread();
 
     *pbWaitTimeOut = FALSE;
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: wait for operation threads to stop ...", __func__);
@@ -52,7 +60,7 @@ VmDirShutdown(
     if (*pbWaitTimeOut)
     {
         //Cannot make a graceful shutdown
-        VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: timeout while waiting for operation threads to stop.", __func__);
+        VMDIR_LOG_WARNING( VMDIR_LOG_MASK_ALL, "%s: timeout while waiting for operation threads to stop.", __func__);
         //Need to do sync RIDseq, however sync may be blocked for the same reason of
         // of the timeout, i.e. blocked at backend txn_begin.
         //TODO: Backend tests shutdown after txn_begin returned and abort the transaction if it is an external
@@ -69,17 +77,13 @@ VmDirShutdown(
     {
         VmDirRpcServerShutdown();
         VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: RPC service stopped", __func__);
-    }
 
-    VmDirIpcServerShutDown();
-    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: IPC service stopped", __func__);
+        VmDirIpcServerShutDown();
+        VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: IPC service stopped", __func__);
+    }
 
     VmDirStopSrvThreads();
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: server threads stopped", __func__);
-
-    // TODO: need to close both sockets for non SSL and SSL.
-    VmDirSrvCloseSocketAcceptFd();
-    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: LDAP service stopped.", __func__);
 
     VmDirPasswordSchemeFree();
 
@@ -97,6 +101,12 @@ VmDirShutdown(
     VmDirSASLShutdown();
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: SASL shutdown complete.", __func__);
 
+    VmDirIndexLibShutdown();
+    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: shutdown indexing complete.", __func__);
+
+    VmDirSchemaLibShutdown();
+    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: shutdown schema complete.", __func__ );
+
     if ( pBE )
     {
         pBE->pfnBEShutdown();
@@ -104,14 +114,12 @@ VmDirShutdown(
         VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s shutdown backend complete.", __func__);
     }
 
-    VmDirAttrIndexLibShutdown();
-    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: shutdown indexing complete.", __func__);
-
-    VmDirSchemaLibShutdown();
-    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "%s: shutdown schema complete.", __func__ );
-
     VmDirCleanupGlobals();
 
+    (VOID)VmDirSetRegKeyValueDword(
+            VMDIR_CONFIG_PARAMETER_KEY_PATH,
+            VMDIR_REG_KEY_DIRTY_SHUTDOWN,
+            FALSE);
 done:
     return;
 }
@@ -184,14 +192,16 @@ VmDirCleanupGlobals(
     VmDirFreeBervalContent(&gVmdirServerGlobals.bvServicesRootDN);
     VmDirFreeBervalContent(&gVmdirServerGlobals.serverObjDN);
     VmDirFreeBervalContent(&gVmdirServerGlobals.utdVector);
+    VmDirFreeBervalContent(&gVmdirServerGlobals.bvServerObjName);
 
     // Free vmdir global 'gVmdirGlobals' upon shutdown
     VMDIR_SAFE_FREE_MEMORY(gVmdirGlobals.pszBDBHome);
     VMDIR_SAFE_FREE_MEMORY(gVmdirGlobals.pszBootStrapSchemaFile);
+    VMDIR_SAFE_FREE_MEMORY(gVmdirGlobals.pszRestListenPort);
 
     VMDIR_SAFE_FREE_MUTEX( gVmdirGlobals.replCycleDoneMutex );
     VMDIR_SAFE_FREE_MUTEX( gVmdirGlobals.replAgrsMutex );
-    VMDIR_SAFE_FREE_MUTEX( gVmdirRunmodeGlobals.pMutex );
+    VMDIR_SAFE_FREE_RWLOCK( gVmdirGlobals.replRWLock );
     VMDIR_SAFE_FREE_MUTEX( gVmdirGlobals.pMutexIPCConnection );
     VMDIR_SAFE_FREE_MUTEX( gVmdirGlobals.pFlowCtrlMutex );
     VMDIR_SAFE_FREE_MUTEX( gVmdirGlobals.mutex );
@@ -204,8 +214,13 @@ VmDirCleanupGlobals(
     // Free vmdir plugin global 'gVmdirPluginGlobals'
     VmDirPluginShutdown();
 
-    VmDirFreeAbsoluteSecurityDescriptor(&gVmdirGlobals.gpVmDirSrvSD);
-
     VMDIR_SAFE_FREE_MUTEX( gVmdirKrbGlobals.pmutex );
     VMDIR_SAFE_FREE_CONDITION(gVmdirKrbGlobals.pcond);
+
+    VMDIR_SAFE_FREE_MUTEX( gVmdirTrackLastLoginTime.pMutex );
+    VMDIR_SAFE_FREE_CONDITION(gVmdirTrackLastLoginTime.pCond);
+    // ignore gVmdirTrackLastLoginTime.pTSStack
+
+    VMDIR_SAFE_FREE_MUTEX( gVmdirIntegrityCheck.pMutex );
+    VMDIR_SAFE_FREE_MEMORY( gVmdirIntegrityCheck.pJob );
 }

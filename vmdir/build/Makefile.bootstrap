@@ -1,3 +1,5 @@
+include ../../support/make/makedefs.mk
+
 MKDIR=/bin/mkdir
 RM=/bin/rm
 CP=/bin/cp
@@ -48,7 +50,10 @@ CLEAN_OBJECTS = \
     $(SRCROOT)/include/config.h.in* \
     $(SRCROOT)/install-sh \
     $(SRCROOT)/ltmain.sh \
-    $(SRCROOT)/missing
+    $(SRCROOT)/missing \
+    $(SRCROOT)/debugfiles.list \
+    $(SRCROOT)/debuglinks.list \
+    $(SRCROOT)/debugsources.list
 
 PKG_SPEC=vmware-directory.spec
 
@@ -66,8 +71,13 @@ package: $(RPMBUILD_SPECS)/$(PKG_SPEC) | $(RPMBUILD_DIRS)
               --define "_sbindir /opt/vmware/sbin" \
               --define "_lib64dir /opt/vmware/lib64" \
               --define "_datadir /opt/vmware/share" \
+              --define "_logdir $(LIGHTWAVE_LOGDIR)" \
               --define "_includedir /opt/vmware/include" \
               --define "_likewise_open_prefix /opt/likewise" \
+              --define "_vmevent_prefix /opt/vmware" \
+              --define "_version $(VMDIR_MAJOR_VER).$(VMDIR_MINOR_VER).$(VMDIR_RELEASE_VER)" \
+              --define "_vmevent_ver $(VMEVENT_MAJOR_VER).$(VMEVENT_MINOR_VER)" \
+              --define "_patch $(VMDIR_PATCH_VER)" \
               --buildroot $(RPMBUILD_ROOT)/BUILDROOT \
               SPECS/$(PKG_SPEC)
 

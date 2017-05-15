@@ -1,3 +1,11 @@
+/*
+ * Copyright (C) 2014 VMware, Inc. All rights reserved.
+ *
+ * Module   : vecsserviceapi.c
+ *
+ * Abstract :
+ *
+ */
 #include "includes.h"
 
 static
@@ -13,6 +21,13 @@ VecsSrvFreeEnumContext(
     );
 
 static
+BOOL
+VecsIsFlushableEntry(
+    CERT_ENTRY_TYPE cEntryType,
+    DWORD           dwStoreId
+    );
+
+static
 DWORD
 VecsGetFlushedFileFullPath(
     PCSTR pszCAPath,
@@ -24,28 +39,32 @@ static
 DWORD
 VecsSrvFlushRoot_MD5(
     PCSTR pszCertificate,
-    PCSTR pszCAPath
+    PCSTR pszCAPath,
+    BOOLEAN bLogOnDuplicate
     );
 
 static
 DWORD
 VecsSrvFlushRoot_SHA_1(
     PCSTR pszCertificate,
-    PCSTR pszCAPath
+    PCSTR pszCAPath,
+    BOOLEAN bLogOnDuplicate
     );
 
 static
 DWORD
 VecsSrvFlushCrl_MD5(
     PCSTR pszCrl,
-    PCSTR pszCAPath
+    PCSTR pszCAPath,
+    BOOLEAN bLogOnDuplicate
     );
 
 static
 DWORD
 VecsSrvFlushCrl_SHA_1(
     PCSTR pszCrl,
-    PCSTR pszCAPath
+    PCSTR pszCAPath,
+    BOOLEAN bLogOnDuplicate
     );
 
 static
@@ -80,7 +99,8 @@ VecsSrvWriteCertOrCrlToDisk(
     PCSTR pszCertificate,
     PCSTR pszCAPath,
     PCSTR pszFilename,
-    BOOLEAN bIsCrl
+    BOOLEAN bIsCrl,
+    BOOLEAN bLogOnDuplicate
     );
 
 static
@@ -88,7 +108,8 @@ DWORD
 VecsSrvWriteRootToDisk(
     PCSTR pszCertificate,
     PCSTR pszCAPath,
-    PCSTR pszFilename
+    PCSTR pszFilename,
+    BOOLEAN bLogOnDuplicate
     );
 
 static
@@ -96,7 +117,8 @@ DWORD
 VecsSrvWriteCrlToDisk(
     PCSTR pszCrl,
     PCSTR pszCAPath,
-    PCSTR pszFilename
+    PCSTR pszFilename,
+    BOOLEAN bLogOnDuplicate
     );
 
 static
@@ -112,7 +134,9 @@ static
 DWORD
 VecsSrvWriteCertStringToDisk(
     PCSTR pszCertificate,
-    PCSTR pszFilePath
+    PCSTR pszFilePath,
+    BOOL bLogOnDuplicate,
+    int mode
     );
 
 static
@@ -124,8 +148,27 @@ VecsSrvUnflushCertificate(
 
 static
 DWORD
+VecsSrvUnflushMachineSslCertificate(
+    PVECS_SERV_STORE pStore
+    );
+
+static
+DWORD
 VecsSrvGetVpxDocRootPath(
     PSTR* ppszDocRoot
+    );
+
+static
+DWORD
+VecsSrvGetMachineSslPathA(
+    PSTR* ppszFilePath
+    );
+
+static
+DWORD
+VecsSrvFlushCertsFromDB(
+    PWSTR pwszStoreName,
+    CERT_ENTRY_TYPE entryType
     );
 
 DWORD
@@ -479,28 +522,56 @@ VecsSrvGetPrivateKeyByAlias(
 {
     DWORD dwError = 0;
     PWSTR pszPrivateKey = NULL;
+    PWSTR pszDbPrivateKey = NULL;
+    CERT_ENTRY_TYPE cEntryType;
 
     dwError = VecsDbGetPrivateKeyByAlias(
                         pStore->dwStoreId,
                         pszAliasName,
                         pszPassword,
-                        &pszPrivateKey
+                        &pszDbPrivateKey
                         );
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    dwError = VmAfdAllocateStringW(pszPrivateKey, ppszPrivateKey);
+    dwError = VecsSrvGetEntryTypeByAlias(
+                                pStore,
+                                pszAliasName,
+                                &cEntryType);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-cleanup:
-    VMAFD_SAFE_FREE_MEMORY (pszPrivateKey);
+    if (cEntryType != CERT_ENTRY_TYPE_ENCRYPTED_PRIVATE_KEY)
+    {
+        dwError = VmAfdAllocateStringW(pszDbPrivateKey, &pszPrivateKey);
+    }
+    else
+    {
+        if (IsNullOrEmptyString(pszPassword))
+        {
+            dwError = ERROR_WRONG_PASSWORD;
+            BAIL_ON_VMAFD_ERROR (dwError);
+        }
 
+        dwError = VecsDecryptAndFormatKey (
+                                pszDbPrivateKey,
+                                pszPassword,
+                                &pszPrivateKey
+                                );
+    }
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppszPrivateKey = pszPrivateKey;
+
+cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY(pszDbPrivateKey);
     return dwError;
 error:
-    if (ppszPrivateKey)
+    if (*ppszPrivateKey)
     {
         *ppszPrivateKey = NULL;
     }
 
+    VMAFD_SAFE_FREE_MEMORY (pszPrivateKey);
     goto cleanup;
 }
 
@@ -516,13 +587,13 @@ VecsSrvAddCertificate(
     )
 {
     DWORD dwError = 0;
+    DWORD dwErrorAddToDb = 0;
     PSTR  pszAlias = NULL;
     PWSTR pszAliasToUse = NULL;
     PWSTR pszCanonicalCertPEM = NULL;
     PWSTR pszCanonicalKeyPEM = NULL;
-    size_t dwKeyLength = 0;
 
-    VmAfdLog(VMAFD_DEBUG_ANY, "[%s,%d] Adding cert. Entry type: %d",
+    VmAfdLog(VMAFD_DEBUG_DEBUG, "[%s,%d] Adding cert. Entry type: %d",
         __FILE__, __LINE__, cEntryType);
 
     dwError = VecsSrvValidateAddEntryInput (
@@ -582,17 +653,6 @@ VecsSrvAddCertificate(
     {
         if (cEntryType == CERT_ENTRY_TYPE_SECRET_KEY)
         {
-            dwError = VmAfdGetStringLengthW(
-                                          pszPrivateKey,
-                                          &dwKeyLength
-                                          );
-            BAIL_ON_VMAFD_ERROR (dwError);
-
-            if (dwKeyLength > VECS_SECRET_KEY_LENGTH_MAX)
-            {
-                dwError = ERROR_LABEL_TOO_LONG;
-                BAIL_ON_VMAFD_ERROR (dwError);
-            }
             dwError = VmAfdAllocateStringW(
                                            pszPrivateKey,
                                            &pszCanonicalKeyPEM
@@ -602,24 +662,39 @@ VecsSrvAddCertificate(
 
         else
         {
-          dwError = VecsValidateAndFormatKey (
+            dwError = VecsValidateCertKeyPair(
+                                    pszCertificate,
+                                    pszPrivateKey
+                                    );
+            BAIL_ON_VMAFD_ERROR (dwError);
+
+            dwError = VecsValidateAndFormatKey(
                                     pszPrivateKey,
+                                    pszPassword,
                                     &pszCanonicalKeyPEM
                                   );
-          BAIL_ON_VMAFD_ERROR (dwError);
+            BAIL_ON_VMAFD_ERROR (dwError);
+            if (pszPassword)
+            {
+                cEntryType = CERT_ENTRY_TYPE_ENCRYPTED_PRIVATE_KEY;
+            }
         }
     }
 
-    dwError = VecsDbAddCert(
+    dwErrorAddToDb = VecsDbAddCert(
                   pStore->dwStoreId,
                   cEntryType,
                   pszAliasToUse,
                   pszCanonicalCertPEM,
                   pszCanonicalKeyPEM,
-                  pszPassword,
+                  NULL,
                   bAutoRefresh
                   );
-    BAIL_ON_VMAFD_ERROR (dwError);
+    if (dwErrorAddToDb != ERROR_ALREADY_EXISTS)
+    {
+        dwError = dwErrorAddToDb;
+        BAIL_ON_VMAFD_ERROR (dwError);
+    }
 
     dwError = VmAfdAllocateStringAFromW(pszAliasToUse, &pszAlias);
     BAIL_ON_VMAFD_ERROR (dwError);
@@ -628,15 +703,33 @@ VecsSrvAddCertificate(
     if (cEntryType == CERT_ENTRY_TYPE_TRUSTED_CERT
             && pStore->dwStoreId == VECS_TRUSTED_ROOT_STORE_ID)
     {
-        dwError = VecsSrvFlushCertificate(pStore, pszCanonicalCertPEM);
+        dwError = VecsSrvFlushRootCertificate(pStore, pszCanonicalCertPEM,TRUE);
         BAIL_ON_VMAFD_ERROR (dwError);
     }
     else if (cEntryType == CERT_ENTRY_TYPE_REVOKED_CERT_LIST
             && pStore->dwStoreId == VECS_CRL_STORE_ID)
     {
-        dwError = VecsSrvFlushCrl(pStore, pszCanonicalCertPEM);
+        dwError = VecsSrvFlushCrl(pStore, pszCanonicalCertPEM,TRUE);
         BAIL_ON_VMAFD_ERROR (dwError);
     }
+#ifndef _WIN32
+    else if (dwErrorAddToDb == ERROR_SUCCESS &&
+             pStore->dwStoreId == VECS_MACHINE_SSL_STORE_ID &&
+             0 == VmAfdStringCompareA(
+                    pszAlias,
+                    VECS_MACHINE_CERT_ALIAS,
+                    TRUE))
+    {
+        (DWORD)VecsSrvFlushMachineSslCertificate(
+                            pStore,
+                            pszCanonicalCertPEM,
+                            pszCanonicalKeyPEM,
+                            TRUE
+                            );
+    }
+#endif
+
+    dwError = dwErrorAddToDb;
 
 cleanup:
     VMAFD_SAFE_FREE_MEMORY(pszAlias);
@@ -799,10 +892,17 @@ VecsSrvDeleteCertificate(
         BAIL_ON_VMAFD_ERROR (dwError);
     }
 
-    dwError = VmAfdAllocateStringAFromW(
-        (PWSTR)pCertArray->certificates[0].pCert,
-        &pszCert);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    if (VecsIsFlushableEntry(
+                      pCertArray->certificates[0].dwStoreType,
+                      pStore->dwStoreId
+                      )
+       )
+    {
+        dwError = VmAfdAllocateStringAFromW(
+            (PWSTR)pCertArray->certificates[0].pCert,
+            &pszCert);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
 
     dwError = VecsDbDeleteCert(
                     pStore->dwStoreId,
@@ -811,12 +911,28 @@ VecsSrvDeleteCertificate(
     BAIL_ON_VMAFD_ERROR (dwError);
 
     VmAfdAllocateStringAFromW(pszAliasName, &pszAlias);
+
+#ifndef _WIN32
+    if (pStore->dwStoreId == VECS_MACHINE_SSL_STORE_ID &&
+        0 == VmAfdStringCompareA(
+                    pszAlias,
+                    VECS_MACHINE_CERT_ALIAS,
+                    TRUE)
+       )
+    {
+        (DWORD)VecsSrvUnflushMachineSslCertificate(pStore);
+    }
+#endif
+
     VmAfdLog(VMAFD_DEBUG_ANY,
         "VecsSrvDeleteCertificate: Deleted cert (alias %s) from store %u",
         pszAlias, pStore->dwStoreId);
 
-    dwError = VecsSrvUnflushCertificate(pStore, pszCert);
-    BAIL_ON_VMAFD_ERROR (dwError);
+    if (!IsNullOrEmptyString(pszCert))
+    {
+      dwError = VecsSrvUnflushCertificate(pStore, pszCert);
+      BAIL_ON_VMAFD_ERROR (dwError);
+    }
 
 cleanup:
     VMAFD_SAFE_FREE_MEMORY(pszAlias);
@@ -1000,9 +1116,10 @@ error:
 }
 
 DWORD
-VecsSrvFlushCertificate(
+VecsSrvFlushRootCertificate(
     PVECS_SERV_STORE pStore,
-    PWSTR pszCanonicalCertPEM
+    PWSTR pszCanonicalCertPEM,
+    BOOLEAN bLogOnDuplicate
     )
 {
     DWORD dwError = 0;
@@ -1021,27 +1138,30 @@ VecsSrvFlushCertificate(
     BAIL_ON_VMAFD_ERROR(dwError);
 
     // Flush to CAPath
-    dwError = VecsSrvFlushRoot_SHA_1(pszCert, pszCAPath);
+    dwError = VecsSrvFlushRoot_SHA_1(pszCert, pszCAPath, bLogOnDuplicate);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    dwError = VecsSrvFlushRoot_MD5(pszCert, pszCAPath);
+    dwError = VecsSrvFlushRoot_MD5(pszCert, pszCAPath, bLogOnDuplicate);
     BAIL_ON_VMAFD_ERROR(dwError);
 
     dwError = VecsSrvGetVpxDocRootPath(&pszDownloadPath);
     if (dwError)
     {
-        VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvFlushCertificate "
+        VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvFlushRootCertificate "
             "Failed to get download directory, %u", dwError);
         dwError = 0;
         goto cleanup;
     }
 
     // Flush to docRoot directory for download
-    dwError = VecsSrvFlushRoot_SHA_1(pszCert, pszDownloadPath);
+    dwError = VecsSrvFlushRoot_SHA_1(pszCert, pszDownloadPath, bLogOnDuplicate);
     if (dwError)
     {
-        VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvFlushCertificate "
+        if (bLogOnDuplicate)
+        {
+            VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvFlushRootCertificate "
             "Failed to flush trusted root to download directory, %u", dwError);
+        }
         dwError = 0;
         goto cleanup;
     }
@@ -1054,14 +1174,171 @@ cleanup:
     return dwError;
 
 error:
-    VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvFlushCertificate returning %u", dwError);
+    VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvFlushRootCertificate - %u", dwError);
+    goto cleanup;
+}
+
+DWORD
+VecsSrvFlushMachineSslCertificate(
+    PVECS_SERV_STORE pStore,
+    PWSTR pszCanonicalCertPEM,
+    PWSTR pszCanonicalKeyPEM,
+    BOOL  bLogOnError
+    )
+{
+    DWORD dwError = ERROR_SUCCESS;
+    PSTR  pszMachineSslPath = NULL;
+    PSTR  pszCert = NULL;
+    PSTR  pszKey = NULL;
+    PSTR  pszSslCertPath = NULL;
+    PSTR  pszSslKeyPath = NULL;
+    PSTR  pszSslCertFingerPrint = NULL;
+    PSTR  pszFileCertFingerPrint = NULL;
+    BOOLEAN bExists = FALSE;
+
+    if (!pStore ||
+        pStore->dwStoreId != VECS_MACHINE_SSL_STORE_ID ||
+        !pszCanonicalCertPEM ||
+        !pszCanonicalKeyPEM
+        )
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VecsSrvGetMachineSslPathA(&pszMachineSslPath);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringPrintf(
+                        &pszSslCertPath,
+                        "%s%smachine-ssl.crt",
+                        pszMachineSslPath,
+                        VMAFD_PATH_SEPARATOR_STR
+                        );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringAFromW(pszCanonicalCertPEM, &pszCert);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdFileExists(pszSslCertPath, &bExists);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (bExists)
+    {
+        dwError = VecsComputeCertAliasA(
+                                    pszCert,
+                                    &pszSslCertFingerPrint
+                                    );
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = VecsComputeCertAliasFile(
+                                    pszSslCertPath,
+                                    &pszFileCertFingerPrint
+                                    );
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        if (!VmAfdStringCompareA(pszSslCertFingerPrint, pszFileCertFingerPrint, FALSE))
+        {
+            goto cleanup;
+        }
+    }
+
+    dwError = VecsSrvWriteCertStringToDisk(pszCert, pszSslCertPath, bLogOnError, 0644);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringPrintf(
+                        &pszSslKeyPath,
+                        "%s%smachine-ssl.key",
+                        pszMachineSslPath,
+                        VMAFD_PATH_SEPARATOR_STR
+                        );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringAFromW(pszCanonicalKeyPEM, &pszKey);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsSrvWriteCertStringToDisk(pszKey, pszSslKeyPath, bLogOnError, 0600);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    VMAFD_SAFE_FREE_MEMORY(pszMachineSslPath);
+    VMAFD_SAFE_FREE_MEMORY(pszSslCertPath);
+    VMAFD_SAFE_FREE_MEMORY(pszCert);
+    VMAFD_SAFE_FREE_MEMORY(pszSslKeyPath);
+    VMAFD_SAFE_FREE_MEMORY(pszKey);
+    VMAFD_SAFE_FREE_MEMORY(pszSslCertFingerPrint);
+    VMAFD_SAFE_FREE_MEMORY(pszFileCertFingerPrint);
+    return dwError;
+
+error:
+    if (bLogOnError)
+    {
+        VmAfdLog(VMAFD_DEBUG_ERROR, 
+             "VecsSrvFlushMachineSslCertificate returning %u", dwError);
+    }
+    goto cleanup;
+}
+
+DWORD
+VecsSrvUnflushMachineSslCertificate(
+    PVECS_SERV_STORE pStore
+    )
+{
+    DWORD dwError = ERROR_SUCCESS;
+    PSTR  pszMachineSslPath = NULL;
+    PSTR  pszSslCertPath = NULL;
+    PSTR  pszSslKeyPath = NULL;
+    int   nRetry = VECS_DEL_RETRY_MAX;
+
+    if (!pStore ||
+        pStore->dwStoreId != VECS_MACHINE_SSL_STORE_ID
+       )
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VecsSrvGetMachineSslPathA(&pszMachineSslPath);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringPrintf(
+                        &pszSslCertPath,
+                        "%s%smachine-ssl.crt",
+                        pszMachineSslPath,
+                        VMAFD_PATH_SEPARATOR_STR
+                        );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsDeleteFileWithRetry(pszSslCertPath, nRetry);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringPrintf(
+                        &pszSslKeyPath,
+                        "%s%smachine-ssl.key",
+                        pszMachineSslPath,
+                        VMAFD_PATH_SEPARATOR_STR);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsDeleteFileWithRetry(pszSslKeyPath, nRetry);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    VMAFD_SAFE_FREE_MEMORY(pszMachineSslPath);
+    VMAFD_SAFE_FREE_MEMORY(pszSslCertPath);
+    VMAFD_SAFE_FREE_MEMORY(pszSslKeyPath);
+     return dwError;
+
+error:
+    VmAfdLog(VMAFD_DEBUG_ERROR, 
+             "VecsSrvUnflushMachineSslCertificate returning %u", dwError);
     goto cleanup;
 }
 
 DWORD
 VecsSrvFlushCrl(
     PVECS_SERV_STORE pStore,
-    PWSTR pszCanonicalCertPEM
+    PWSTR pszCanonicalCertPEM,
+    BOOLEAN bLogOnDuplicate
     )
 {
     DWORD dwError = 0;
@@ -1080,10 +1357,10 @@ VecsSrvFlushCrl(
     BAIL_ON_VMAFD_ERROR(dwError);
 
     // Flush to CAPath
-    dwError = VecsSrvFlushCrl_SHA_1(pszCrl, pszCAPath);
+    dwError = VecsSrvFlushCrl_SHA_1(pszCrl, pszCAPath, bLogOnDuplicate);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    dwError = VecsSrvFlushCrl_MD5(pszCrl, pszCAPath);
+    dwError = VecsSrvFlushCrl_MD5(pszCrl, pszCAPath, bLogOnDuplicate);
     BAIL_ON_VMAFD_ERROR(dwError);
 
     dwError = VecsSrvGetVpxDocRootPath(&pszDownloadPath);
@@ -1096,11 +1373,14 @@ VecsSrvFlushCrl(
     }
 
     // Flush to docRoot directory for download
-    dwError = VecsSrvFlushCrl_SHA_1(pszCrl, pszDownloadPath);
+    dwError = VecsSrvFlushCrl_SHA_1(pszCrl, pszDownloadPath, bLogOnDuplicate);
     if (dwError)
     {
-        VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvFlushCrl "
-            "Failed to flush CRL to download directory, %u", dwError);
+        if (bLogOnDuplicate)
+        {
+            VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvFlushCrl "
+                "Failed to flush CRL to download directory, %u", dwError);
+        }
         dwError = 0;
         goto cleanup;
     }
@@ -1207,10 +1487,10 @@ VecsFillVacantFileSlot(
     // Extension name must exist
     if (VmAfdStringLenA(pFileStart) < dwFileNameLen + 2)
     {
-        VmAfdLog(VMAFD_DEBUG_ANY,
+        VmAfdLog(VMAFD_DEBUG_DEBUG,
                 "VecsFillVacantFileSlot: missing extension name in %s",
                 pFileStart);
-        dwError = ERROR_INVALID_PARAMETER;
+        dwError = ERROR_BAD_FILE_TYPE;
         BAIL_ON_VMAFD_ERROR(dwError);
     }
 
@@ -1279,6 +1559,106 @@ error:
     goto cleanup;
 }
 
+DWORD
+VecsSrvFlushSSLCertFromDB(
+    BOOL bLogOnError
+    )
+{
+    DWORD dwError = 0;
+    WCHAR pwszMachineSSLStoreName[] = SYSTEM_CERT_STORE_NAME_W;
+    WCHAR pwszMachineSSLCertAlias[] = VECS_MACHINE_CERT_ALIAS_W;
+    PVECS_SERV_STORE pStore = NULL;
+    PVMAFD_CERT_ARRAY pSSLCertificate = NULL;
+    PWSTR pwszSSLKey = NULL;
+
+    dwError = VecsSrvOpenCertStore(
+                    pwszMachineSSLStoreName,
+                    NULL,
+                    &pStore
+                    );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsSrvGetEntryByAlias(
+                                pStore,
+                                pwszMachineSSLCertAlias,
+                                ENTRY_INFO_LEVEL_2,
+                                &pSSLCertificate
+                                );
+
+    if (dwError == ERROR_OBJECT_NOT_FOUND)
+    {
+        //There is nothing in the DB to flush
+        dwError = 0;
+        goto cleanup;
+    }
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsSrvGetPrivateKeyByAlias(
+                                      pStore,
+                                      pwszMachineSSLCertAlias,
+                                      NULL,
+                                      &pwszSSLKey
+                                      );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsSrvFlushMachineSslCertificate(
+                                        pStore,
+                                        pSSLCertificate->certificates[0].pCert,
+                                        pwszSSLKey,
+                                        bLogOnError
+                                        );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+
+cleanup:
+
+    if (pSSLCertificate)
+    {
+        VecsFreeCertArray(pSSLCertificate);
+    }
+    VMAFD_SAFE_FREE_MEMORY(pwszSSLKey);
+    if (pStore)
+    {
+        VecsSrvReleaseCertStore(pStore);
+    }
+    return dwError;
+error:
+
+    goto cleanup;
+}
+
+DWORD
+VecsSrvFlushCertsToDisk(
+    VOID
+    )
+{
+    DWORD dwError = 0;
+    WCHAR trustedRootsStoreName[] = TRUSTED_ROOTS_STORE_NAME_W;
+    WCHAR crlStoreName[] = CRL_STORE_NAME_W;
+
+    dwError = VecsSrvFlushCertsFromDB(
+                              trustedRootsStoreName,
+                              CERT_ENTRY_TYPE_TRUSTED_CERT
+                              );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsSrvFlushCertsFromDB(
+                              crlStoreName,
+                              CERT_ENTRY_TYPE_REVOKED_CERT_LIST
+                              );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsSrvFlushSSLCertFromDB(TRUE);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+
+    return dwError;
+error:
+
+    goto cleanup;
+}
+
 static
 VOID
 VecsSrvFreeCertStore(
@@ -1305,10 +1685,35 @@ VecsSrvFreeEnumContext(
 }
 
 static
+BOOL
+VecsIsFlushableEntry(
+    CERT_ENTRY_TYPE cEntryType,
+    DWORD           dwStoreId
+    )
+{
+    BOOL bToFlush = FALSE;
+
+    if (cEntryType == CERT_ENTRY_TYPE_TRUSTED_CERT &&
+        dwStoreId == VECS_TRUSTED_ROOT_STORE_ID)
+    {
+        bToFlush = TRUE;
+    }
+    else if(cEntryType == CERT_ENTRY_TYPE_REVOKED_CERT_LIST &&
+         dwStoreId == VECS_CRL_STORE_ID)
+    {
+        bToFlush = TRUE;
+    }
+
+    return bToFlush;
+}
+
+
+static
 DWORD
 VecsSrvFlushRoot_MD5(
     PCSTR pszCertificate,
-    PCSTR pszCAPath
+    PCSTR pszCAPath,
+    BOOLEAN bLogOnDuplicate
     )
 {
     DWORD dwError = 0;
@@ -1317,7 +1722,12 @@ VecsSrvFlushRoot_MD5(
     dwError = VecsComputeCertHash_MD5((PSTR)pszCertificate, &pszHash);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    dwError = VecsSrvWriteRootToDisk(pszCertificate, pszCAPath, pszHash);
+    dwError = VecsSrvWriteRootToDisk(
+                            pszCertificate,
+                            pszCAPath,
+                            pszHash,
+                            bLogOnDuplicate
+                            );
     BAIL_ON_VMAFD_ERROR(dwError);
 
 cleanup:
@@ -1335,7 +1745,8 @@ static
 DWORD
 VecsSrvFlushRoot_SHA_1(
     PCSTR pszCertificate,
-    PCSTR pszCAPath
+    PCSTR pszCAPath,
+    BOOLEAN bLogOnDuplicate
     )
 {
     DWORD dwError = 0;
@@ -1344,8 +1755,13 @@ VecsSrvFlushRoot_SHA_1(
     dwError = VecsComputeCertHash_SHA_1((PSTR)pszCertificate, &pszHash);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    dwError = VecsSrvWriteRootToDisk(pszCertificate, pszCAPath, pszHash);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    dwError = VecsSrvWriteRootToDisk(
+                          pszCertificate,
+                          pszCAPath,
+                          pszHash,
+                          bLogOnDuplicate
+                          );
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -1362,7 +1778,8 @@ static
 DWORD
 VecsSrvFlushCrl_MD5(
     PCSTR pszCrl,
-    PCSTR pszCAPath
+    PCSTR pszCAPath,
+    BOOLEAN bLogOnDuplicate
     )
 {
     DWORD dwError = 0;
@@ -1371,8 +1788,8 @@ VecsSrvFlushCrl_MD5(
     dwError = VecsComputeCrlAuthorityHash_MD5((PSTR)pszCrl, &pszHash);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    dwError = VecsSrvWriteCrlToDisk(pszCrl, pszCAPath, pszHash);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    dwError = VecsSrvWriteCrlToDisk(pszCrl, pszCAPath, pszHash, bLogOnDuplicate);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -1389,7 +1806,8 @@ static
 DWORD
 VecsSrvFlushCrl_SHA_1(
     PCSTR pszCrl,
-    PCSTR pszCAPath
+    PCSTR pszCAPath,
+    BOOLEAN bLogOnDuplicate
     )
 {
     DWORD dwError = 0;
@@ -1398,8 +1816,8 @@ VecsSrvFlushCrl_SHA_1(
     dwError = VecsComputeCrlAuthorityHash_SHA_1((PSTR)pszCrl, &pszHash);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    dwError = VecsSrvWriteCrlToDisk(pszCrl, pszCAPath, pszHash);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    dwError = VecsSrvWriteCrlToDisk(pszCrl, pszCAPath, pszHash, bLogOnDuplicate);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -1556,7 +1974,7 @@ VecsWriteCleanupFlagFile(
     dwError = VmAfdSaveStringToFile(pszFlagFilePath, "");
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    VmAfdLog(VMAFD_DEBUG_ANY, "Wrote a flag file for future clean up of %s.",
+    VmAfdLog(VMAFD_DEBUG_DEBUG, "Wrote a flag file for future clean up of %s.",
                 pszSrcPath);
 #ifndef _WIN32
     if(chmod(pszFlagFilePath,
@@ -1663,7 +2081,9 @@ static
 DWORD
 VecsSrvWriteCertStringToDisk(
     PCSTR pszCertificate,
-    PCSTR pszFilePath
+    PCSTR pszFilePath,
+    BOOL bLogOnDuplicate,
+    int mode
 )
 {
     DWORD dwError = 0;
@@ -1672,8 +2092,8 @@ VecsSrvWriteCertStringToDisk(
     PCSTR pszCursor = NULL;
     size_t len = 0;
 
-    dwError = VmAfdOpenFilePath(pszFilePath, "w", &pFile);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    dwError = VmAfdOpenFilePath(pszFilePath, "w", &pFile, mode);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
     len = strlen(pszCertificate);
     bytesToWrite = len;
@@ -1703,18 +2123,12 @@ VecsSrvWriteCertStringToDisk(
         pFile = NULL;
     }
 
-#ifndef _WIN32
-    if(chmod(pszFilePath,
-        S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) != 0)
+    if (bLogOnDuplicate)
     {
-        dwError = LwErrnoToWin32Error(errno);
-        BAIL_ON_VMAFD_ERROR(dwError);
+        VmAfdLog(VMAFD_DEBUG_ANY,
+            "VecsSrvWriteCertStringToDisk: successfully written file %s.",
+            pszFilePath);
     }
-#endif
-
-    VmAfdLog(VMAFD_DEBUG_ANY,
-        "VecsSrvWriteCertStringToDisk: successfully written file %s.",
-        pszFilePath);
 
 cleanup:
     return dwError;
@@ -1726,8 +2140,13 @@ error:
         pFile = NULL;
     }
 
-    VmAfdLog(VMAFD_DEBUG_ANY,
-        "VecsSrvWriteCertStringToDisk: returning %u.", dwError);
+    if (bLogOnDuplicate)
+    {
+        VmAfdLog(
+              VMAFD_DEBUG_ANY,
+              "VecsSrvWriteCertStringToDisk: returning %u.", dwError
+              );
+    }
 
     goto cleanup;
 }
@@ -1738,7 +2157,8 @@ VecsSrvWriteCertOrCrlToDisk(
     PCSTR pszCertificate,
     PCSTR pszCAPath,
     PCSTR pszFilename,
-    BOOLEAN bCrl
+    BOOLEAN bCrl,
+    BOOLEAN bLogOnDuplicate
     )
 {
     DWORD dwError = 0;
@@ -1780,9 +2200,12 @@ VecsSrvWriteCertOrCrlToDisk(
 
         if (pszMatchedFile)
         {
-            VmAfdLog(VMAFD_DEBUG_ANY,
-                "VecsSrvWriteCertOrCrlToDisk: cert/crl already exists as %s"
-                ", so will not write again.", pszMatchedFile);
+            if (bLogOnDuplicate)
+            {
+                VmAfdLog(VMAFD_DEBUG_ANY,
+                  "VecsSrvWriteCertOrCrlToDisk: cert/crl already exists as %s"
+                  ", so will not write again.", pszMatchedFile);
+            }
             goto cleanup;
         }
     }
@@ -1801,8 +2224,8 @@ VecsSrvWriteCertOrCrlToDisk(
                     nextAvailable);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    dwError = VecsSrvWriteCertStringToDisk(pszCertificate, pszPath);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    dwError = VecsSrvWriteCertStringToDisk(pszCertificate, pszPath, bLogOnDuplicate, 0644);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -1821,10 +2244,17 @@ DWORD
 VecsSrvWriteRootToDisk(
     PCSTR pszCert,
     PCSTR pszCAPath,
-    PCSTR pszFilename
+    PCSTR pszFilename,
+    BOOLEAN bLogOnDuplicate
     )
 {
-    return VecsSrvWriteCertOrCrlToDisk(pszCert, pszCAPath, pszFilename, FALSE);
+    return VecsSrvWriteCertOrCrlToDisk(
+                                pszCert,
+                                pszCAPath,
+                                pszFilename,
+                                FALSE,
+                                bLogOnDuplicate
+                                );
 }
 
 static
@@ -1832,10 +2262,17 @@ DWORD
 VecsSrvWriteCrlToDisk(
     PCSTR pszCrl,
     PCSTR pszCAPath,
-    PCSTR pszFilename
+    PCSTR pszFilename,
+    BOOLEAN bLogOnDuplicate
     )
 {
-    return VecsSrvWriteCertOrCrlToDisk(pszCrl, pszCAPath, pszFilename, TRUE);
+    return VecsSrvWriteCertOrCrlToDisk(
+                                  pszCrl,
+                                  pszCAPath,
+                                  pszFilename,
+                                  TRUE,
+                                  FALSE
+                                  );
 }
 
 static
@@ -1883,7 +2320,8 @@ VecsSrvUnflushCertificate(
     PWSTR pwszCAPath = NULL;
     PSTR  pszCAPath = NULL;
     PSTR  pszDownloadPath = NULL;
-    PSTR  pszHash = NULL;
+    PSTR  pszHashMD5  = NULL;
+    PSTR  pszHashSHA1 = NULL;
     BOOLEAN bCrl = FALSE;
 
     if (!pStore || IsNullOrEmptyString(pszCert))
@@ -1901,30 +2339,30 @@ VecsSrvUnflushCertificate(
     bCrl = pStore->dwStoreId == VECS_CRL_STORE_ID;
     if (bCrl)
     {
-        dwError = VecsComputeCrlAuthorityHash_MD5(pszCert, &pszHash);
+        dwError = VecsComputeCrlAuthorityHash_MD5(pszCert, &pszHashMD5);
         BAIL_ON_VMAFD_ERROR(dwError);
     }
     else
     {
-        dwError = VecsComputeCertHash_MD5(pszCert, &pszHash);
+        dwError = VecsComputeCertHash_MD5(pszCert, &pszHashMD5);
         BAIL_ON_VMAFD_ERROR(dwError);
     }
 
-    dwError = VecsSrvDeleteRootFromDisk(pszCert, pszCAPath, pszHash, bCrl);
+    dwError = VecsSrvDeleteRootFromDisk(pszCert, pszCAPath, pszHashMD5, bCrl);
     BAIL_ON_VMAFD_ERROR(dwError);
 
     if (bCrl)
     {
-        dwError = VecsComputeCrlAuthorityHash_SHA_1(pszCert, &pszHash);
+        dwError = VecsComputeCrlAuthorityHash_SHA_1(pszCert, &pszHashSHA1);
         BAIL_ON_VMAFD_ERROR(dwError);
     }
     else
     {
-        dwError = VecsComputeCertHash_SHA_1(pszCert, &pszHash);
+        dwError = VecsComputeCertHash_SHA_1(pszCert, &pszHashSHA1);
         BAIL_ON_VMAFD_ERROR(dwError);
     }
 
-    dwError = VecsSrvDeleteRootFromDisk(pszCert, pszCAPath, pszHash, bCrl);
+    dwError = VecsSrvDeleteRootFromDisk(pszCert, pszCAPath, pszHashSHA1, bCrl);
     BAIL_ON_VMAFD_ERROR(dwError);
 
     dwError = VecsSrvGetVpxDocRootPath(&pszDownloadPath);
@@ -1936,7 +2374,7 @@ VecsSrvUnflushCertificate(
         goto cleanup;
     }
 
-    dwError = VecsSrvDeleteRootFromDisk(pszCert, pszDownloadPath, pszHash, bCrl);
+    dwError = VecsSrvDeleteRootFromDisk(pszCert, pszDownloadPath, pszHashSHA1, bCrl);
     if (dwError)
     {
         VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvUnflushCertificate "
@@ -1951,7 +2389,8 @@ cleanup:
     VMAFD_SAFE_FREE_MEMORY(pszDownloadPath);
     VMAFD_SAFE_FREE_MEMORY(pwszCAPath);
     VMAFD_SAFE_FREE_MEMORY(pszCAPath);
-    VMAFD_SAFE_FREE_MEMORY(pszHash);
+    VMAFD_SAFE_FREE_MEMORY(pszHashMD5);
+    VMAFD_SAFE_FREE_MEMORY(pszHashSHA1);
     return dwError;
 error:
 
@@ -1988,14 +2427,14 @@ VecsSrvGetVpxDocRootPath(
                 pszDownloadPath, dwDownloadPathLength) == 0)
     {
         dwError = GetLastError();
-        VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvFlushCertificate "
+        VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvGetVpxDocRootPath "
             "unable to expand config path, error %u.", dwError);
         BAIL_ON_VMAFD_ERROR(dwError);
     }
 
     if (!VmAfdStringCompareA(pszTempPath, pszDownloadPath, FALSE))
     {
-        VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvFlushCertificate "
+        VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvGetVpxDocRootPath "
             "Environment variable for config path not defined.");
         dwError = ERROR_BAD_CONFIGURATION;
         BAIL_ON_VMAFD_ERROR(dwError);
@@ -2022,3 +2461,135 @@ error:
 
     goto cleanup;
 }
+
+static
+DWORD
+VecsSrvGetMachineSslPathA(
+    PSTR* ppszFilePath
+    )
+{
+    DWORD dwError = 0;
+    PSTR  pszTempPath = VMAFD_MACHINE_SSL_PATH;
+    PSTR  pszMachineSslFilePath = NULL;
+
+#ifdef _WIN32
+    DWORD dwSslPathLength = 0;
+
+    dwSslPathLength = ExpandEnvironmentStringsA(pszTempPath, NULL, 0);
+    dwError = VmAfdAllocateMemory(
+                    dwSslPathLength * sizeof(CHAR),
+                    &pszMachineSslFilePath);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (ExpandEnvironmentStringsA(pszTempPath,
+                pszMachineSslFilePath, dwSslPathLength) == 0)
+    {
+        dwError = GetLastError();
+        VmAfdLog(VMAFD_DEBUG_ERROR, "VecsSrvGetMachineSslPathA "
+            "unable to expand config path, error %u.", dwError);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    *ppszFilePath = pszMachineSslFilePath;
+#else
+    dwError = VmAfdAllocateStringA(pszTempPath, &pszMachineSslFilePath);
+    BAIL_ON_VMAFD_ERROR(dwError);
+    *ppszFilePath = pszMachineSslFilePath;
+#endif
+
+cleanup:
+    return dwError;
+
+error:
+    VMAFD_SAFE_FREE_MEMORY(pszMachineSslFilePath);
+    if (ppszFilePath)
+    {
+        *ppszFilePath = NULL;
+    }
+
+    goto cleanup;
+}
+
+static
+DWORD
+VecsSrvFlushCertsFromDB(
+    PWSTR pwszStoreName,
+    CERT_ENTRY_TYPE entryType
+    )
+{
+    DWORD dwError = 0;
+    DWORD dwIndex = 0;
+    PVECS_SERV_STORE pStore = NULL;
+    PVECS_SRV_ENUM_CONTEXT pEnumContext = NULL;
+    PVMAFD_CERT_ARRAY pVecsCertContainer = NULL;
+
+    if (IsNullOrEmptyString(pwszStoreName))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = VecsSrvOpenCertStore(
+                    pwszStoreName,
+                    NULL,
+                    &pStore
+                    );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsSrvAllocateCertEnumContext(
+                    pStore,
+                    0, /* default */
+                    ENTRY_INFO_LEVEL_2,
+                    &pEnumContext);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsSrvEnumCerts(pEnumContext, &pVecsCertContainer);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (entryType == CERT_ENTRY_TYPE_TRUSTED_CERT)
+    {
+        for (; dwIndex < pVecsCertContainer->dwCount; ++dwIndex)
+        {
+            dwError = VecsSrvFlushRootCertificate(
+                                       pStore,
+                                       pVecsCertContainer->certificates[dwIndex].pCert,
+                                       FALSE
+                                       );
+            BAIL_ON_VMAFD_ERROR(dwError);
+        }
+    }
+
+    else if (entryType == CERT_ENTRY_TYPE_REVOKED_CERT_LIST)
+    {
+        for (; dwIndex < pVecsCertContainer->dwCount; ++dwIndex)
+        {
+            dwError = VecsSrvFlushCrl(
+                                 pStore,
+                                 pVecsCertContainer->certificates[dwIndex].pCert,
+                                 FALSE
+                                 );
+            BAIL_ON_VMAFD_ERROR(dwError);
+        }
+    }
+
+cleanup:
+
+    if (pEnumContext)
+    {
+        VecsSrvReleaseEnumContext(pEnumContext);
+    }
+    if (pVecsCertContainer)
+    {
+        VecsFreeCertArray(pVecsCertContainer);
+    }
+    if (pStore)
+    {
+        VecsSrvReleaseCertStore(pStore);
+    }
+    return dwError;
+error:
+
+    goto cleanup;
+}
+
+

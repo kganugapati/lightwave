@@ -4,15 +4,13 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-
-
 
 /*
  * Module Name: vmdir_test_query
@@ -57,7 +55,7 @@ int main(int argc, char* argv[])
     dwError = VmDirQueryParseArgs(argc, argv, &pArgs);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                     &pszLdapURL,
                     "ldap://%s",
                     pArgs->pszHostname);
@@ -347,6 +345,6 @@ VmDirFreeArgs(
         VMDIR_SAFE_FREE_MEMORY(pArgs->pszBaseDN);
         VMDIR_SAFE_FREE_MEMORY(pArgs->pszFilter);
 
-        VmDirFreeMemory(pArgs);
+        VMDIR_SAFE_FREE_MEMORY(pArgs);
     }
 }

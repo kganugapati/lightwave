@@ -24,7 +24,7 @@ InitializeResourceLimit(
 
 static
 DWORD
-VecsDbGetDbPath(
+VmAfdGetDbPath(
     PSTR *ppszDbPath
     );
 
@@ -52,6 +52,7 @@ InitializeGlobals(
     pthread_cond_init(&pGlobals->statusCond, NULL);
 
     pGlobals->mutexConnection = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+    pGlobals->pCertUpdateMutex = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
     pGlobals->mutexStoreState = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
     pGlobals->mutexCreateStore = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
     pGlobals->rwlockStoreMap = (pthread_rwlock_t) PTHREAD_RWLOCK_INITIALIZER;
@@ -120,6 +121,12 @@ VmAfdInit(
     dwError = VmAfdIpcServerInit();
     BAIL_ON_VMAFD_ERROR (dwError);
 
+    dwError = VmAfSrvInitHeartbeatTable();
+    BAIL_ON_VMAFD_ERROR (dwError);
+
+    // One of the decisions is not  to check return value to prevent failure of AFD because of SL
+    dwError = VmAfdSuperLoggingInit(&(gVmafdGlobals.pLogger));
+    BAIL_ON_VMAFD_ERROR (dwError);
 
 error:
 
@@ -138,18 +145,34 @@ InitializeResourceLimit(
     DWORD           dwError = 0;
     BAIL_ON_VMAFD_ERROR(dwError);
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(PLATFORM_VMWARE_ESX)
     struct rlimit   VMLimit = {0};
 
     // unlimited virtual memory
     VMLimit.rlim_cur = RLIM_INFINITY;
     VMLimit.rlim_max = RLIM_INFINITY;
 
-    dwError = setrlimit(RLIMIT_AS, &VMLimit);
-    if (dwError != 0)
+    if ( setrlimit(RLIMIT_AS, &VMLimit)     // virtual memory
+         ||
+         setrlimit(RLIMIT_CORE, &VMLimit)   // core file size
+         ||
+         setrlimit(RLIMIT_NPROC, &VMLimit)  // thread
+       )
     {
         dwError = ERROR_INVALID_CONFIGURATION;
         BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    VMLimit.rlim_cur = VMAFD_OPEN_FILES_MAX;
+    VMLimit.rlim_max = VMAFD_OPEN_FILES_MAX;
+    if (setrlimit(RLIMIT_NOFILE, &VMLimit)!=0)
+    {
+       //If VMAFD_OPEN_FILES_MAX is too large to set, try to set soft limit to hard limit
+       if (getrlimit(RLIMIT_NOFILE, &VMLimit)==0)
+       {
+            VMLimit.rlim_cur = VMLimit.rlim_max;
+            setrlimit(RLIMIT_NOFILE, &VMLimit);
+       }
     }
 #endif
 
@@ -233,7 +256,7 @@ cleanup:
 #ifdef _WIN32
 static
 DWORD
-VecsDbGetDbPath(
+VmAfdGetDbPath(
                 PSTR *ppszDbPath
                )
 {
@@ -281,16 +304,68 @@ error:
 
     goto cleanup;
 }
+
 #else
+static
+VOID
+VmAfdMoveOldDbFile(
+                   VOID
+                  )
+{
+    DWORD dwError = 0;
+    PSTR pszDbPath = NULL;
+    PSTR pszDbOldPath = NULL;
+    BOOLEAN bOldFileExists = FALSE;
+    BOOLEAN bNewFieExists = FALSE;
+
+    dwError = VmAfdAllocateStringA(
+                                    VMAFD_CERT_DB,
+                                    &pszDbPath
+                                  );
+    BAIL_ON_VMAFD_ERROR (dwError);
+
+    dwError = VmAfdAllocateStringA(
+                                   VMAFD_OLD_CERT_DB,
+                                   &pszDbOldPath
+                                   );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdFileExists(pszDbOldPath,&bOldFileExists);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdFileExists(pszDbPath, &bNewFieExists);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (bOldFileExists && !bNewFieExists)
+    {
+        dwError = VmAfdCopyFile(pszDbOldPath, pszDbPath);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = VmAfdDeleteFile(pszDbOldPath);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+cleanup:
+
+    VMAFD_SAFE_FREE_STRINGA(pszDbOldPath);
+    VMAFD_SAFE_FREE_STRINGA(pszDbPath);
+    return;
+
+error:
+
+    goto cleanup;
+}
 
 static
 DWORD
-VecsDbGetDbPath(
+VmAfdGetDbPath(
                 PSTR *ppszDbPath
                )
 {
     DWORD dwError = 0;
     PSTR pszDbPath = NULL;
+
+    VmAfdMoveOldDbFile();
 
     dwError = VmAfdAllocateStringA(
                                     VMAFD_CERT_DB,
@@ -313,7 +388,6 @@ error:
 
     goto cleanup;
 }
-
 #endif
 
 
@@ -324,18 +398,35 @@ InitializeDatabase(
 )
 {
     DWORD dwError = 0 ;
+    DWORD dwVersion = 0;
 
-    PSTR pszVecsDbPath = NULL;
+    PSTR pszDbPath = NULL;
 
-    dwError = VecsDbGetDbPath(&pszVecsDbPath);
+    dwError = VmAfdGetDbPath(&pszDbPath);
     BAIL_ON_VMAFD_ERROR (dwError);
 
-    dwError = VecsDbInitialize(pszVecsDbPath);
+    dwError = VecsDbInitialize(pszDbPath);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = CdcDbInitialize(pszDbPath);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VecsDbGetDbVersion(&dwVersion);
+    BAIL_ON_VMAFD_ERROR(dwError);
+    if (dwVersion != VECS_DB_CURRENT_VERSION)
+    {
+#ifndef _WIN32
+        dwError = VecsDbCleanupPermissions();
+        BAIL_ON_VMAFD_ERROR(dwError);
+#endif
+    }
+
+    dwError = VecsDbSetDbVersion(VECS_DB_CURRENT_VERSION);
     BAIL_ON_VMAFD_ERROR(dwError);
 
 error :
 
-    VMAFD_SAFE_FREE_STRINGA (pszVecsDbPath);
+    VMAFD_SAFE_FREE_STRINGA (pszDbPath);
     return dwError;
 }
 

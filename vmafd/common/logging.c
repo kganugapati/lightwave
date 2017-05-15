@@ -89,7 +89,7 @@ VmAfdLogInitialize(
         dwError = _VmAfdCreateDirs(pszLogFileName);
         BAIL_ON_VMAFD_LOG_ERROR(dwError);
 
-        dwError = VmAfdOpenFilePath(pszLogFileName, "a", &gVmafdLogFile);
+        dwError = VmAfdOpenFilePath(pszLogFileName, "a", &gVmafdLogFile, 0644);
         BAIL_ON_VMAFD_LOG_ERROR(dwError);
     }
     if (vmafd_syslog)
@@ -145,7 +145,9 @@ VmAfdLog(
       }
       else
       {
+#ifndef __MACH__
          clock_gettime(CLOCK_REALTIME, &tspec);
+#endif
          gmtime_r(&tspec.tv_sec, &mytm);
          logLevelTag = logLevelToTag(level);
          snprintf(extraLogMessage, sizeof(extraLogMessage) - 1,
@@ -166,6 +168,15 @@ VmAfdLog(
             fflush( gVmafdLogFile );
          }
       }
+      if (vmafd_console_log)
+      {
+          logLevelTag = logLevelToTag(level);
+          fprintf(stderr, "VMAFD:t@%lu:%-3.7s: %s\n",
+                  (unsigned long) pthread_self(),
+                  logLevelTag? logLevelTag : "UNKNOWN",
+                  logMessage);
+          fflush( stderr );
+      }
    }
 }
 
@@ -181,9 +192,14 @@ logLevelToTag(
          return "TRACE";
       case VMAFD_DEBUG_ERROR:
          return "ERROR";
+      case VMAFD_DEBUG_WARNING:
+         return "WARNING";
       case VMAFD_DEBUG_DEBUG:
-      default:
          return "DEBUG";
+      case VMAFD_DEBUG_INFO:
+         return "INFO";
+      default:
+         return "UKNOWN";
    }
 }
 
@@ -199,9 +215,14 @@ logLevelToSysLogLevel(
          return LOG_NOTICE;
       case VMAFD_DEBUG_ERROR:
          return LOG_ERR;
+      case VMAFD_DEBUG_WARNING:
+         return LOG_WARNING;
       case VMAFD_DEBUG_DEBUG:
-      default:
          return LOG_DEBUG;
+      case VMAFD_DEBUG_INFO:
+         return LOG_INFO;
+      default:
+         return LOG_ERR;
    }
 }
 
@@ -210,19 +231,14 @@ VOID
 _VmAfdSetLogLevel(
     )
 {
-    if (vmafd_debug)
-    {
-        setlogmask(LOG_UPTO(LOG_DEBUG));
-        vmafd_syslog_level = VMAFD_DEBUG_DEBUG;
-    }
-    else if (vmafd_syslog_level)
+    if (vmafd_syslog_level)
     {
         setlogmask(LOG_UPTO(logLevelToSysLogLevel(vmafd_syslog_level)));
     }
     else
     {
-        setlogmask(LOG_UPTO(LOG_INFO));
-        vmafd_syslog_level = VMAFD_DEBUG_ANY;
+        setlogmask(LOG_UPTO(LOG_ERR));
+        vmafd_syslog_level = VMAFD_DEBUG_ERROR;
     }
 }
 

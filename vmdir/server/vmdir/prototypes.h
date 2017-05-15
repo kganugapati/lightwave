@@ -33,17 +33,28 @@ extern "C" {
 // accountmgmt.c
 
 DWORD
+VmDirCreateAccount(
+    PCSTR   pszUPNName,
+    PCSTR   pszUserName,
+    PCSTR   pszPassword,            // optional
+    PCSTR   pszEntryDN
+    );
+
+DWORD
+VmDirUPNToAccountDN(
+    PCSTR       pszUPNName,
+    PCSTR       pszAccountRDNAttr,
+    PCSTR       pszAccountRDNValue,
+    PSTR*       ppszContainerDN
+    );
+
+DWORD
 VmDirCreateAccountEx(
     PVMDIR_SRV_ACCESS_TOKEN       pAccessToken,
     PVMDIR_USER_CREATE_PARAMS_RPC pCreateParams
     );
 
 // auth.c
-
-ULONG
-ConstructSDForVmDirServ(
-    PSECURITY_DESCRIPTOR_ABSOLUTE * ppSD
-    );
 
 DWORD
 VmDirSrvCreateAccessToken(
@@ -93,6 +104,11 @@ VmDirFreeMemberships(
     DWORD dwMemberships
     );
 
+DWORD
+VmDirLoadIndex(
+    BOOLEAN bFirstboot
+    );
+
 // init.c
 DWORD
 VmDirInit(
@@ -100,11 +116,39 @@ VmDirInit(
     );
 
 DWORD
-VmDirSchemaPatchViaFile(
-    PCSTR       pszSchemaFilePath
+VmDirAllocateBerValueAVsnprintf(
+    PVDIR_BERVALUE pbvValue,
+    PCSTR pszFormat,
+    ...
+    );
+
+DWORD
+VmDirGetHostsInternal(
+    PSTR **pppszServerInfo,
+    size_t *pdwInfoCount
+    );
+
+VOID
+VmDirFreeCountedStringArray(
+    PSTR *ppszStrings,
+    size_t iCount
     );
 
 // instance.c
+
+DWORD
+VmDirSrvSetupDomainInstance(
+    PVDIR_SCHEMA_CTX pSchemaCtx,
+    BOOLEAN          bSetupHost,
+    BOOLEAN          bFirstNodeBootstrap,
+    PCSTR            pszFQDomainName,
+    PCSTR            pszDomainDN,
+    PCSTR            pszUsername,
+    PCSTR            pszPassword,
+    PVMDIR_SECURITY_DESCRIPTOR pSecDescServicesOut, // OPTIONAL
+    PVMDIR_SECURITY_DESCRIPTOR pSecDescAnonymousRead, // OPTIONAL
+    PVMDIR_SECURITY_DESCRIPTOR pSecDescDeletedObjectsOut // OPTIONAL
+    );
 
 DWORD
 VmDirSrvSetupHostInstance(
@@ -114,13 +158,6 @@ VmDirSrvSetupHostInstance(
     PCSTR pszSiteName,
     PCSTR pszReplURI,
     UINT32  firstReplicationCycleMode
-    );
-
-DWORD
-VmDirSrvSetupTenantInstance(
-    PCSTR pszDomainName,
-    PCSTR pszUsername,
-    PCSTR pszPassword
     );
 
 // regconfig.c
@@ -135,6 +172,13 @@ VmDirSrvFreeConfig(
     VOID
     );
 
+DWORD
+VmDirRegGetMultiSZ(
+    PCSTR   pszKeyPath,
+    PCSTR   pszKeyName,
+    PVMDIR_STRING_LIST* ppStrList
+    );
+
 // rpcstring.c
 
 ULONG
@@ -143,6 +187,28 @@ VmDirRpcAllocateStringW(
     PWSTR* ppwszDst
     );
 
+// schema.c
+
+DWORD
+VmDirLoadSchema(
+    PBOOLEAN    pbWriteSchemaEntry,
+    PBOOLEAN    pbLegacyDataLoaded
+    );
+
+DWORD
+InitializeSchemaEntries(
+    PVDIR_SCHEMA_CTX    pSchemaCtx
+    );
+
+DWORD
+VmDirSchemaPatchViaFile(
+    PCSTR       pszSchemaFilePath
+    );
+
+DWORD
+VmDirSchemaPatchLegacyViaFile(
+    PCSTR       pszSchemaFilePath
+    );
 
 /* service.c */
 
@@ -236,13 +302,6 @@ VmDirSrvInitializeHost(
     );
 
 DWORD
-VmDirSrvInitializeTenant(
-    PWSTR    pwszDomainName,
-    PWSTR    pwszUsername,
-    PWSTR    pwszPassword
-    );
-
-DWORD
 VmDirSrvForceResetPassword(
     PWSTR                   pwszTargetDN,
     VMDIR_DATA_CONTAINER*   pContainer
@@ -259,6 +318,10 @@ VmDirSrvSetSRPSecret(
     PWSTR       pwszSecret
     );
 
+DWORD
+VmDirSrvGetServerState(
+    PDWORD   pServerState
+    );
 
 #ifndef _WIN32
 
@@ -274,11 +337,6 @@ VmDirHandleSignals(
     );
 
 #endif
-
-void
-VmDirSrvCloseSocketAcceptFd(
-    VOID
-    );
 
 /*parseargs.c*/
 
@@ -415,7 +473,43 @@ VmDirIpcInitializeHost(
     );
 
 DWORD
+VmDirIpcGetServerState(
+    PVM_DIR_SECURITY_CONTEXT pSecurityContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
 VmDirIpcInitializeTenant(
+    PVM_DIR_SECURITY_CONTEXT pSecurityContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmDirIpcCreateTenant(
+    PVM_DIR_SECURITY_CONTEXT pSecurityContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmDirIpcDeleteTenant(
+    PVM_DIR_SECURITY_CONTEXT pSecurityContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmDirIpcEnumerateTenants(
     PVM_DIR_SECURITY_CONTEXT pSecurityContext,
     PBYTE pRequest,
     DWORD dwRequestSize,
@@ -457,6 +551,67 @@ VmDirIpcSetSRPSecret(
     DWORD dwRequestSize,
     PBYTE * ppResponse,
     PDWORD pdwResponseSize
+    );
+
+// superlogging.h
+DWORD
+VmDirInitializeSuperLogging(
+    PVMSUPERLOGGING *ppLogger
+    );
+
+DWORD
+VmDirLoadEventLogLibrary(
+    PFEVENTLOG_ADD *ppfEventLogAdd
+    );
+
+// tenantmgmt.c
+DWORD
+VmDirSrvInitializeTenant(
+    PWSTR    pwszDomainName,
+    PWSTR    pwszUsername,
+    PWSTR    pwszPassword
+    );
+
+DWORD
+VmDirSrvCreateTenant(
+    PCSTR pszDomainName,
+    PCSTR pszUserName,
+    PCSTR pszPassword
+    );
+
+DWORD
+VmDirSrvEnumerateTenants(
+    PVMDIR_STRING_LIST pTenantList
+    );
+
+DWORD
+VmDirSrvDeleteTenant(
+    PCSTR pszDomainName
+    );
+
+// tombstone.c
+DWORD
+VmDirInitTombstoneReapingThread(
+    VOID
+    );
+
+// tracklastlogin.c
+
+DWORD
+VmDirInitTrackLastLoginThread(
+    VOID
+    );
+
+DWORD VmDirInitDbCopyThread(
+    VOID
+    );
+
+DWORD
+VmDirCreateHeartbeatThread(
+    );
+
+VOID
+VmDirKillHeartbeatThread(
     );
 
 #ifdef __cplusplus

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="vmidentity" default="build" basedir=".">
+
+  <!-- Configuration set up -->
+  <property file="product.properties" />
+  <property name="MAINSRCROOT" value="${basedir}" />
+  <property name="buildRoot" value="${MAINSRCROOT}/build/${PRODUCT_NAME}" />
+  <property name="AFD_PACKAGE_BASE" value="${MAINSRCROOT}/../vmafd/build/authentication-framework/packages" />
+  <property name="VMCA_PACKAGE_BASE" value="${MAINSRCROOT}/../vmca/build/packages" />
+
+  <property name="AFD_GROUP_BASE" value="com.vmware.vmafd" />
+  <property name="VMCA_GROUP_BASE" value="com.vmware.vmca" />
+
+  <!-- Artifacts of VMIDENTITY related Projects -->
+  <property name="VERSION" value="1.2.0-SNAPSHOT" />
+  <property name="maven" value="${maven.home}/bin/mvn" />
+
+  <!-- Install the dependencies that VMAFD and VMCA do not -->
+  <target name="install.vmware-dependencies">
+    <exec executable="${maven}" failonerror="true">
+      <env key="M2_HOME" value="${maven.home}" />
+      <env key="JAVA_HOME" value="${jre.home}"/>
+      <arg line=" install:install-file -Dfile=${AFD_PACKAGE_BASE}/client-domain-controller-cache.jar -DgroupId=${AFD_GROUP_BASE} -DartifactId=client-domain-controller-cache -Dversion=${VERSION} -Dpackaging=jar" />
+    </exec>
+    <exec executable="${maven}" failonerror="true">
+      <env key="M2_HOME" value="${maven.home}" />
+      <env key="JAVA_HOME" value="${jre.home}"/>
+      <arg line=" install:install-file -Dfile=${AFD_PACKAGE_BASE}/authentication-framework.jar -DgroupId=${AFD_GROUP_BASE} -DartifactId=authentication-framework -Dversion=${VERSION} -Dpackaging=jar" />
+    </exec>
+    <exec executable="${maven}" failonerror="true">
+      <env key="M2_HOME" value="${maven.home}" />
+      <env key="JAVA_HOME" value="${jre.home}"/>
+      <arg line=" install:install-file -Dfile=${AFD_PACKAGE_BASE}/afd-heartbeat-service.jar -DgroupId=${AFD_GROUP_BASE} -DartifactId=afd-heartbeat-service -Dversion=${VERSION} -Dpackaging=jar" />
+    </exec>
+    <exec executable="${maven}" failonerror="true">
+      <env key="M2_HOME" value="${maven.home}" />
+      <env key="JAVA_HOME" value="${jre.home}"/>
+      <arg line=" install:install-file -Dfile=${VMCA_PACKAGE_BASE}/vmware-vmca-client.jar -DgroupId=${VMCA_GROUP_BASE} -DartifactId=vmware-vmca-client -Dversion=${VERSION} -Dpackaging=jar" />
+    </exec>
+    <exec executable="${maven}" failonerror="true">
+      <env key="M2_HOME" value="${maven.home}" />
+      <env key="JAVA_HOME" value="${jre.home}"/>
+      <arg line=" install:install-file -Dfile=${AFD_PACKAGE_BASE}/vmware-endpoint-certificate-store.jar -DgroupId=${AFD_GROUP_BASE} -DartifactId=vmware-endpoint-certificate-store -Dversion=${VERSION} -Dpackaging=jar" />
+    </exec>
+  </target>
+
+  <target name="build" depends="install.vmware-dependencies">
+    <exec executable="${maven}" failonerror="true">
+      <env key="M2_HOME" value="${maven.home}"/>
+      <env key="JAVA_HOME" value="${jre.home}"/>
+      <arg line=" versions:set -DskipTests=true -Dmaven.javadoc.skip=true clean install" />
+    </exec>
+  </target>
+
+</project>

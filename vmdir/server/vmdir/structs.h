@@ -81,3 +81,37 @@ typedef struct _VMDIR_SRV_ACCESS_TOKEN
 
 } VMDIR_SRV_ACCESS_TOKEN, *PVMDIR_SRV_ACCESS_TOKEN;
 
+typedef struct _VMDIR_LOGIN_TIME
+{
+    uint64_t loginTime;
+    PSTR    pszDN;
+
+} VMDIR_LOGIN_TIME, *PVMDIR_LOGIN_TIME;
+
+typedef struct _VMDIR_INTEGRITY_JOB_CTX
+{
+    PSTR        pszPartnerName;
+    LDAP*       pLd;
+    PSTR        pszRptFileName;
+    FILE*       fp;
+    DWORD       dwFailedDigestCnt;
+    DWORD       dwMissedEntryCnt;
+    VMDIR_INTEGRITY_CHECK_JOBCTX_STATE state;
+
+} VMDIR_INTEGRITY_JOB_CTX, *PVMDIR_INTEGRITY_JOB_CTX;
+
+typedef struct _VMDIR_INTEGRITY_JOB
+{
+    struct timespec             startTime;
+    struct tm                   startTM;
+    struct timespec             endTime;
+    CHAR                        finishedTimebuf[MAX_PATH];
+    ENTRYID                     maxEntryID;
+    ENTRYID                     currentEntryID;
+    DWORD                       dwNumProcessed;
+    PVMDIR_INTEGRITY_JOB_CTX    pJobctx;
+    DWORD                       dwNumJobCtx;
+    VMDIR_INTEGRITY_CHECK_JOB_STATE state;
+
+} VMDIR_INTEGRITY_JOB, *PVMDIR_INTEGRITY_JOB;
+

@@ -1,3 +1,17 @@
+/*
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
 #include "includes.h"
 #include <vmcacommon.h>
 
@@ -169,26 +183,15 @@ error :
 
 }
 
-
 DWORD
 VMCAGetServerVersion(
-    unsigned int *dwCertLength,
-    VMCA_CERTIFICATE_CONTAINER **pServerVersion
-)
+    PSTR* serverVersion
+    )
 {
     DWORD dwError = 0;
 
-    dwError = VMCARpcAllocateCertificateContainer(VMCA_SERVER_VERSION_STRING, pServerVersion);
-    BAIL_ON_VMCA_ERROR(dwError);
+    dwError = VMCAAllocateStringA(VMCA_SERVER_VERSION_STRING, serverVersion);
 
-    strcpy((char*)(*pServerVersion)->pCert,VMCA_SERVER_VERSION_STRING);
-
-error :
-
-    if (dwError != 0) {
-        VMCARpcFreeCertificateContainer(*pServerVersion);
-    *pServerVersion = NULL;
-    }
     return dwError;
 }
 
@@ -202,7 +205,7 @@ VMCAClonePkgEntryContentsFromDbPkgEntry(
     DWORD dwError =0;
 
     pCertEntryDst->dwCount = pDbCertEntrySrc->dwCertSize;
-    dwError = VMCARpcAllocateString (
+    dwError = VMCAAllocateStringA (
                             (RP_PSTR)pDbCertEntrySrc->pCertBlob,
                             (RP_PSTR*)&pCertEntryDst->pCert);
     BAIL_ON_VMCA_ERROR(dwError);
@@ -225,7 +228,7 @@ VMCACloneCertContainerFromDbCertEntryArray(
     DWORD dwError = 0;
     PVMCA_CERTIFICATE_ARRAY pCertArray = NULL;
 
-    dwError = VMCARpcAllocateMemory(
+    dwError = VMCAAllocateMemory(
                     sizeof(VMCA_CERTIFICATE_ARRAY),
                     (PVOID*)&pCertArray);
     BAIL_ON_VMCA_ERROR(dwError);
@@ -235,14 +238,16 @@ VMCACloneCertContainerFromDbCertEntryArray(
     if (pCertArray->dwCount > 0)
     {
         DWORD iEntry = 0;
-        dwError = VMCARpcAllocateMemory(
+        dwError = VMCAAllocateMemory(
                     pCertArray->dwCount * sizeof(pCertArray->certificates[0]),
                     (PVOID*)&pCertArray->certificates);
         BAIL_ON_VMCA_ERROR(dwError);
         for (; iEntry < pCertArray->dwCount; iEntry++)
         {
-            PVMCA_DB_CERTIFICATE_ENTRY    pDbCertEntrySrc      = &pDbCertEntryArray[iEntry];
-            PVMCA_CERTIFICATE_CONTAINER pCertContainerDst = &pCertArray->certificates[iEntry];
+            PVMCA_DB_CERTIFICATE_ENTRY pDbCertEntrySrc
+                    = &pDbCertEntryArray[iEntry];
+            PVMCA_CERTIFICATE_CONTAINER pCertContainerDst
+                    = &pCertArray->certificates[iEntry];
 
             // copy pCert string to container
             dwError = VMCAClonePkgEntryContentsFromDbPkgEntry(
@@ -265,7 +270,7 @@ error:
 
     if (pCertArray)
     {
-        VMCARpcFreeCertificateArray(pCertArray);
+        VMCAFreeCertificateArray(pCertArray);
     }
 
     goto cleanup;
@@ -551,7 +556,7 @@ VMCAGetSignedCertificate(
                   expire);
     BAIL_ON_VMCA_ERROR(dwError);
 
-    dwError = VMCARpcAllocateCertificateContainer(pCert, &pCertContainer);
+    dwError = VMCAAllocateCertificateContainer(pCert, &pCertContainer);
     BAIL_ON_VMCA_ERROR(dwError);
 
     dwError = VMCADecodeCert(pCert, &pEntry);
@@ -560,7 +565,6 @@ VMCAGetSignedCertificate(
     dwError = VMCAInsertCertificate(pEntry);
     BAIL_ON_VMCA_ERROR(dwError);
 
-    // TODO : check for errors
     strcpy((char*)pCertContainer->pCert, pCert);
 
     *ppCertContainer = pCertContainer;
@@ -583,10 +587,8 @@ error:
     {
         *ppCertContainer = NULL;
     }
-    if (pCertContainer)
-    {
-        VMCARpcFreeCertificateContainer(pCertContainer);
-    }
+
+    VMCAFreeCertificateContainer(pCertContainer);
 
     goto cleanup;
 }
@@ -649,11 +651,11 @@ VMCAFreeDBEntry(PVMCA_DB_CERTIFICATE_ENTRY pEntry)
 unsigned int
 VMCAGetRootCACertificate(
     unsigned int *dwCertLength,
-    VMCA_CERTIFICATE_CONTAINER **ppCertContainer
+    PVMCA_CERTIFICATE *ppCertificate
     )
 {
     DWORD dwError = 0;
-    PVMCA_CERTIFICATE pCertificate = NULL;
+    PVMCA_CERTIFICATE pTempCertificate = NULL;
     PSTR pszRootCertFile = NULL;
     BOOLEAN bLocked = FALSE;
 
@@ -662,36 +664,29 @@ VMCAGetRootCACertificate(
     dwError = VMCASrvValidateCA();
     BAIL_ON_VMCA_ERROR(dwError);
 
-    VMCAGetRootCertificateFilePath(&pszRootCertFile);
+    dwError = VMCAGetRootCertificateFilePath(&pszRootCertFile);
     BAIL_ON_VMCA_ERROR(dwError);
 
     dwError = VMCAReadCertificateChainFromFile(
                                 pszRootCertFile,
-                                &pCertificate);
+                                &pTempCertificate);
     BAIL_ON_VMCA_ERROR(dwError);
 
-    dwError = VMCARpcAllocateCertificateContainer(pCertificate, ppCertContainer);
-    BAIL_ON_VMCA_ERROR(dwError);
 
-    strcpy((char*)(*ppCertContainer)->pCert,pCertificate);
+
+    *ppCertificate = pTempCertificate;
+
+cleanup:
+    VMCA_LOCK_MUTEX_UNLOCK(&gVMCAServerGlobals.svcMutex, bLocked);
+
+    VMCA_SAFE_FREE_STRINGA(pszRootCertFile);
+    return dwError;
 
 error :
 
-    VMCA_LOCK_MUTEX_UNLOCK(&gVMCAServerGlobals.svcMutex, bLocked);
+    VMCA_SAFE_FREE_MEMORY(pTempCertificate);
 
-    if( dwError != 0)
-    {
-        if (ppCertContainer && *ppCertContainer)
-        {
-            VMCARpcFreeCertificateContainer(*ppCertContainer);
-            *ppCertContainer = NULL;
-        }
-    }
-
-    VMCA_SAFE_FREE_STRINGA(pCertificate);
-    VMCA_SAFE_FREE_STRINGA(pszRootCertFile);
-    pCertificate = NULL;
-    return dwError;
+    goto cleanup;
 }
 
 VOID
@@ -700,6 +695,16 @@ VMCARpcFreeCertificateContainer(PVMCA_CERTIFICATE_CONTAINER pCertContainer)
  if (pCertContainer != NULL) {
     VMCARpcFreeMemory(pCertContainer->pCert);
     VMCARpcFreeMemory(pCertContainer);
+    pCertContainer = NULL;
+ }
+}
+
+VOID
+VMCAFreeCertificateContainer(PVMCA_CERTIFICATE_CONTAINER pCertContainer)
+{
+ if (pCertContainer != NULL) {
+    VMCA_SAFE_FREE_MEMORY(pCertContainer->pCert);
+    VMCA_SAFE_FREE_MEMORY(pCertContainer);
     pCertContainer = NULL;
  }
 }
@@ -724,6 +729,25 @@ error :
     return dwError;
 }
 
+DWORD
+VMCAAllocateCertificateContainer(PSTR pCert, PVMCA_CERTIFICATE_CONTAINER *ppCertContainer)
+{
+    DWORD dwError = 0;
+
+    dwError = VMCAAllocateMemory(sizeof(VMCA_CERTIFICATE_CONTAINER) ,(PVOID*)ppCertContainer);
+    BAIL_ON_VMCA_ERROR(dwError);
+    memset(*ppCertContainer, 0 , sizeof(VMCA_CERTIFICATE_CONTAINER));
+
+    (*ppCertContainer)->dwCount = (unsigned long)strlen(pCert);
+    dwError = VMCAAllocateMemory(strlen(pCert)+1, (PVOID*) &((*ppCertContainer)->pCert));
+    BAIL_ON_VMCA_ERROR(dwError);
+    memset((*ppCertContainer)->pCert, 0 ,strlen(pCert)+1);
+error :
+    if (dwError != 0) {
+        VMCAFreeCertificateContainer(*ppCertContainer);
+    }
+    return dwError;
+}
 
 DWORD
 VMCARevokeCertificate(
@@ -864,11 +888,35 @@ error:
     goto cleanup;
 }
 
+VOID
+VMCAFreeCertificateArray(PVMCA_CERTIFICATE_ARRAY pCertArray)
+{
+    if (pCertArray == NULL)
+    {
+        goto cleanup;
+    }
+
+    if (pCertArray->dwCount > 0) {
+        unsigned int iEntry  = 0;
+        // free string in each container
+        for (; iEntry < pCertArray->dwCount; iEntry++)
+        {
+            VMCAFreeMemory( pCertArray->certificates[iEntry].pCert);
+        }
+        VMCAFreeMemory(pCertArray->certificates);
+        VMCAFreeMemory(pCertArray);
+    }
+cleanup:
+    return;
+}
 
 VOID
 VMCARpcFreeCertificateArray(PVMCA_CERTIFICATE_ARRAY pCertArray)
 {
-    if (pCertArray == NULL) return;
+    if (pCertArray == NULL)
+    {
+        goto cleanup;
+    }
 
     if (pCertArray->dwCount > 0) {
         unsigned int iEntry  = 0;
@@ -876,8 +924,11 @@ VMCARpcFreeCertificateArray(PVMCA_CERTIFICATE_ARRAY pCertArray)
         for (; iEntry < pCertArray->dwCount; iEntry++) {
             VMCARpcFreeMemory( pCertArray->certificates[iEntry].pCert);
         }
+        VMCARpcFreeMemory(pCertArray->certificates);
         VMCARpcFreeMemory(pCertArray);
     }
+cleanup:
+    return;
 }
 
 
@@ -1008,6 +1059,7 @@ VMCAGetCertificateCount(
 //
     VMCA_LOCK_MUTEX_SHARED(&gVMCAServerGlobals.svcMutex, bLocked);
 
+    // Don't do this, even if we have no Root Cert,
     // The client program should be able to read
     // the number of certificates in the Data base.
     // In most common Scenerios, this will be 0.
@@ -1149,7 +1201,6 @@ error :
 
 unsigned int
 VMCAGetCRL(
-    unsigned char *pszClientCachedCRLID,
     unsigned int dwFileOffset,
     unsigned int dwSize,
     VMCA_FILE_BUFFER **ppCRLData
@@ -1170,11 +1221,11 @@ VMCAGetCRL(
     dwError = VMCAGetCRLNamePath(&pszCRLFile);
     BAIL_ON_VMCA_ERROR(dwError);
 
-    dwError = VMCARpcAllocateMemory(
-                    sizeof(VMCA_FILE_BUFFER),
-                    (PVOID*)&pCRLData);
+    dwError = VMCAAllocateMemory(
+            sizeof(VMCA_FILE_BUFFER),
+            (PVOID*) &pCRLData
+            );
     BAIL_ON_VMCA_ERROR(dwError);
-    memset(pCRLData, 0, sizeof(VMCA_FILE_BUFFER));
 
     dwError = VMCAReadDataFromFile(
         pszCRLFile,
@@ -1185,8 +1236,10 @@ VMCAGetCRL(
     BAIL_ON_VMCA_ERROR(dwError);
     if (dwCount > 0)
     {
-        dwError = VMCARpcAllocateMemory(dwCount * sizeof(unsigned char),
-            (PVOID*) &pCRLData->buffer);
+        dwError = VMCAAllocateMemory(
+                dwCount * sizeof(unsigned char) + 1,
+                (PVOID*) &(pCRLData->buffer)
+                );
         BAIL_ON_VMCA_ERROR(dwError);
         memcpy((PVOID) pCRLData->buffer, buff,(size_t) dwCount);
     }
@@ -1206,9 +1259,9 @@ error:
     {
         if(pCRLData->buffer != NULL)
         {
-            VMCARpcFreeMemory((PVOID) pCRLData->buffer);
+            VMCAFreeMemory((PVOID) pCRLData->buffer);
         }
-        VMCARpcFreeMemory((PVOID)pCRLData);
+        VMCAFreeMemory((PVOID)pCRLData);
     }
     if(ppCRLData)
     {
@@ -1256,7 +1309,6 @@ VMCAGenerateCRL ()
 
     if (dwCertCount)
     {
-
             dwError = VmcaDbQueryCertificatesPaged(
                         pDbContext,
                         0,
@@ -1364,7 +1416,11 @@ VMCACopyTempCRLtoCRL()
 
     if ((pIn = fopen(pszTmpFile, "rb")) == NULL)
     {
-        dwError = LwErrnoToWin32Error(errno);
+#ifndef _WIN32
+                dwError = LwErrnoToWin32Error(errno);
+#else
+                dwError = GetLastError();
+#endif
 
         VMCA_LOG_ERROR("Failed to open file [%s] for reading", pszTmpFile);
 
@@ -1372,7 +1428,11 @@ VMCACopyTempCRLtoCRL()
     }
     if ((pOut = fopen(pszCRLFile, "wb")) == NULL)
     {
-        dwError = LwErrnoToWin32Error(errno);
+#ifndef _WIN32
+                dwError = LwErrnoToWin32Error(errno);
+#else
+                dwError = GetLastError();
+#endif
 
         VMCA_LOG_ERROR("Failed to open file [%s] for writing", pszCRLFile);
 
@@ -1462,4 +1522,3 @@ error :
     VMCA_SAFE_FREE_STRINGA(pszTmpFile);
     return dwError;
 }
-

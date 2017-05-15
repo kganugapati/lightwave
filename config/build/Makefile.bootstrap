@@ -1,3 +1,7 @@
+SRCROOT := ../../
+MAKEROOT=$(SRCROOT)/support/make
+include $(MAKEROOT)/makedefs.mk
+
 MKDIR=/bin/mkdir
 RM=/bin/rm
 CP=/bin/cp
@@ -27,9 +31,14 @@ CLEAN_OBJECTS = \
     config.log \
     config.status \
     include \
+    depends \
+    jdepends \
     libtool \
+    pscsetup \
     rpmbuild \
+    scripts \
     tools \
+    vmware-config \
     $(SRCROOT)/aclocal.m4 \
     $(SRCROOT)/ar-lib \
     $(SRCROOT)/autom4te.cache \
@@ -41,7 +50,10 @@ CLEAN_OBJECTS = \
     $(SRCROOT)/include/config.h.in* \
     $(SRCROOT)/install-sh \
     $(SRCROOT)/ltmain.sh \
-    $(SRCROOT)/missing
+    $(SRCROOT)/missing \
+    $(SRCROOT)/debugfiles.list \
+    $(SRCROOT)/debuglinks.list \
+    $(SRCROOT)/debugsources.list
 
 PKG_SPEC=vmware-ic-config.spec
 
@@ -58,6 +70,15 @@ package: $(RPMBUILD_SPECS)/$(PKG_SPEC) | $(RPMBUILD_DIRS)
               --define "_bindir /opt/vmware/bin" \
               --define "_lib64dir /opt/vmware/lib64" \
               --define "_likewise_open_prefix /opt/likewise" \
+              --define "_vmdir_prefix /opt/vmware" \
+              --define "_vmafd_prefix /opt/vmware" \
+              --define "_vmca_prefix /opt/vmware" \
+              --define "_vmdns_prefix /opt/vmware" \
+              --define "_vmsts_prefix /opt/vmware" \
+              --define "_javahome $(JAVA_HOME)" \
+              --define "_anthome $(ANT_HOME)" \
+              --define "_version $(CFG_MAJOR_VER).$(CFG_MINOR_VER).$(CFG_RELEASE_VER)" \
+              --define "_patch $(CFG_PATCH_VER)" \
               --buildroot $(RPMBUILD_ROOT)/BUILDROOT \
               SPECS/$(PKG_SPEC)
 

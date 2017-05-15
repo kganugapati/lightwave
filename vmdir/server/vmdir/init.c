@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -30,19 +30,7 @@
     NULL                                    \
 }
 
-#define VDIR_SCHEMA_NAMING_CONTEXT_ENTRY_INITIALIZER      \
-{                                           \
-    "objectclass",  "dmd",                  \
-    "cn",           "schemacontext",        \
-    NULL                                    \
-}
-
 #define VDIR_OPEN_FILES_MAX 16384
-
-static
-DWORD
-InitializeSchemaEntry(
-    VOID);
 
 static
 DWORD
@@ -51,19 +39,8 @@ InitializeCFGEntries(
 
 static
 int
-InitializeSchema(
-    BOOLEAN*    pbWriteSchemaEntry);
-
-static
-int
 InitializeVmdirdSystemEntries(
     VOID);
-
-static
-DWORD
-InitializeCFGIndicesEntry(
-    PVDIR_SCHEMA_CTX    pSchemaCtx
-    );
 
 static
 DWORD
@@ -95,7 +72,6 @@ static
 DWORD
 _VmDirGenerateInvocationId(VOID);
 
-static
 int
 LoadServerGlobals(BOOLEAN *pbWriteInvocationId);
 
@@ -104,9 +80,15 @@ DWORD
 _VmDirSrvCreatePersistedDSERoot(VOID);
 
 static
-DWORD _VmDirGetHostsInternal(
-    PSTR**  ppServerInfo,
-    size_t* pdwInfoCount
+DWORD
+_VmDirCheckPartnerDomainFunctionalLevel(
+    VOID
+    );
+
+static
+DWORD
+VmDirCheckRestoreStatus(
+    VDIR_SERVER_STATE* pTargetState
     );
 
 /*
@@ -189,11 +171,14 @@ error:
 }
 
 DWORD
-VmDirInitBackend()
+VmDirInitBackend(
+    PBOOLEAN    pbLegacyDataLoaded
+    )
 {
     DWORD   dwError = 0;
     PVDIR_BACKEND_INTERFACE pBE = NULL;
-    BOOLEAN bWriteSchemaEntry = FALSE;
+    PVMDIR_MUTEX    pSchemaModMutex = NULL;
+    BOOLEAN bInitializeEntries = FALSE;
 
     dwError = VmDirBackendConfig();
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -201,34 +186,40 @@ VmDirInitBackend()
     pBE = VmDirBackendSelect(NULL);
     assert(pBE);
 
-    {   // backend init phase 1 - initialize and open database
-        dwError = pBE->pfnBEInit();
-        BAIL_ON_VMDIR_ERROR(dwError);
-
-        dwError = pBE->pfnBEDBOpen();
-        BAIL_ON_VMDIR_ERROR(dwError);
-    }
-
-    dwError = InitializeSchema(&bWriteSchemaEntry);
+    dwError = pBE->pfnBEInit();
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAttrIndexLibInit();
+    /*
+     * Attribute indices are configured by attribute type entries.
+     *
+     * Note this implies that all index modification is schema modification.
+     *
+     * Concurrency control can be simplified by sharing mutex
+     * between schema library and index library.
+     */
+    dwError = VmDirSchemaLibInit(&pSchemaModMutex);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    {   // backend init phase 2 - open additional index database
-        dwError = pBE->pfnBEIndexOpen();
-        BAIL_ON_VMDIR_ERROR(dwError);
+    dwError = VmDirIndexLibInit(pSchemaModMutex);
+    BAIL_ON_VMDIR_ERROR(dwError);
 
-        // prepare USNList to guarantee safe USN for replication
-        dwError = VmDirBackendInitUSNList(pBE);
-        BAIL_ON_VMDIR_ERROR(dwError);
-    }
+    dwError = VmDirLoadSchema(&bInitializeEntries, pbLegacyDataLoaded);
+    BAIL_ON_VMDIR_ERROR(dwError);
 
-    if (bWriteSchemaEntry)
+    dwError = VmDirLoadIndex(bInitializeEntries || *pbLegacyDataLoaded);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    // prepare USNList to guarantee safe USN for replication
+    dwError = VmDirBackendInitUSNList(pBE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if (bInitializeEntries)
     {
-        dwError = _VmDirGenerateInvocationId(); // to be used in replication meta data for the entries created in
-                                                // InitializeVmdirdSystemEntries()
+        dwError = VmDirRegisterACLMode();
         BAIL_ON_VMDIR_ERROR(dwError);
+
+        dwError = _VmDirGenerateInvocationId(); // to be used in replication meta data for the entries created in
+        BAIL_ON_VMDIR_ERROR(dwError);           // InitializeVmdirdSystemEntries()
 
         dwError = InitializeVmdirdSystemEntries();
         BAIL_ON_VMDIR_ERROR(dwError);
@@ -238,13 +229,59 @@ VmDirInitBackend()
     }
 
 cleanup:
-
     return dwError;
 
 error:
-
     VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL, "VmDirInitBackend failed (%d)", dwError );
+    goto cleanup;
+}
 
+
+/*
+ * This function provides a mechanism to determine if vmdird shutdown cleanly.
+ * The logic is:
+ * (1) At startup we check for a registry value called "DirtyShutdown". If
+ * that value doesn't exist then this must be the first time we've started
+ * up (so obviously we didn't experience a dirty shutdown previously).
+ * (2) If the value exists then if its value is non-zero then we didn't
+ * previously shutdown cleanly (because when we get to the end of our cleanup
+ * code we'll set the value to zero explicitly before exiting).
+ */
+static
+DWORD
+VmDirCheckForDirtyShutdown(
+    PBOOLEAN pbDirtyShutdown
+    )
+{
+    DWORD dwDirtyShutdown = 0;
+    DWORD dwError = 0;
+    BOOLEAN bDirtyShutdown = FALSE;
+
+    /*
+     * Get the DirtyShutdown value (if it doesn't exist it's not dirty).
+     */
+    (VOID)VmDirGetRegKeyValueDword(
+            VMDIR_CONFIG_PARAMETER_V1_KEY_PATH,
+            VMDIR_REG_KEY_DIRTY_SHUTDOWN,
+            &dwDirtyShutdown,
+            FALSE);
+    bDirtyShutdown = !!dwDirtyShutdown;
+
+    /*
+     * Assume the worst and write out that we had a dirty shutdown. When we
+     * cleanly shutdown we'll update this value.
+     */
+    dwError = VmDirSetRegKeyValueDword(
+                VMDIR_CONFIG_PARAMETER_V1_KEY_PATH,
+                VMDIR_REG_KEY_DIRTY_SHUTDOWN,
+                TRUE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    *pbDirtyShutdown = bDirtyShutdown;
+
+cleanup:
+    return dwError;
+error:
     goto cleanup;
 }
 
@@ -257,9 +294,17 @@ VmDirInit(
     )
 {
     DWORD   dwError = 0;
+    BOOLEAN bLegacyDataLoaded = FALSE;
     BOOLEAN bWriteInvocationId = FALSE;
-    VMDIR_RUNMODE runMode = VMDIR_RUNMODE_NORMAL;
     BOOLEAN bWaitTimeOut = FALSE;
+    VDIR_SERVER_STATE targetState = VmDirdGetTargetState();
+    BOOLEAN bDirtyShutdown = FALSE;
+
+    dwError = VmDirCheckForDirtyShutdown(&bDirtyShutdown);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirCheckRestoreStatus(&targetState);
+    BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = InitializeGlobalVars();
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -267,13 +312,13 @@ VmDirInit(
     dwError = InitializeServerStatusGlobals();
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    dwError = VmDirSuperLoggingInit(&gVmdirGlobals.pLogger);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
 #ifndef _WIN32
     dwError = InitializeResouceLimit();
     BAIL_ON_VMDIR_ERROR(dwError);
 #endif
-
-    dwError = ConstructSDForVmDirServ(&gVmdirGlobals.gpVmDirSrvSD);
-    BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirOpensslInit();
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -287,7 +332,7 @@ VmDirInit(
     dwError = VmDirPluginInit();
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirInitBackend();
+    dwError = VmDirInitBackend(&bLegacyDataLoaded);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // load server globals before any write operations
@@ -304,35 +349,81 @@ VmDirInit(
     dwError = VmDirVmAclInit();
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    if (!gVmdirGlobals.bPatchSchema)
+    if (!gVmdirGlobals.bPatchSchema && bLegacyDataLoaded)
     {
-        dwError = VmDirRpcServerInit();
+        VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL,
+                "Legacy data store is detected. "
+                "Run schema patch (-u option) before running in normal mode" );
+        dwError = ERROR_NO_SCHEMA;
         BAIL_ON_VMDIR_ERROR(dwError);
     }
-
-    dwError = VmDirIpcServerInit();
-    BAIL_ON_VMDIR_ERROR (dwError);
-
-    if (VmDirdGetRestoreMode())
+    else if (gVmdirGlobals.bPatchSchema)
     {
-        // TBD: What happens if server is started in restore mode even when it has not been promoted?
-        dwError = _VmDirRestoreInstance(); // fix invocationId and up-to-date-vector before starting replicating in.
-        BAIL_ON_VMDIR_ERROR( dwError );
+        if (IsNullOrEmptyString(gVmdirGlobals.pszBootStrapSchemaFile))
+        {
+            VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL,
+                    "Schema file must be provided in schema patch mode (-u option)" );
+            dwError = VMDIR_ERROR_INVALID_PARAMETER;
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
+
+        VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, ">>> Schema patch starts <<<" );
+
+        if (bLegacyDataLoaded)
+        {
+            dwError = VmDirSchemaPatchLegacyViaFile(
+                    gVmdirGlobals.pszBootStrapSchemaFile);
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
+        else
+        {
+            dwError = VmDirSchemaPatchViaFile(
+                    gVmdirGlobals.pszBootStrapSchemaFile);
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
+
+        VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, ">>> Schema patch ends <<<" );
+
+        (VOID)VmDirSetAdministratorPasswordNeverExpires();
     }
-
-    runMode = VmDirdGetRunMode();
-    if ( runMode == VMDIR_RUNMODE_NORMAL )
+    else
     {
-        dwError = VmDirReplicationLibInit();
-        BAIL_ON_VMDIR_ERROR(dwError);
-    }
+        // Startup actions depend on what state is next.
+        if ( targetState == VMDIRD_STATE_NORMAL ||
+             targetState == VMDIRD_STATE_STANDALONE ||
+             targetState == VMDIRD_STATE_READ_ONLY)
+        {
 
-    if ( gVmdirGlobals.bPatchSchema && gVmdirGlobals.pszBootStrapSchemaFile )
-    {
-        dwError = VmDirSchemaPatchViaFile( gVmdirGlobals.pszBootStrapSchemaFile );
-        BAIL_ON_VMDIR_ERROR(dwError);
+            dwError = _VmDirCheckPartnerDomainFunctionalLevel();
+            BAIL_ON_VMDIR_ERROR( dwError );
 
-        VmDirSetAdministratorPasswordNeverExpires(); // Ignore error
+            dwError = VmDirRpcServerInit();
+            BAIL_ON_VMDIR_ERROR(dwError);
+
+            dwError = VmDirIpcServerInit();
+            BAIL_ON_VMDIR_ERROR (dwError);
+
+            dwError = VmDirReplicationLibInit();
+            BAIL_ON_VMDIR_ERROR(dwError);
+
+            if (gVmdirGlobals.bTrackLastLoginTime)
+            {
+                dwError = VmDirInitTrackLastLoginThread();
+                BAIL_ON_VMDIR_ERROR(dwError);
+            }
+
+            dwError = VmDirInitDbCopyThread();
+            BAIL_ON_VMDIR_ERROR(dwError);
+
+            dwError = VmDirInitTombstoneReapingThread();
+            BAIL_ON_VMDIR_ERROR(dwError);
+        }
+        else if (targetState == VMDIRD_STATE_RESTORE)
+        {
+            // TBD: What happens if server is started in restore mode even when it has not been promoted?
+            dwError = _VmDirRestoreInstance(); // fix invocationId and up-to-date-vector before starting replicating in.
+            BAIL_ON_VMDIR_ERROR( dwError );
+        }
     }
 
     if (bWriteInvocationId) // Logic for backward compatibility. Needs to come after schema patch logic.
@@ -349,10 +440,15 @@ VmDirInit(
                                         5000);  // wait time 5 seconds
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    if (!VmDirdGetRestoreMode())
+    if (!(targetState == VMDIRD_STATE_RESTORE || gVmdirGlobals.bPatchSchema))
     {
         dwError = VmDirInitConnAcceptThread();
         BAIL_ON_VMDIR_ERROR(dwError);
+
+#if 0
+        dwError = VmDirRESTServerInit();
+        BAIL_ON_VMDIR_ERROR(dwError);
+#endif
     }
 
     if (gVmdirServerGlobals.serverId)
@@ -369,12 +465,25 @@ VmDirInit(
             VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "%s: all LDAP ports are ready for accepting services.", __func__);
         }
     }
+    else
+    {
+        // node not yet promoted, make sure no cred cache exists.
+        (VOID) VmDirDestroyDefaultKRB5CC();
+    }
 
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Config MaxLdapOpThrs (%d)", gVmdirGlobals.dwMaxFlowCtrlThr );
 
-error:
+cleanup:
     return dwError;
+
+error:
+    VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "%s failed (%d)", __FUNCTION__, dwError );
+    goto cleanup;
 }
+
+#ifndef VDIR_PSC_VERSION
+#define VDIR_PSC_VERSION "6.7.0"
+#endif
 
 static
 DWORD
@@ -395,6 +504,7 @@ _VmDirSrvCreatePersistedDSERoot(VOID)
             ATTR_SUPPORTED_CONTROL,             LDAP_CONTROL_PAGEDRESULTS,
             ATTR_SERVER_VERSION,                VDIR_SERVER_VERSION,
             ATTR_PSC_VERSION,                   VDIR_PSC_VERSION,
+            ATTR_MAX_DOMAIN_FUNCTIONAL_LEVEL,   VMDIR_MAX_DFL_STRING,
             ATTR_SUPPORTED_SASL_MECHANISMS ,    SASL_MECH,
             NULL
     };
@@ -423,6 +533,28 @@ error:
     goto cleanup;
 }
 
+VOID
+VmDirFreeCountedStringArray(
+    PSTR *ppszStrings,
+    size_t iCount
+    )
+{
+    size_t iIndex = 0;
+
+    if (ppszStrings == NULL)
+    {
+        return;
+    }
+
+    for (iIndex = 0; iIndex < iCount; iIndex++)
+    {
+        VmDirFreeStringA(ppszStrings[iIndex]);
+    }
+
+    VmDirFreeMemory(ppszStrings);
+}
+
+
 // _VmDirRestoreInstance():
 // 1. Get new invocation ID.
 //    So I can rejoin the federation with a fresh ID.
@@ -431,10 +563,11 @@ error:
 //    So partners will pick up new changes from me.
 // 4. Advance RID sequence number.
 //    So there will be no ObjectSid conflict with entries created after backup.
-
 static
 DWORD
-_VmDirRestoreInstance(VOID)
+_VmDirRestoreInstance(
+    VOID
+    )
 {
     DWORD                   dwError = LDAP_SUCCESS;
     size_t                  i = 0;
@@ -446,19 +579,35 @@ _VmDirRestoreInstance(VOID)
     char                    nextUsnStr[VMDIR_MAX_USN_STR_LEN] = {0};
     PSTR                    pszLocalErrMsg = NULL;
     PSTR                    pszDCAccount = NULL;
-    PSTR*                   pServerInfo = NULL;
+    PSTR*                   ppszServerInfo = NULL;
     size_t                  dwInfoCount = 0;
+
+    VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Restore Lotus Instance.");
 
     dwError = VmDirRegReadDCAccount(&pszDCAccount);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = _VmDirGetHostsInternal(&pServerInfo, &dwInfoCount);
+    dwError = VmDirGetHostsInternal(&ppszServerInfo, &dwInfoCount);
     if (dwError != 0)
     {
         printf("_VmDirRestoreInstance: fail to get hosts from topology: %d\n", dwError );
     }
     BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, pszLocalErrMsg,
             "_VmDirRestoreInstance: fail to get hosts from topology: %d", dwError );
+
+    if ( dwInfoCount == 1 )
+    {
+        VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Single node deployment topology, skip restore procedure.");
+        printf("Single node deployment topology, skip restore procedure.\n");
+
+        dwError = VmDirSetRegKeyValueDword(
+                        VMDIR_CONFIG_PARAMETER_V1_KEY_PATH,
+                        VMDIR_REG_KEY_RESTORE_STATUS,
+                        VMDIR_RESTORE_NOT_REQUIRED);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        goto cleanup;
+    }
 
     /*
      *  Try those servers one by one until one of the hosts can be reached and be used
@@ -467,27 +616,36 @@ _VmDirRestoreInstance(VOID)
      */
     for (i=0; i<dwInfoCount; i++)
     {
-        if (VmDirStringCompareA(pServerInfo[i], pszDCAccount, FALSE) == 0)
+        if (VmDirStringCompareA(ppszServerInfo[i], pszDCAccount, FALSE) == 0)
         {
             //Don't try to query self for the uptodate topology.
             continue;
         }
-        VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Trying to get topology from host %s ...", pServerInfo[i]);
-        printf("Trying to get topology from host %s ...\n", pServerInfo[i]);
+        VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Trying to get topology from host %s ...", ppszServerInfo[i]);
+        printf("Trying to get topology from host %s ...\n", ppszServerInfo[i]);
 
-        dwError = VmDirGetUsnFromPartners(pServerInfo[i], &restoredUsn);
+        dwError = VmDirGetUsnFromPartners(ppszServerInfo[i], &restoredUsn);
         if (dwError == 0)
         {
-             VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Got topology from host %s", pServerInfo[i]);
-             printf("Topology obtained from host %s.\n", pServerInfo[i]);
+             VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "Got topology from host %s", ppszServerInfo[i]);
+             printf("Topology obtained from host %s.\n", ppszServerInfo[i]);
              break;
         }
     }
     if (dwError !=0 || restoredUsn == 0)
     {
+
+        // Failed to contact partners.
+        // Next server start needs to be in readonly.
+        dwError = VmDirSetRegKeyValueDword(
+                        VMDIR_CONFIG_PARAMETER_V1_KEY_PATH,
+                        VMDIR_REG_KEY_RESTORE_STATUS,
+                        VMDIR_RESTORE_READONLY);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
         if (restoredUsn == 0 )
         {
-            dwError = ERROR_NOT_FOUND;
+            dwError = VMDIR_ERROR_RESTORE_PARTNERS_UNAVAILABLE;
         }
         printf("_VmDirRestoreInstance: failed to get restored USN from partners, error code: %d\n.", dwError );
         BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, pszLocalErrMsg,
@@ -520,6 +678,10 @@ _VmDirRestoreInstance(VOID)
             "_VmDirRestoreInstance: pfnBEGetNextUSN failed with error code: %d, error message: %s", dwError,
             VDIR_SAFE_STRING(op.pBECtx->pszBEErrorMsg) );
 
+    //gVmdirServerGlobals.initialNextUSN was set by the first pfnBEGetNextUSN call.
+    //It's value less 1 is the one that has been consumed by the server to be restored.
+    nextUsn = gVmdirServerGlobals.initialNextUSN - 1;
+
     VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "_VmDirRestoreInstance: highest USN observed from partners %lu, local USN: %lu",
                    restoredUsn, nextUsn);
     printf("Highest USN observed from partners %lu, local USN: %lu\n", restoredUsn, nextUsn);
@@ -533,12 +695,12 @@ _VmDirRestoreInstance(VOID)
                 VDIR_SAFE_STRING(op.pBECtx->pszBEErrorMsg) );
 
     // <existing up-to-date vector>,<old invocation ID>:<local USN>,
-    dwError = VmDirAllocateStringAVsnprintf( &(newUtdVector.lberbv.bv_val), "%s%s:%s,",
+    dwError = VmDirAllocateStringPrintf( &(newUtdVector.lberbv.bv_val), "%s%s:%s,",
                                             gVmdirServerGlobals.utdVector.lberbv.bv_val,
                                             gVmdirServerGlobals.invocationId.lberbv.bv_val,
                                             nextUsnStr);
     BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, pszLocalErrMsg,
-                "_VmDirRestoreInstance: VmDirAllocateStringAVsnprintf failed with error code: %d", dwError,
+                "_VmDirRestoreInstance: VmDirAllocateStringPrintf failed with error code: %d", dwError,
                 VDIR_SAFE_STRING(op.pBECtx->pszBEErrorMsg) );
 
     newUtdVector.bOwnBvVal = TRUE;
@@ -588,11 +750,20 @@ _VmDirRestoreInstance(VOID)
     // Advance RID for all realms, USN advance (all writes) should >= RID advance (new entries).
     dwError = VmDirAdvanceDomainRID( dwAdvanceRID );
     BAIL_ON_VMDIR_ERROR(dwError);
+
+    // Set registry to indicate that restore succeeded
+    dwError = VmDirSetRegKeyValueDword(
+                        VMDIR_CONFIG_PARAMETER_V1_KEY_PATH,
+                        VMDIR_REG_KEY_RESTORE_STATUS,
+                        VMDIR_RESTORE_NOT_REQUIRED);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
     printf("Domain RID advanced count=%u\n", dwAdvanceRID);
 
     printf("Lotus instance restore succeeded.\n");
 
 cleanup:
+    VmDirFreeCountedStringArray(ppszServerInfo, dwInfoCount);
     VmDirFreeBervalContent(&newUtdVector);
     VmDirFreeOperationContent(&op);
     VMDIR_SAFE_FREE_MEMORY(pszLocalErrMsg);
@@ -606,6 +777,139 @@ error:
     goto cleanup;
 }
 
+/*
+ * Check if the domain functional level has changed while server was down.
+ *
+ * If it did, make sure server can support new level then cache it.
+ * Server will operate at higher level before replicating, which could have
+ * been affected by DFL change.
+ *
+ * If partner DFL is lower than this server's, bail as its data may have been
+ * updated at the higher level, making it incompatible with the partner.
+ */
+static
+DWORD
+_VmDirCheckPartnerDomainFunctionalLevel(
+    VOID
+    )
+{
+    DWORD dwError = 0;
+    DWORD dwDfl = 0;
+    LDAP* pPartnerLd = NULL;
+    PSTR pszLocalServer = NULL;
+    PSTR *ppszServerInfo = NULL;
+    PSTR pszDomainName = NULL;
+    size_t dwInfoCount = 0;
+    int i = 0;
+
+    // Nothing to do if not promoted.
+    if (gVmdirServerGlobals.serverId == 0)
+    {
+        goto cleanup;
+    }
+
+    dwError = VmDirGetHostsInternal(&ppszServerInfo, &dwInfoCount);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    // No partners to compare DFL with.
+    if (dwInfoCount == 1)
+    {
+        goto cleanup;
+    }
+
+    // Get local server name (use global instead of reg to support upgrade from 5.5)
+    pszLocalServer = BERVAL_NORM_VAL(gVmdirServerGlobals.bvServerObjName);
+
+    // Get domain (needed to retrieve DFL)
+    dwError = VmDirDomainDNToName(
+                        BERVAL_NORM_VAL(gVmdirServerGlobals.systemDomainDN),
+                        &pszDomainName);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    // Try those servers one by one until one of the hosts can be reached and be used
+    //  to compare the local cached DFL with the domain's level
+    for (i=0; i<dwInfoCount; i++)
+    {
+        if (VmDirStringCompareA(ppszServerInfo[i], pszLocalServer, FALSE) == 0)
+        {
+            //Don't try to query self.
+            continue;
+        }
+
+        if (pPartnerLd)
+        {
+            VmDirLdapUnbind(&pPartnerLd);
+        }
+
+        //Bind to the partner
+        dwError = VmDirConnectLDAPServerWithMachineAccount(
+                                                ppszServerInfo[i],
+                                                pszDomainName,
+                                                &pPartnerLd);
+        if (dwError != 0)
+        {
+            //Cannot connect/bind to the partner - treat is as non-partner (i.e. best-effort approach)
+            dwError = 0;
+            continue;
+        }
+
+        // get domain functional level from remote node
+        dwError = VmDirGetDomainFuncLvlInternal(pPartnerLd, pszDomainName, &dwDfl);
+        if (dwError != 0)
+        {
+            dwError = 0;
+            continue;
+        }
+
+        // Compare with cached DFL
+        if (dwDfl < gVmdirServerGlobals.dwDomainFunctionalLevel)
+        {
+            VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL,
+                             "Server is at a higher functional level (%d)"
+                             " than partner (%s)(%d) and cannot perform at a lower level.",
+                             gVmdirServerGlobals.dwDomainFunctionalLevel,
+                             ppszServerInfo[i],
+                             dwDfl);
+            BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_FUNC_LVL);
+        }
+        else if (dwDfl > gVmdirServerGlobals.dwDomainFunctionalLevel)
+        {
+            // Can server support new DFL?
+            if(dwDfl > VMDIR_MAX_DFL)
+            {
+                VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL,
+                                 "Server cannot support domain functional level (%d)",
+                                 dwDfl);
+                BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_FUNC_LVL);
+            }
+
+            // update cache with domain's level
+            gVmdirServerGlobals.dwDomainFunctionalLevel = dwDfl;
+
+        }
+
+        goto cleanup;
+    }
+
+    // Warn if couldn't validate local DFL with a partner
+    VMDIR_LOG_WARNING( VMDIR_LOG_MASK_ALL,
+                       "Domain functional level could not be validated with a partner host");
+
+cleanup:
+    if (pPartnerLd)
+    {
+        VmDirLdapUnbind(&pPartnerLd);
+    }
+
+    VmDirFreeCountedStringArray(ppszServerInfo, dwInfoCount);
+    VMDIR_SAFE_FREE_MEMORY(pszDomainName);
+    return dwError;
+
+error:
+    goto cleanup;
+}
+
+
 static
 DWORD
 InitializeServerStatusGlobals(
@@ -613,6 +917,8 @@ InitializeServerStatusGlobals(
     )
 {
     DWORD   dwError = 0;
+
+    gVmdirGlobals.iServerStartupTime = VmDirGetTimeInMilliSec();
 
     dwError = VmDirInitOPStatisticGlobals();
     BAIL_ON_VMDIR_ERROR(dwError);
@@ -628,80 +934,6 @@ error:
     goto cleanup;
 }
 
-/*
- * (have to delay schema entry write to after index dbs are initialized)
- */
-static
-int
-InitializeSchema(
-    BOOLEAN*    pbWriteSchemaEntry)
-{
-    int                     retVal = 0;
-    PVDIR_ENTRY             pEntry = NULL;
-    PVDIR_BACKEND_INTERFACE pBE = NULL;
-
-    assert(pbWriteSchemaEntry);
-
-    retVal = VmDirSchemaLibInit();
-    BAIL_ON_VMDIR_ERROR(retVal);
-
-    retVal = VmDirAllocateMemory(
-            sizeof(VDIR_ENTRY),
-            (PVOID*)&pEntry);
-    BAIL_ON_VMDIR_ERROR(retVal);
-
-    pBE = VmDirBackendSelect(NULL);
-    assert(pBE);
-
-    retVal = pBE->pfnBESimpleIdToEntry(
-            SUB_SCEHMA_SUB_ENTRY_ID,
-            pEntry);
-    if (retVal != 0 && retVal != ERROR_BACKEND_ENTRY_NOTFOUND)
-    {
-        BAIL_ON_VMDIR_ERROR(retVal);
-    }
-
-    if (retVal == ERROR_BACKEND_ENTRY_NOTFOUND)
-    {
-        PSTR    pszSchemaFilePath = gVmdirGlobals.pszBootStrapSchemaFile;
-        if (!pszSchemaFilePath)
-        {
-            retVal = ERROR_NO_SCHEMA;
-            BAIL_ON_VMDIR_ERROR(retVal);
-        }
-
-        // use bootstrap schema instance to jump start schema
-        retVal = VmDirAttrIndexBootStrap();
-        BAIL_ON_VMDIR_ERROR(retVal);
-
-        retVal = VmDirSchemaInitializeViaFile(pszSchemaFilePath);
-        BAIL_ON_VMDIR_ERROR(retVal);
-
-        *pbWriteSchemaEntry = TRUE;
-    }
-    else
-    {
-        // load schema from entry
-        retVal = VmDirSchemaInitializeViaEntry(pEntry);
-        BAIL_ON_VMDIR_ERROR(retVal);
-    }
-
-cleanup:
-
-    if (pEntry)
-    {
-        VmDirFreeEntry(pEntry);
-    }
-
-    return retVal;
-
-error:
-
-    VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL, "InitializeSchema failed (%d)", retVal );
-
-    goto cleanup;
-}
-
 static
 int
 InitializeVmdirdSystemEntries(
@@ -713,26 +945,19 @@ InitializeVmdirdSystemEntries(
     iError = VmDirSchemaCtxAcquire(&pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(iError);
 
-    iError = InitializeSchemaEntry();
+    iError = InitializeSchemaEntries(pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(iError);
 
-    iError = InitializeCFGEntries(
-            pSchemaCtx);
+    iError = InitializeCFGEntries(pSchemaCtx);
     BAIL_ON_VMDIR_ERROR(iError);
 
 cleanup:
-
-    if (pSchemaCtx)
-    {
-        VmDirSchemaCtxRelease(pSchemaCtx);
-    }
-
+    VmDirSchemaCtxRelease(pSchemaCtx);
     return iError;
 
 error:
-
-    VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL, "InitializeVmdirdSystemEntries failed (%d)", iError );
-
+    VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL,
+            "InitializeVmdirdSystemEntries failed (%d)", iError);
     goto cleanup;
 }
 
@@ -793,7 +1018,6 @@ error:
 //    case the new invocation ID needs to be generated here.
 
 
-static
 int
 LoadServerGlobals(BOOLEAN *pbWriteInvocationId)
 {
@@ -805,11 +1029,10 @@ LoadServerGlobals(BOOLEAN *pbWriteInvocationId)
     VDIR_BERVALUE       bv = VDIR_BERVALUE_INIT;
     BOOLEAN             bHasTxn = FALSE;
     VDIR_BERVALUE       serverGuid = VDIR_BERVALUE_INIT;
-    PSTR                pszDCGroupDN = NULL;
-    PSTR                pszDCClientGroupDN = NULL;
-    PSTR                pszServicesRootDN = NULL;
     PSTR                pszLocalErrMsg = NULL;
     PSTR                pszDcAccountPwd = NULL;
+    PSTR                pszServerName = NULL;
+    DWORD               dwCurrentDfl = VDIR_DFL_DEFAULT;
 
     dwError = VmDirInitStackOperation( &op,
                                        VDIR_OPERATION_TYPE_INTERNAL,
@@ -845,16 +1068,14 @@ LoadServerGlobals(BOOLEAN *pbWriteInvocationId)
             }
 
             // set DomainControllerGroupDN (NOTE, this is a hard code name, same as in instance.c)
-            dwError = VmDirAllocateStringAVsnprintf( &pszDCGroupDN,
-                                                     "cn=%s,cn=%s,%s",
-                                                     VMDIR_DC_GROUP_NAME,
-                                                     VMDIR_BUILTIN_CONTAINER_NAME,
-                                                     gVmdirServerGlobals.systemDomainDN.lberbv_val);
+            dwError = VmDirAllocateBerValueAVsnprintf(
+                        &gVmdirServerGlobals.bvDCGroupDN,
+                        "cn=%s,cn=%s,%s",
+                        VMDIR_DC_GROUP_NAME,
+                        VMDIR_BUILTIN_CONTAINER_NAME,
+                        gVmdirServerGlobals.systemDomainDN.lberbv_val);
             BAIL_ON_VMDIR_ERROR(dwError);
 
-            gVmdirServerGlobals.bvDCGroupDN.lberbv_val = pszDCGroupDN;
-            gVmdirServerGlobals.bvDCGroupDN.lberbv_len = VmDirStringLenA(pszDCGroupDN);
-            pszDCGroupDN = NULL;
             if (VmDirNormalizeDN( &(gVmdirServerGlobals.bvDCGroupDN), op.pSchemaCtx) != 0)
             {
                 dwError = VMDIR_ERROR_GENERIC;
@@ -863,16 +1084,14 @@ LoadServerGlobals(BOOLEAN *pbWriteInvocationId)
             }
 
             // set DCClientGroupDN (NOTE, this is a hard code name, same as in instance.c)
-            dwError = VmDirAllocateStringAVsnprintf( &pszDCClientGroupDN,
-                                                     "cn=%s,cn=%s,%s",
-                                                     VMDIR_DCCLIENT_GROUP_NAME,
-                                                     VMDIR_BUILTIN_CONTAINER_NAME,
-                                                     gVmdirServerGlobals.systemDomainDN.lberbv_val);
+            dwError = VmDirAllocateBerValueAVsnprintf(
+                        &gVmdirServerGlobals.bvDCClientGroupDN,
+                        "cn=%s,cn=%s,%s",
+                        VMDIR_DCCLIENT_GROUP_NAME,
+                        VMDIR_BUILTIN_CONTAINER_NAME,
+                        gVmdirServerGlobals.systemDomainDN.lberbv_val);
             BAIL_ON_VMDIR_ERROR(dwError);
 
-            gVmdirServerGlobals.bvDCClientGroupDN.lberbv_val = pszDCClientGroupDN;
-            gVmdirServerGlobals.bvDCClientGroupDN.lberbv_len = VmDirStringLenA(pszDCClientGroupDN);
-            pszDCClientGroupDN = NULL;
             if (VmDirNormalizeDN( &(gVmdirServerGlobals.bvDCClientGroupDN), op.pSchemaCtx) != 0)
             {
                 dwError = VMDIR_ERROR_GENERIC;
@@ -881,15 +1100,13 @@ LoadServerGlobals(BOOLEAN *pbWriteInvocationId)
             }
 
             // set ServicesRootDN (NOTE, this is a hard code name, same as in instance.c)
-            dwError = VmDirAllocateStringAVsnprintf( &pszServicesRootDN,
-                                                     "cn=%s,%s",
-                                                     VMDIR_SERVICES_CONTAINER_NAME,
-                                                     gVmdirServerGlobals.systemDomainDN.lberbv_val);
+            dwError = VmDirAllocateBerValueAVsnprintf(
+                        &gVmdirServerGlobals.bvServicesRootDN,
+                        "cn=%s,%s",
+                        VMDIR_SERVICES_CONTAINER_NAME,
+                        gVmdirServerGlobals.systemDomainDN.lberbv_val);
             BAIL_ON_VMDIR_ERROR(dwError);
 
-            gVmdirServerGlobals.bvServicesRootDN.lberbv_val = pszServicesRootDN;
-            gVmdirServerGlobals.bvServicesRootDN.lberbv_len = VmDirStringLenA(pszServicesRootDN);
-            pszServicesRootDN = NULL;
             if (VmDirNormalizeDN( &(gVmdirServerGlobals.bvServicesRootDN), op.pSchemaCtx) != 0)
             {
                 dwError = VMDIR_ERROR_GENERIC;
@@ -929,6 +1146,19 @@ LoadServerGlobals(BOOLEAN *pbWriteInvocationId)
                 dwError = VMDIR_ERROR_GENERIC;
                 BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, pszLocalErrMsg,
                                               "VmDirNormalizeDN failed for server object DN.");
+            }
+
+            if (VmDirDnLastRDNToCn(attr->vals[0].lberbv_val, &pszServerName) != 0)
+            {
+                dwError = VMDIR_ERROR_GENERIC;
+                BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, pszLocalErrMsg,
+                                              "%s: VmDirDnLastRDNToCn failed", __func__);
+            }
+            if (VmDirStringToBervalContent(pszServerName, &gVmdirServerGlobals.bvServerObjName) != 0)
+            {
+                dwError = VMDIR_ERROR_GENERIC;
+                BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, pszLocalErrMsg,
+                                              "%s: VmDirStringToBervalContent failed", __func__);
             }
             continue;
         }
@@ -1081,6 +1311,7 @@ LoadServerGlobals(BOOLEAN *pbWriteInvocationId)
                 BAIL_ON_VMDIR_ERROR_WITH_MSG( dwError, pszLocalErrMsg,
                                               "BervalContentDup failed." );
             }
+            VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "UpdateToDate Vector: (%s)", gVmdirServerGlobals.utdVector.lberbv_val);
             continue;
         }
         if (VmDirStringCompareA(attr->pATDesc->pszName, ATTR_SERVER_ID, FALSE) == 0)
@@ -1116,11 +1347,29 @@ LoadServerGlobals(BOOLEAN *pbWriteInvocationId)
     VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Server ID (%d), InvocationID (%s)",
                                         gVmdirServerGlobals.serverId,
                                         gVmdirServerGlobals.invocationId.lberbv_val);
+
+   // Set the domain functional level
+    dwError = VmDirSrvGetDomainFunctionalLevel(&dwCurrentDfl);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    if(dwCurrentDfl > VMDIR_MAX_DFL)
+    {
+        VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL,
+                         "Server cannot support domain functional level (%d)",
+                         dwCurrentDfl);
+        BAIL_WITH_VMDIR_ERROR(dwError, VMDIR_ERROR_INVALID_FUNC_LVL);
+    }
+
+    gVmdirServerGlobals.dwDomainFunctionalLevel = dwCurrentDfl;
+
+    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, "Domain Functional Level (%d)",
+                    gVmdirServerGlobals.dwDomainFunctionalLevel);
+
 cleanup:
 
     VMDIR_SECURE_FREE_STRINGA(pszDcAccountPwd);
     VMDIR_SAFE_FREE_MEMORY(pszLocalErrMsg);
-    VMDIR_SAFE_FREE_MEMORY(pszDCGroupDN);
+    VMDIR_SAFE_FREE_MEMORY(pszServerName);
     VmDirFreeEntryContent( &dseRoot );
     VmDirFreeEntryContent( &serverObj );
     VmDirFreeBervalContent(&serverGuid);
@@ -1144,117 +1393,6 @@ error:
 
     goto cleanup;
 }
-
-/*
- * During upgrade, we can patch schema via this function.
- * Input: new version of Lotus schema file, which never delete existing definitions.
- *
- * 1. convert schema file into entry
- * 2. create internal modify operation
- * 3. call VmDirInternalModifyEntry
- */
-DWORD
-VmDirSchemaPatchViaFile(
-    PCSTR       pszSchemaFilePath
-    )
-{
-#define SCHEMA_ENTRY_CN "aggregate"
-
-    // TODO TODO
-    // we only support patching of attributetypes and objectclasses now.
-    static PCSTR        pszPatchAttrList[] = { "attributetypes",
-                                               "objectclasses",
-                                               "ditcontentrules"
-                                             };
-    DWORD               dwError = 0;
-    VDIR_OPERATION      ldapOp = {0};
-    int                 iListSize = sizeof(pszPatchAttrList)/sizeof(pszPatchAttrList[0]);
-    int                 iCnt = 0;
-    VDIR_ENTRY_ARRAY    entryArray = {0};
-
-
-    if ( IsNullOrEmptyString(pszSchemaFilePath) )
-    {
-        dwError = ERROR_INVALID_PARAMETER;
-        BAIL_ON_VMDIR_ERROR(dwError);
-    }
-
-    // get the current schema entry
-    dwError = VmDirSimpleEqualFilterInternalSearch(
-                    SUB_SCHEMA_SUB_ENTRY_DN,
-                    LDAP_SCOPE_BASE,
-                    ATTR_CN,
-                    SCHEMA_ENTRY_CN,
-                    &entryArray);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    if ( entryArray.iSize != 1 )
-    {
-        dwError = VMDIR_ERROR_ENTRY_NOT_FOUND;
-        BAIL_ON_VMDIR_ERROR(dwError);
-    }
-
-    dwError = VmDirEntryUnpack( entryArray.pEntry );
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    // merge new semantics from file into current schema - pEntry
-    dwError = VmDirSchemaPatchFileToEntry(  pszSchemaFilePath,
-                                            entryArray.pEntry);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    dwError = VmDirInitStackOperation( &ldapOp,
-                                       VDIR_OPERATION_TYPE_INTERNAL,
-                                       LDAP_REQ_MODIFY,
-                                       NULL );
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    ldapOp.pBEIF = VmDirBackendSelect(NULL);
-    assert(ldapOp.pBEIF);
-
-    ldapOp.reqDn.lberbv.bv_val = SUB_SCHEMA_SUB_ENTRY_DN;
-    ldapOp.reqDn.lberbv.bv_len = VmDirStringLenA(SUB_SCHEMA_SUB_ENTRY_DN);
-    // TODO, need this? (copy this behavior from ldap-head/modify.c)
-    ldapOp.request.modifyReq.dn.lberbv.bv_val = ldapOp.reqDn.lberbv.bv_val;
-    ldapOp.request.modifyReq.dn.lberbv.bv_len = ldapOp.reqDn.lberbv.bv_len;
-
-    for (iCnt = 0; iCnt < iListSize ; iCnt++)
-    {
-        PVDIR_ATTRIBUTE pAttr = VmDirFindAttrByName( entryArray.pEntry, (PSTR) pszPatchAttrList[iCnt]);
-
-        if ( pAttr )
-        {
-            dwError = VmDirOperationAddModReq(  &ldapOp,
-                                                MOD_OP_REPLACE,
-                                                pAttr->type.lberbv_val,
-                                                pAttr->vals,
-                                                pAttr->numVals);
-            BAIL_ON_VMDIR_ERROR(dwError);
-        }
-    }
-
-    dwError = VmDirInternalModifyEntry(&ldapOp);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    VMDIR_LOG_INFO( VMDIR_LOG_MASK_ALL, ">>>>>>>>>> Schema patch succeeded <<<<<<<<<<");
-
-cleanup:
-
-    VmDirFreeEntryArrayContent(&entryArray);
-
-    VmDirFreeOperationContent(&ldapOp);
-
-    return dwError;
-
-error:
-
-    VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "Schema patch failed (%d)(%d)(%s)(%s)",
-                              dwError, ldapOp.ldapResult.errCode,
-                              VDIR_SAFE_STRING(pszSchemaFilePath),
-                              VDIR_SAFE_STRING(ldapOp.ldapResult.pszErrMsg));
-    goto cleanup;
-}
-
-// _VmDirWriteBackInvocationId()
 
 static
 DWORD
@@ -1281,157 +1419,8 @@ error:
 }
 
 /*
- * Write schema entry into db and free pEntry
- * root schema context entry: cn=schemacontext
- * subschema subentry       : cn=aggregate, cn=schemacontext
- */
-static
-DWORD
-InitializeSchemaEntry(
-    VOID)
-{
-    static PSTR ppszSchemaContext[] = VDIR_SCHEMA_NAMING_CONTEXT_ENTRY_INITIALIZER;
-
-    DWORD           dwError = 0;
-    // pEntry entry pointer is owned by caller, needs to be freed
-    PVDIR_ENTRY     pEntry = VmDirSchemaAcquireAndOwnStartupEntry();
-    VDIR_OPERATION  ldapOp = {0};
-
-    BAIL_ON_VMDIR_INVALID_POINTER(pEntry, dwError);
-
-    dwError = VmDirInitStackOperation( &ldapOp,
-                                       VDIR_OPERATION_TYPE_INTERNAL,
-                                       LDAP_REQ_ADD,
-                                       NULL );
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    // create cn=schemacontext
-    dwError = VmDirSimpleEntryCreate(
-            pEntry->pSchemaCtx,
-            ppszSchemaContext,
-            SCHEMA_NAMING_CONTEXT_DN,
-            SCHEMA_NAMING_CONTEXT_ID);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    ldapOp.pBEIF = VmDirBackendSelect(NULL);
-    assert(ldapOp.pBEIF && pEntry);
-
-    // create cn=aggregate,cn=schemacontext
-    ldapOp.reqDn.lberbv.bv_val = SUB_SCHEMA_SUB_ENTRY_DN;
-    ldapOp.reqDn.lberbv.bv_len = VmDirStringLenA(SUB_SCHEMA_SUB_ENTRY_DN);
-
-    dwError = VmDirResetAddRequestEntry( &ldapOp, pEntry );
-    BAIL_ON_VMDIR_ERROR(dwError);
-    pEntry = NULL; // ldapOp takes over pEntry
-
-    dwError = VmDirInternalAddEntry(&ldapOp);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-cleanup:
-
-    VmDirFreeOperationContent(&ldapOp);
-    // Free Entry pointer if exists
-    VmDirFreeEntry(pEntry);
-
-    return dwError;
-
-error:
-
-    VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "InitializeSchemaEntry failed (%d)", dwError );
-
-    goto cleanup;
-}
-
-/*
- * create cn=indices,cn=config entry based on the pBootStrapIdxAttrDesc content
- */
-static
-DWORD
-InitializeCFGIndicesEntry(
-    PVDIR_SCHEMA_CTX    pSchemaCtx
-    )
-{
-
-    DWORD   dwError = 0;
-    PSTR*   ppszAttrList = NULL;
-    int     iNumBootStrapIdx = 0;
-    int     iCnt = 0;
-    int     iTmp = 0;
-    PVDIR_CFG_ATTR_INDEX_DESC   pIdxDesc = pBootStrapIdxAttrDesc;
-
-    assert(pSchemaCtx);
-
-    for (iNumBootStrapIdx = 0;
-         pIdxDesc[iNumBootStrapIdx].pszAttrName != NULL;
-         iNumBootStrapIdx++)
-    {}
-
-    // size = total attribute value * 2  + 1 (NULL terminate)
-    dwError = VmDirAllocateMemory(
-            sizeof(PSTR) * ((1+1+iNumBootStrapIdx) * 2 + 1),
-            (PVOID)&ppszAttrList);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    dwError = VmDirAllocateStringA(
-            "cn", &ppszAttrList[iCnt++]);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    dwError = VmDirAllocateStringA(
-            "indices", &ppszAttrList[iCnt++]);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    dwError = VmDirAllocateStringA(
-            "objectclass", &ppszAttrList[iCnt++]);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    dwError = VmDirAllocateStringA(
-            "vmwDirCfg", &ppszAttrList[iCnt++]);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    for (iTmp = 0; iTmp < iNumBootStrapIdx; iTmp++)
-    {
-        dwError = VmDirAllocateStringA(
-                "vmwAttrIndexDesc", &ppszAttrList[iCnt++]);
-        BAIL_ON_VMDIR_ERROR(dwError);
-
-        dwError = VmDirAllocateStringAVsnprintf(
-                &ppszAttrList[iCnt++],
-                "%s%s%s%s",
-                pIdxDesc[iTmp].pszAttrName,
-                pIdxDesc[iTmp].iTypes & INDEX_TYPE_EQUALITY ? " eq" : "",
-                pIdxDesc[iTmp].iTypes & INDEX_TYPE_SUBSTR ? " sub" : "",
-                pIdxDesc[iTmp].bIsUnique ? " unique" : "");
-        BAIL_ON_VMDIR_ERROR(dwError);
-    }
-
-    dwError = VmDirSimpleEntryCreate(
-            pSchemaCtx,
-            ppszAttrList,
-            CFG_INDEX_ENTRY_DN,
-            CFG_INDEX_ENTRY_ID);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-cleanup:
-
-    if (ppszAttrList)
-    {
-        VmDirFreeStringArrayA(ppszAttrList);
-        VMDIR_SAFE_FREE_MEMORY(ppszAttrList);
-    }
-
-    return dwError;
-
-error:
-
-    VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "InitializeCFGIndicesEntry failed (%d)", dwError );
-
-    goto cleanup;
-}
-
-/*
  * Create default config tree entries
  * 1. cn=config
- * 2. cn=indice,cn=config
  * Called only during the very first time server startup to give default
  *      content to config DIT entries.
  */
@@ -1451,9 +1440,6 @@ InitializeCFGEntries(
             CFG_ROOT_ENTRY_ID);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = InitializeCFGIndicesEntry(pSchemaCtx);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
     dwError = VmDirSimpleEntryCreate(
             pSchemaCtx,
             ppszCFG_ORG,
@@ -1462,13 +1448,11 @@ InitializeCFGEntries(
     BAIL_ON_VMDIR_ERROR(dwError);
 
 cleanup:
-
     return dwError;
 
 error:
-
-    VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL, "InitializeCFGEntries failed (%d)", dwError );
-
+    VMDIR_LOG_ERROR( VMDIR_LOG_MASK_ALL,
+            "%s failed, error (%d)", __FUNCTION__, dwError );
     goto cleanup;
 }
 
@@ -1545,10 +1529,10 @@ InitializeGlobalVars(
 {
     DWORD   dwError = 0;
 
-    dwError = VmDirAllocateMutex(&gVmdirRunmodeGlobals.pMutex);
+    dwError = VmDirAllocateMutex(&gVmdirGlobals.mutex);
     BAIL_ON_VMDIR_ERROR(dwError);
 
-    dwError = VmDirAllocateMutex(&gVmdirGlobals.mutex);
+    dwError = VmDirAllocateMutex(&gVmdirdStateGlobals.pMutex);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirAllocateMutex(&gVmdirGlobals.replAgrsMutex);
@@ -1561,6 +1545,9 @@ InitializeGlobalVars(
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirAllocateCondition(&gVmdirGlobals.replCycleDoneCondition);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    dwError = VmDirAllocateRWLock(&gVmdirGlobals.replRWLock);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirAllocateMutex(&gVmdirKrbGlobals.pmutex);
@@ -1584,6 +1571,21 @@ InitializeGlobalVars(
     BAIL_ON_VMDIR_ERROR(dwError);
 
 
+    if (gVmdirGlobals.bTrackLastLoginTime)
+    {
+        dwError = VmDirAllocateMutex(&gVmdirTrackLastLoginTime.pMutex);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        dwError = VmDirAllocateCondition(&gVmdirTrackLastLoginTime.pCond);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
+        dwError = VmDirAllocateTSStack(8, &(gVmdirTrackLastLoginTime.pTSStack));
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    dwError = VmDirAllocateMutex(&gVmdirIntegrityCheck.pMutex);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
 cleanup:
 
     return dwError;
@@ -1599,10 +1601,10 @@ error:
  * Lookup servers topology internally first. Then one of the servers
  * will be used to query uptoupdate servers topology
  */
-static
-DWORD _VmDirGetHostsInternal(
-    PSTR**  ppServerInfo,
-    size_t* pdwInfoCount
+DWORD
+VmDirGetHostsInternal(
+    PSTR **pppszServerInfo,
+    size_t *pdwInfoCount
     )
 {
     DWORD               dwError = 0;
@@ -1610,13 +1612,13 @@ DWORD _VmDirGetHostsInternal(
     VDIR_ENTRY_ARRAY    entryArray = {0};
     PSTR                pszSearchBaseDN = NULL;
     PVDIR_ATTRIBUTE     pAttr = NULL;
-    PSTR*  pServerInfo = NULL;
+    PSTR *ppszServerInfo = NULL;
 
-    dwError = VmDirAllocateStringAVsnprintf(
+    dwError = VmDirAllocateStringPrintf(
                 &pszSearchBaseDN,
                 "cn=Sites,cn=Configuration,%s",
-                gVmdirServerGlobals.systemDomainDN.bvnorm_val
-                );
+                gVmdirServerGlobals.systemDomainDN.bvnorm_val);
+    BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirSimpleEqualFilterInternalSearch(
                     pszSearchBaseDN,
@@ -1632,20 +1634,163 @@ DWORD _VmDirGetHostsInternal(
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    dwError = VmDirAllocateMemory( entryArray.iSize*sizeof(PSTR), (PVOID*)&pServerInfo);
+    dwError = VmDirAllocateMemory(entryArray.iSize*sizeof(PSTR), (PVOID*)&ppszServerInfo);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     for (i=0; i<entryArray.iSize; i++)
     {
-         pAttr =  VmDirEntryFindAttribute(ATTR_CN, entryArray.pEntry+i);
-         dwError = VmDirAllocateStringA( pAttr->vals[0].lberbv.bv_val, &pServerInfo[i]);
+         pAttr = VmDirEntryFindAttribute(ATTR_CN, entryArray.pEntry+i);
+         dwError = VmDirAllocateStringA(pAttr->vals[0].lberbv.bv_val, &ppszServerInfo[i]);
          BAIL_ON_VMDIR_ERROR(dwError);
     }
-    *ppServerInfo = pServerInfo;
+    *pppszServerInfo = ppszServerInfo;
     *pdwInfoCount = entryArray.iSize;
 
 cleanup:
+    VMDIR_SAFE_FREE_STRINGA(pszSearchBaseDN);
     VmDirFreeEntryArrayContent(&entryArray);
+    return dwError;
+error:
+    VmDirFreeCountedStringArray(ppszServerInfo, entryArray.iSize);
+    goto cleanup;
+}
+
+DWORD
+VmDirAllocateBerValueAVsnprintf(
+    PVDIR_BERVALUE pbvValue,
+    PCSTR pszFormat,
+    ...
+    )
+{
+    DWORD dwError = 0;
+    PSTR pszValue = NULL;
+    va_list args;
+
+    va_start(args, pszFormat);
+    dwError = VmDirVsnprintf(&pszValue, pszFormat, args);
+    va_end(args);
+
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    pbvValue->lberbv_val = pszValue;
+    pbvValue->lberbv_len = VmDirStringLenA(pszValue);
+    pbvValue->bOwnBvVal = TRUE;
+
+cleanup:
+    return dwError;
+
+error:
+    VMDIR_SAFE_FREE_MEMORY(pszValue);
+    goto cleanup;
+}
+
+/*
+ * This function provides a mechanism to determine if vmdird needs to run
+ * in restore or in read-only mode because of a previously failed restore
+ * due to no reachable partners.
+ *
+ * If restore fails, the next start will run in read-only mode.
+ * The following restart will force attempt to restore. This cycle will
+ * continue until either a partner is available, or user intervention
+ * occurs.
+ *
+ * At startup we check for a registry value called "RestoreStatus". If
+ * that value doesn't exist or is VMDIR_RESTORE_NOT_REQUIRED then continue
+ * with requested startup.
+ *
+ * If its value is VMDIR_RESTORE_REQUIRED, start up vmdir server in
+ * restore mode and preemptively set registry to VMDIR_RESTORE_FAILED.
+ * At the end of restore mode, the registry will be in the next appropriate
+ * state, one of VMDIR_READONLY_REQUIRED, VMDIR_RESTORE_NOT_REQUIRED, or
+ * VMDIR_RESTORE_FAILED.
+ *
+ * If the value is VMDIR_READONLY_REQUIRED, change the registry to
+ * VMDIR_REG_RESTORE_REQUIRED and start vmdird in readonly mode.
+ * This will compel vmdir to retry restore on next start.
+ *
+ * VMDIR_RESTORE_FAILED indicates that the last restore operation failed
+ * for a reason other than unreachable partners and server will exit out.
+ * A successful restore or other manual intervention is required
+ * before server can be started normally again.
+ */
+static
+DWORD
+VmDirCheckRestoreStatus(
+    VDIR_SERVER_STATE* pTargetState
+    )
+{
+    DWORD dwError = 0;
+    VDIR_SERVER_STATE targetState = VMDIRD_STATE_UNDEFINED;
+    DWORD dwRestoreStatus = VMDIR_RESTORE_NOT_REQUIRED;
+
+    assert(pTargetState);
+    targetState = *pTargetState;
+
+    // Get the RestoreStatus value.
+    // Ignore error meaning val doesn't exist, proceed with
+    // requested startup.
+    (VOID)VmDirGetRegKeyValueDword(
+                VMDIR_CONFIG_PARAMETER_V1_KEY_PATH,
+                VMDIR_REG_KEY_RESTORE_STATUS,
+                &dwRestoreStatus,
+                VMDIR_RESTORE_NOT_REQUIRED);
+
+    // Either a restore was requested, or a previous
+    // restore failure occurred and was running in readonly.
+    if (dwRestoreStatus == VMDIR_RESTORE_REQUIRED ||
+        targetState == VMDIRD_STATE_RESTORE)
+    {
+
+        targetState = VMDIRD_STATE_RESTORE;
+
+        // Set to restore failure.
+        // Restore action will change this as needed but failure
+        // is asssumed until restore determine otherwise.
+        dwError = VmDirSetRegKeyValueDword(
+                        VMDIR_CONFIG_PARAMETER_V1_KEY_PATH,
+                        VMDIR_REG_KEY_RESTORE_STATUS,
+                        VMDIR_RESTORE_FAILED);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+    // Previous attempt to restore failed due to no available partners
+    // Go into readonly mode
+    else if (dwRestoreStatus == VMDIR_RESTORE_READONLY)
+    {
+        targetState = VMDIRD_STATE_READ_ONLY;
+
+        dwError = VmDirSetRegKeyValueDword(
+                        VMDIR_CONFIG_PARAMETER_V1_KEY_PATH,
+                        VMDIR_REG_KEY_RESTORE_STATUS,
+                        VMDIR_RESTORE_REQUIRED);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+    // Unknown error occurred in previous restore attempt.
+    else if (dwRestoreStatus == VMDIR_RESTORE_FAILED)
+    {
+            targetState = VMDIRD_STATE_SHUTDOWN;
+            dwError = VMDIR_ERROR_RESTORE_ERROR;
+            VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL,
+                            "%s: Previous restore attempt failed. Shutting down server.",
+                        __FUNCTION__);
+            BAIL_ON_VMDIR_ERROR(dwError);
+    }
+    // Unknown value in registry
+    else if (dwRestoreStatus != VMDIR_RESTORE_NOT_REQUIRED)
+    {
+        dwError = ERROR_INVALID_CONFIGURATION;
+        VMDIR_LOG_ERROR(VMDIR_LOG_MASK_ALL,
+                        "%s: Unknown value (%d) read from registry key RetoreStatus",
+                        __FUNCTION__,
+                        dwRestoreStatus);
+
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    // no return value
+    VmDirdSetTargetState(targetState);
+    *pTargetState = targetState;
+
+cleanup:
     return dwError;
 error:
     goto cleanup;

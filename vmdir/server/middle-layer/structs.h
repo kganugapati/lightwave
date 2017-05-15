@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2017 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -29,8 +29,11 @@
 typedef struct _VDIR_OP_PLUGIN_INFO
 {
     // NOTE: order of fields MUST stay in sync with struct initializer...
-    BOOLEAN                         bCallAlways;
-    // call if bCallAlways == TRUE or prior pPluginFunc call return 0/SUCCESS
+    USHORT                          usOpMask;
+    BOOLEAN                         bSkipOnError;
+    // call if
+    // 1) usOpMask & pOperation->opType == TRUE and
+    // 2) bSkipOnError == FALSE or prior pPluginFunc call return 0/SUCCESS
     VDIR_OP_PLUGIN_FUNCTION         pPluginFunc;
     struct _VDIR_OP_PLUGIN_INFO*    pNext;
 
@@ -100,12 +103,95 @@ typedef struct _VDIR_LOCKOUT_REC
 
 } VDIR_LOCKOUT_REC, *PVDIR_LOCKOUT_REC;
 
+typedef struct _VDIR_PAGED_SEARCH_ENTRY_LIST
+{
+    ENTRYID *pEntryIds;
+    DWORD dwCount;
+} VDIR_PAGED_SEARCH_ENTRY_LIST, *PVDIR_PAGED_SEARCH_ENTRY_LIST;
+
+typedef struct _VDIR_PAGED_SEARCH_RECORD
+{
+    //
+    // Hash table boilerplate.
+    //
+    LW_HASHTABLE_NODE Node;
+
+    //
+    // Who's using the object.
+    //
+    DWORD dwRefCount;
+
+    //
+    // The number of entries in each page.
+    //
+    DWORD dwPageSize;
+
+    //
+    // Number of candidates we've processed.
+    //
+    DWORD dwCandidatesProcessed;
+
+    //
+    // Key for the hash table. Sent in the cookie to the client.
+    //
+    PSTR pszGuid;
+
+    //
+    // This is the original, complete list of candidates.
+    //
+    PVDIR_CANDIDATES pTotalCandidates;
+
+    //
+    // We cache the filter information so we don't need to re-parse it
+    // every time. The candidates pointer in this pFilter will be updated
+    // to include the right candidates from the total list above.
+    //
+    PVDIR_FILTER pFilter;
+
+    //
+    // The queue of vetted ENTRYIDs. Each entry will be a page's worth of
+    // IDs.
+    //
+    PDEQUE pQueue;
+    PVMDIR_MUTEX mutex;
+    PVMDIR_COND pDataAvailable;
+
+    //
+    // This is the information of our worker thread. We'll use this to signal
+    // the thread that we've read all the data and it can now exit.
+    //
+    PVDIR_THREAD_INFO pThreadInfo;
+
+    //
+    // The last time the client read data.
+    //
+    time_t tLastClientRead;
+
+    //
+    // Indicates if the worker thread has completed processing all available
+    // data. The client hasn't necessarily read it all yet, though.
+    //
+    BOOLEAN bProcessingCompleted;
+
+    //
+    // Indicates that the client has read all the data. This lets the worker
+    // thread know that it can exit.
+    //
+    BOOLEAN bSearchCompleted;
+} VDIR_PAGED_SEARCH_RECORD, *PVDIR_PAGED_SEARCH_RECORD;
+
+typedef struct _VDIR_PAGED_SEARCH_CACHE
+{
+    // NOTE: order of fields MUST stay in sync with struct initializer...
+    PVMDIR_MUTEX        mutex;
+    PLW_HASHTABLE       pHashTbl;
+} VDIR_PAGED_SEARCH_CACHE, *PVDIR_PAGED_SEARCH_CACHE;
+
 typedef struct _VDIR_LOCKOUT_CACHE
 {
     // NOTE: order of fields MUST stay in sync with struct initializer...
     PVMDIR_MUTEX        mutex;
-    PLW_HASHTABLE    pHashTbl;
-
+    PLW_HASHTABLE       pHashTbl;
 } VDIR_LOCKOUT_CACHE, *PVDIR_LOCKOUT_CACHE;
 
 typedef enum _VDIR_SALS_STATUS
@@ -140,4 +226,15 @@ typedef struct _VDIR_DERIVED_ATTRIBUTE_INFO
     VDIR_COMPUTED_ATTRIBUE_FUNCTION     pfnComputedAttr;
 
 } VDIR_COMPUTED_ATTRIBUTE_INFO, *PVDIR_COMPUTED_ATTRIBUTE_INFO;
+
+typedef enum _VDIR_SPECIAL_SEARCH_ENTRY_TYPE
+{
+    SPECIAL_SEARCH_ENTRY_TYPE_DSE_ROOT,
+    SPECIAL_SEARCH_ENTRY_TYPE_SCHEMA_ENTRY,
+    SPECIAL_SEARCH_ENTRY_TYPE_SERVER_STATUS,
+    SPECIAL_SEARCH_ENTRY_TYPE_REPL_STATUS,
+    SPECIAL_SEARCH_ENTRY_TYPE_SCHEMA_REPL_STATUS,
+    SPECIAL_SEARCH_ENTRY_TYPE_INTEGRITY_CHECK_STATUS,
+    REGULAR_SEARCH_ENTRY_TYPE
+} VDIR_SPECIAL_SEARCH_ENTRY_TYPE;
 

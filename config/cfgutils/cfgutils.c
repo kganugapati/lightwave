@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -45,8 +45,20 @@ VmwDeploySetupServerCommon(
 
 static
 DWORD
+VmwDeploySetupClientWithDC(
+    PVMW_IC_SETUP_PARAMS pParams
+    );
+
+static
+DWORD
 VmwDeploySetupClient(
     PVMW_IC_SETUP_PARAMS pParams
+    );
+
+static
+DWORD
+VmwDeployDisableAfdListener(
+    void
     );
 
 static
@@ -94,7 +106,14 @@ VmwDeploySetupInstance(
 
         case VMW_DIR_SVC_MODE_CLIENT:
 
-            dwError = VmwDeploySetupClient(pParams);
+            if (IsNullOrEmptyString(pParams->pszServer))
+            {
+                dwError = VmwDeploySetupClient(pParams);
+            }
+            else
+            {
+                dwError = VmwDeploySetupClientWithDC(pParams);
+            }
 
             break;
 
@@ -132,6 +151,14 @@ VmwDeployFreeSetupParams(
     {
         VmwDeployFreeMemory(pParams->pszHostname);
     }
+    if (pParams->pszMachineAccount)
+    {
+        VmwDeployFreeMemory(pParams->pszMachineAccount);
+    }
+    if (pParams->pszOrgUnit)
+    {
+        VmwDeployFreeMemory(pParams->pszOrgUnit);
+    }
     if (pParams->pszDomainName)
     {
         VmwDeployFreeMemory(pParams->pszDomainName);
@@ -148,6 +175,14 @@ VmwDeployFreeSetupParams(
     {
         VmwDeployFreeMemory(pParams->pszSite);
     }
+    if (pParams->pszDNSForwarders)
+    {
+        VmwDeployFreeMemory(pParams->pszDNSForwarders);
+    }
+    if (pParams->pszSubjectAltName)
+    {
+        VmwDeployFreeMemory(pParams->pszSubjectAltName);
+    }
     VmwDeployFreeMemory(pParams);
 }
 
@@ -161,6 +196,7 @@ VmwDeploySetupServerPrimary(
     PCSTR ppszServices[]=
     {
         VMW_DCERPC_SVC_NAME,
+        VMW_VMDNS_SVC_NAME,
         VMW_VMAFD_SVC_NAME,
         VMW_DIR_SVC_NAME,
         VMW_VMCA_SVC_NAME
@@ -177,6 +213,12 @@ VmwDeploySetupServerPrimary(
 
     dwError = VmwDeployValidateSiteName(pParams->pszSite);
     BAIL_ON_DEPLOY_ERROR(dwError);
+
+    if (!IsNullOrEmptyString(pParams->pszDNSForwarders))
+    {
+        dwError = VmwDeployValidateDNSForwarders(pParams->pszDNSForwarders);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
 
     for (; iSvc < sizeof(ppszServices)/sizeof(ppszServices[0]); iSvc++)
     {
@@ -210,6 +252,7 @@ VmwDeploySetupServerPartner(
     PCSTR ppszServices[]=
     {
         VMW_DCERPC_SVC_NAME,
+        VMW_VMDNS_SVC_NAME,
         VMW_VMAFD_SVC_NAME,
         VMW_DIR_SVC_NAME,
         VMW_VMCA_SVC_NAME
@@ -229,6 +272,12 @@ VmwDeploySetupServerPartner(
 
     dwError = VmwDeployValidateSiteName(pParams->pszSite);
     BAIL_ON_DEPLOY_ERROR(dwError);
+
+    if (!IsNullOrEmptyString(pParams->pszDNSForwarders))
+    {
+        dwError = VmwDeployValidateDNSForwarders(pParams->pszDNSForwarders);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
 
     for (; iSvc < sizeof(ppszServices)/sizeof(ppszServices[0]); iSvc++)
     {
@@ -266,7 +315,6 @@ VmwDeploySetupServerCommon(
     PSTR  pszSSLCert = NULL;
     PSTR  pszPrivateKey = NULL;
     PSTR  pszVmdirCfgPath = NULL;
-    PSTR  pszDCName = NULL; // Do not free
 
     VMW_DEPLOY_LOG_INFO("Setting various configuration values");
 
@@ -277,13 +325,11 @@ VmwDeploySetupServerCommon(
     dwError = VmAfdSetDomainNameA(pszHostname, pParams->pszDomainName);
     BAIL_ON_DEPLOY_ERROR(dwError);
 
-    pszDCName = pParams->pszHostname;
-
     VMW_DEPLOY_LOG_VERBOSE(
             "Setting Domain Controller Name to [%s]",
-            VMW_DEPLOY_SAFE_LOG_STRING(pszDCName));
+            VMW_DEPLOY_SAFE_LOG_STRING(pParams->pszHostname));
 
-    dwError = VmAfdSetDCNameA(pszHostname, pszDCName);
+    dwError = VmAfdSetDCNameA(pszHostname, pParams->pszHostname);
     BAIL_ON_DEPLOY_ERROR(dwError);
 
     VMW_DEPLOY_LOG_VERBOSE(
@@ -324,6 +370,19 @@ VmwDeploySetupServerCommon(
                     pParams->pszPassword);
     BAIL_ON_DEPLOY_ERROR(dwError);
 
+    if (!IsNullOrEmptyString(pParams->pszDNSForwarders))
+    {
+        VMW_DEPLOY_LOG_INFO("Setting up DNS Forwarders [%s]",
+                            pParams->pszDNSForwarders);
+
+        dwError = VmwDeploySetForwarders(
+                        pParams->pszDomainName,
+                        pszUsername,
+                        pParams->pszPassword,
+                        pParams->pszDNSForwarders);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
+
     VMW_DEPLOY_LOG_INFO("Setting up VMware Certificate Authority");
 
     dwError = VmwDeployMakeRootCACert(
@@ -348,6 +407,8 @@ VmwDeploySetupServerCommon(
                     pszUsername,
                     pParams->pszPassword,
                     pParams->pszHostname,
+                    pParams->pszSubjectAltName ?
+                        pParams->pszSubjectAltName : pParams->pszHostname,
                     &pszPrivateKey,
                     &pszSSLCert);
     BAIL_ON_DEPLOY_ERROR(dwError);
@@ -412,7 +473,7 @@ error:
 
 static
 DWORD
-VmwDeploySetupClient(
+VmwDeploySetupClientWithDC(
     PVMW_IC_SETUP_PARAMS pParams
     )
 {
@@ -430,14 +491,49 @@ VmwDeploySetupClient(
     PSTR pszSSLCert = NULL;
 
     VMW_DEPLOY_LOG_INFO(
-            "Setting up system as client to Infrastructure node at [%s]",
+            "Joining system to domain [%s] using controller at [%s]",
+            VMW_DEPLOY_SAFE_LOG_STRING(pParams->pszDomainName),
             VMW_DEPLOY_SAFE_LOG_STRING(pParams->pszServer));
+
+    if (IsNullOrEmptyString(pParams->pszServer))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
+
+    dwError = VmwDeployValidateHostname(pParams->pszHostname);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    if (pParams->pszMachineAccount)
+    {
+        dwError = VmwDeployValidateHostname(pParams->pszMachineAccount);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
+
+    if (pParams->pszOrgUnit)
+    {
+        dwError = VmwDeployValidateOrgUnit(pParams->pszOrgUnit);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
 
     dwError = VmwDeployValidatePartnerCredentials(
                     pParams->pszServer,
                     pParams->pszPassword,
                     pParams->pszDomainName);
     BAIL_ON_DEPLOY_ERROR(dwError);
+
+    if (pParams->bDisableAfdListener)
+    {
+        VMW_DEPLOY_LOG_INFO("Disabling AFD Listener");
+
+        dwError = VmwDeployDisableAfdListener();
+        BAIL_ON_DEPLOY_ERROR(dwError);
+
+        VMW_DEPLOY_LOG_INFO("Stopping the VMAFD Service...");
+
+        dwError = VmwDeployStopService(VMW_VMAFD_SVC_NAME);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
 
     for (; iSvc < sizeof(ppszServices)/sizeof(ppszServices[0]); iSvc++)
     {
@@ -451,12 +547,6 @@ VmwDeploySetupClient(
 
     VMW_DEPLOY_LOG_INFO("Setting various configuration values");
 
-    dwError = VmAfdSetDomainNameA(pszHostname, pParams->pszDomainName);
-    BAIL_ON_DEPLOY_ERROR(dwError);
-
-    dwError = VmAfdSetDCNameA(pszHostname, pParams->pszServer);
-    BAIL_ON_DEPLOY_ERROR(dwError);
-
     dwError = VmAfdSetPNID(pszHostname, pParams->pszHostname);
     BAIL_ON_DEPLOY_ERROR(dwError);
 
@@ -467,13 +557,17 @@ VmwDeploySetupClient(
             "Joining system to directory service at [%s]",
             VMW_DEPLOY_SAFE_LOG_STRING(pParams->pszServer));
 
+    pszUsername = (pParams->bUseMachineAccount && pParams->pszMachineAccount)
+                            ? pParams->pszMachineAccount : VMW_ADMIN_NAME;
+
     dwError = VmAfdJoinVmDirA(
                     pParams->pszServer,
                     pszUsername,
                     pParams->pszPassword,
-                    pParams->pszHostname,
+                    pParams->pszMachineAccount ?
+                            pParams->pszMachineAccount : pParams->pszHostname,
                     pParams->pszDomainName,
-                    NULL /* Org Unit */);
+                    pParams->pszOrgUnit);
     BAIL_ON_DEPLOY_ERROR(dwError);
 
     VMW_DEPLOY_LOG_INFO(
@@ -501,6 +595,8 @@ VmwDeploySetupClient(
                     pszUsername,
                     pParams->pszPassword,
                     pParams->pszHostname,
+                    pParams->pszSubjectAltName ?
+                        pParams->pszSubjectAltName : pParams->pszHostname,
                     &pszPrivateKey,
                     &pszSSLCert);
     BAIL_ON_DEPLOY_ERROR(dwError);
@@ -523,6 +619,231 @@ cleanup:
     if (pszCACert)
     {
         VmwDeployFreeMemory(pszCACert);
+    }
+
+    return dwError;
+
+error:
+
+    goto cleanup;
+}
+
+static
+DWORD
+VmwDeploySetupClient(
+    PVMW_IC_SETUP_PARAMS pParams
+    )
+{
+    DWORD dwError = 0;
+    PCSTR ppszServices[]=
+    {
+        VMW_DCERPC_SVC_NAME,
+        VMW_VMAFD_SVC_NAME
+    };
+    PCSTR pszHostname = "localhost";
+    PCSTR pszUsername = VMW_ADMIN_NAME;
+    int iSvc = 0;
+    PSTR pszPrivateKey = NULL;
+    PSTR pszCACert = NULL;
+    PSTR pszSSLCert = NULL;
+    PSTR pszDC = NULL;
+
+    VMW_DEPLOY_LOG_INFO(
+            "Joining system to domain [%s]",
+            VMW_DEPLOY_SAFE_LOG_STRING(pParams->pszDomainName));
+
+    dwError = VmwDeployValidateHostname(pParams->pszHostname);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    if (pParams->pszMachineAccount)
+    {
+        dwError = VmwDeployValidateHostname(pParams->pszMachineAccount);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
+
+    if (pParams->pszOrgUnit)
+    {
+        dwError = VmwDeployValidateOrgUnit(pParams->pszOrgUnit);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
+
+    pszUsername = (pParams->bUseMachineAccount && pParams->pszMachineAccount)
+                            ? pParams->pszMachineAccount : VMW_ADMIN_NAME;
+
+    VMW_DEPLOY_LOG_INFO(
+            "Validating Domain credentials for user [%s@%s]",
+            VMW_DEPLOY_SAFE_LOG_STRING(pszUsername),
+            VMW_DEPLOY_SAFE_LOG_STRING(pParams->pszDomainName));
+
+    dwError = VmAfdJoinValidateDomainCredentialsA(
+                    pParams->pszDomainName,
+                    pszUsername,
+                    pParams->pszPassword);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    if (pParams->bDisableAfdListener)
+    {
+        VMW_DEPLOY_LOG_INFO("Disabling AFD Listener");
+
+        dwError = VmwDeployDisableAfdListener();
+        BAIL_ON_DEPLOY_ERROR(dwError);
+
+        VMW_DEPLOY_LOG_INFO("Stopping the VMAFD Service...");
+
+        dwError = VmwDeployStopService(VMW_VMAFD_SVC_NAME);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
+
+    for (; iSvc < sizeof(ppszServices)/sizeof(ppszServices[0]); iSvc++)
+    {
+        PCSTR pszService = ppszServices[iSvc];
+
+        VMW_DEPLOY_LOG_INFO("Starting service [%s]", pszService);
+
+        dwError = VmwDeployStartService(pszService);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
+
+    VMW_DEPLOY_LOG_INFO("Setting configuration values");
+
+    dwError = VmAfdSetCAPathA(pszHostname, VMW_DEFAULT_CA_PATH);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    VMW_DEPLOY_LOG_INFO("Performing domain join operation");
+
+    dwError = VmAfdJoinVmDir2A(
+                    pParams->pszDomainName,
+                    pszUsername,
+                    pParams->pszPassword,
+                    pParams->pszMachineAccount ?
+                        pParams->pszMachineAccount : pParams->pszHostname,
+                    pParams->pszOrgUnit,
+                    pParams->bMachinePreJoined ?
+                        VMAFD_JOIN_FLAGS_CLIENT_PREJOINED : 0);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    dwError = VmAfdGetDCNameA(pszHostname, &pszDC);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    VMW_DEPLOY_LOG_INFO(
+                    "Get root certificate from VMware Certificate Authority");
+
+    dwError = VmwDeployGetRootCACert(
+                    pszDC,
+                    pParams->pszDomainName,
+                    pszUsername,
+                    pParams->pszPassword,
+                    &pszCACert);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    VMW_DEPLOY_LOG_INFO(
+         "Adding VMCA's root certificate to VMware endpoint certificate store");
+
+    dwError = VmwDeployAddTrustedRoot(pszDC, pszCACert);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    VMW_DEPLOY_LOG_INFO("Generating Machine SSL cert");
+
+    dwError = VmwDeployCreateMachineSSLCert(
+                    pszDC,
+                    pParams->pszDomainName,
+                    pszUsername,
+                    pParams->pszPassword,
+                    pParams->pszHostname,
+                    pParams->pszSubjectAltName ?
+                        pParams->pszSubjectAltName : pParams->pszHostname,
+                    &pszPrivateKey,
+                    &pszSSLCert);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    VMW_DEPLOY_LOG_INFO("Setting Machine SSL certificate");
+
+    dwError = VmAfdSetSSLCertificate(pszHostname, pszSSLCert, pszPrivateKey);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+cleanup:
+
+    if (pszPrivateKey)
+    {
+        VmwDeployFreeMemory(pszPrivateKey);
+    }
+    if (pszSSLCert)
+    {
+        VmwDeployFreeMemory(pszSSLCert);
+    }
+    if (pszCACert)
+    {
+        VmwDeployFreeMemory(pszCACert);
+    }
+    if (pszDC)
+    {
+        VmwDeployFreeMemory(pszDC);
+    }
+
+    return dwError;
+
+error:
+
+    goto cleanup;
+}
+
+static
+DWORD
+VmwDeployDisableAfdListener(
+    void
+    )
+{
+    DWORD dwError = 0;
+    HANDLE hConnection = NULL;
+    HKEY   hRootKey = NULL;
+    HKEY   hParamKey = NULL;
+    DWORD  dwValue = 0;
+
+    dwError = RegOpenServer(&hConnection);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    dwError = RegOpenKeyExA(
+                    hConnection,
+                    NULL,
+                    "HKEY_THIS_MACHINE",
+                    0,
+                    KEY_READ,
+                    &hRootKey);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    dwError = RegOpenKeyExA(
+                    hConnection,
+                    hRootKey,
+                    "Services\\vmafd\\Parameters",
+                    0,
+                    KEY_SET_VALUE,
+                    &hParamKey);
+    BAIL_ON_DEPLOY_ERROR(dwError);
+
+    dwError = RegSetValueExA(
+                    hConnection,
+                    hParamKey,
+                    "EnableDCERPC",
+                    0,
+                    REG_DWORD,
+                    (PBYTE)&dwValue,
+                    sizeof(dwValue));
+     BAIL_ON_DEPLOY_ERROR(dwError);
+
+cleanup:
+
+    if (hConnection)
+    {
+        if (hParamKey)
+        {
+            RegCloseKey(hConnection, hParamKey);
+        }
+        if (hRootKey)
+        {
+            RegCloseKey(hConnection, hRootKey);
+        }
+
+        RegCloseServer(hConnection);
     }
 
     return dwError;

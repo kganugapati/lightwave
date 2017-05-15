@@ -38,33 +38,59 @@ VmDirFreeOrgState(
     );
 
 DWORD
-VmDirInternalUpdateSequence(
-    PVDIR_BACKEND_CTX pBETxn,
-    PSTR pszObjectDN
-    );
-
-DWORD
 VmDirSyncRIDSeqToDB(
-    PSTR    pszDomainDN,
-    PSTR    pszRID
+    PCSTR   pszDomainDN,
+    DWORD   dwRID
     );
 
 // acl.c
 
 DWORD
-VmDirGetObjectSidFromEntry(
-    PVDIR_ENTRY pEntry,
-    PSTR* ppszObjectSid, /* Optional */
-    PSID* ppSid /* Optional */
+VmDirGetObjectSidFromDn(
+    PCSTR pszObjectDn,
+    PSID* ppSid
     );
 
 DWORD
 VmDirSrvCreateAccessTokenWithDn(
-    PSTR pszObjectDn,
+    PCSTR pszObjectDn,
     PACCESS_TOKEN* ppToken
     );
 
+DWORD
+VmDirCreateAccessToken(
+    PACCESS_TOKEN*          AccessToken,
+    PTOKEN_USER             User,
+    PTOKEN_GROUPS           Groups,
+    PTOKEN_PRIVILEGES       Privileges,
+    PTOKEN_OWNER            Owner,
+    PTOKEN_PRIMARY_GROUP    PrimaryGroup,
+    PTOKEN_DEFAULT_DACL     DefaultDacl
+    );
+
+// legacy_checks.c
+DWORD
+VmDirLegacyAccessCheck(
+    PVDIR_OPERATION pOperation,
+    PVDIR_ACCESS_INFO pAccessInfo,
+    PVDIR_ENTRY pEntry,
+    ACCESS_MASK accessDesired
+    );
+
+BOOLEAN
+VmDirIsLegacySecurityDescriptor(
+    VOID
+    );
+
 // security.c
+
+DWORD
+VmDirSetSecurityDescriptorForEntry(
+    PVDIR_ENTRY pEntry,
+    SECURITY_INFORMATION SecurityInformation,
+    PSECURITY_DESCRIPTOR_RELATIVE pSecDescRel,
+    ULONG ulSecDescRel
+    );
 
 DWORD
 VmDirSecurityAclSelfRelativeToAbsoluteSD(
@@ -78,6 +104,13 @@ void
 VmDirFindDomainRidSequenceWithDN(
     PCSTR pszDomainDN,
     PDWORD pRidSeq
+    );
+
+DWORD
+VmDirGetSidGenStateIfDomain_inlock(
+    PCSTR                       pszObjectDN,
+    PCSTR                       pszGuid, /* optional Guid used to generate sid */
+    PVDIR_DOMAIN_SID_GEN_STATE* ppDomainState
     );
 
 // ridsyncthr.c

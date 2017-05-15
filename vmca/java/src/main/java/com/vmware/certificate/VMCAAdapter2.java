@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -53,7 +53,8 @@ public final class VMCAAdapter2 {
    };
 
    static {
-      final String VMCA_LIB64_PATH = "/usr/lib/vmware-vmca/lib64";
+      final String VMCA_LIB64_PATH = "/opt/vmware/lib64";
+      final String VMCA_VC_LIB64_PATH = "/usr/lib/vmware-vmca/lib64";
       final String LIKEWISE_LIB64_PATH = "/opt/likewise/lib64";
       final String LIB_PATH = "/usr/lib";
       final String LIB_PATH_64 = "/usr/lib64";
@@ -66,7 +67,7 @@ public final class VMCAAdapter2 {
             new StringBuilder(propValue == null ? "" : propValue);
 
       String paths[] =
-            { LIB_PATH_64, LIB_PATH, LIKEWISE_LIB64_PATH, VMCA_LIB64_PATH };
+            { VMCA_VC_LIB64_PATH, LIB_PATH_64, LIB_PATH, LIKEWISE_LIB64_PATH, VMCA_LIB64_PATH};
 
       for (String path : paths) {
          File libDir = new File(path);
@@ -430,6 +431,43 @@ public final class VMCAAdapter2 {
       }
    }
 
+   public static String
+   VMCAGetSignedCertificateForHost(
+      VMCAServerContext context,
+      String pszHostName,
+      String pszIpAddress,
+      String pszCSR,
+      long tmNotBefore,
+      long tmNotAfter
+      ) throws VMCAException
+   {
+      Pointer pCertificate = null;
+      PointerByReference ppCertificate = new PointerByReference();
+      try
+      {
+         int error = VMCA.INSTANCE.VMCAGetSignedCertificateForHostA(
+                                         context.getContext(),
+                                         pszHostName,
+                                         pszIpAddress,
+                                         pszCSR,
+                                         tmNotBefore,
+                                         tmNotAfter,
+                                         ppCertificate);
+         THROW_IF_NEEDED(error);
+
+         pCertificate = ppCertificate.getValue();
+
+         return pCertificate.getString(0);
+      }
+      finally
+      {
+         if (pCertificate != null)
+         {
+            VMCA.INSTANCE.VMCAFreeCertificate(pCertificate);
+         }
+      }
+   }
+
    public static Pointer
    VMCAOpenEnumContext(
       VMCAServerContext context,
@@ -666,6 +704,17 @@ public final class VMCAAdapter2 {
       VMCAGetSignedCertificateFromCSRHA(
           Pointer pBinding,
           String  pszServerName,
+          String  pszCertRequest,
+          long    tmNotBefore,
+          long    tmNotAfter,
+          PointerByReference ppCertificate
+      );
+
+      int
+      VMCAGetSignedCertificateForHostA(
+          Pointer pBinding,
+          String  pszHostName,
+          String  pszIpAddress,
           String  pszCertRequest,
           long    tmNotBefore,
           long    tmNotAfter,

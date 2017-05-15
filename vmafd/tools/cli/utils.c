@@ -57,5 +57,13 @@ VmAfdCliFreeContext(
     {
         VmAfdFreeStringA(pContext->pszMachineId);
     }
-    VmAfdFreeMemory(pContext);
+    if (pContext->pszSiteGUID)
+    {
+        VmAfdFreeStringA(pContext->pszSiteGUID);
+    }
+     if (pContext->pszPNID)
+    {
+        VmAfdFreeStringA(pContext->pszPNID);
+    }
+   VmAfdFreeMemory(pContext);
 }

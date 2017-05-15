@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -239,6 +239,42 @@ VMCAStringTokA(
 }
 
 DWORD
+VMCAStringCountSubstring(
+    PSTR pszHaystack,
+    PCSTR pszNeedle,
+    int** ppnCount
+)
+{
+    DWORD dwError = 0;
+    PSTR tmp = NULL;
+    int *pnCount = NULL;
+
+    if (!pszHaystack || !pszNeedle || !ppnCount)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMCA_ERROR(dwError);
+    }
+
+    dwError = VMCAAllocateMemory(sizeof(int), (PVOID*) &pnCount);
+    BAIL_ON_VMCA_ERROR(dwError);
+
+    tmp = pszHaystack;
+    (*pnCount) = 0;
+    while ( (tmp = strstr(tmp, pszNeedle)) )
+    {
+        (*pnCount)++;
+        tmp++;
+    }
+
+    *ppnCount = pnCount;
+cleanup:
+    return dwError;
+error:
+    VMCA_SAFE_FREE_MEMORY(pnCount);
+    goto cleanup;
+}
+
+DWORD
 VMCAStringCatA(
    PSTR strDestination,
    size_t numberOfElements,
@@ -284,7 +320,9 @@ VMCAGetUTCTimeString(PSTR *pszTimeString)
         BAIL_ON_VMCA_ERROR_NO_LOG(dwError);
     }
 
+#ifndef __MACH__
     clock_gettime(CLOCK_REALTIME, &tspec);
+#endif
     gmtime_r(&tspec.tv_sec, &mytm);
 
     dwError = VMCAAllocateStringPrintfA(

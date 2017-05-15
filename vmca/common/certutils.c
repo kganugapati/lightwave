@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -16,7 +16,6 @@
 
 #include "includes.h"
 #include <vmca.h>
-#include <pkcs_botan.h>
 
 #ifdef _WIN32
 #ifndef snprintf
@@ -193,6 +192,20 @@ error :
 }
 
 DWORD
+VMCAGetInstallDirectory(PSTR *ppszInstallDir)
+{
+	#define INSTALL_PATH "InstallPath"
+	DWORD dwError = 0;
+#ifndef _WIN32
+	dwError = VMCAAllocateStringA(VMCA_INSTALL_DIR, ppszInstallDir);
+#else
+	dwError = VMCAGetRegKeyString(INSTALL_PATH, ppszInstallDir);
+#endif
+	return dwError;
+}
+
+
+DWORD
 VMCAGetDataDirectory(PSTR *ppszDataDir)
 {
 	#define DATA_PATH "DataPath"
@@ -355,7 +368,7 @@ VMCABackupFiles(
                               dwCounter - 1);
         BAIL_ON_ERROR(dwError);
 
-        RENAME(pszSourceFile, pszDestFile);
+        VMCACopyFile(pszSourceFile, pszDestFile);
 
         VMCA_SAFE_FREE_STRINGA(pszDestFile);
         VMCA_SAFE_FREE_STRINGA(pszSourceFile);
@@ -373,7 +386,7 @@ VMCABackupFiles(
                           0);
     BAIL_ON_ERROR(dwError);
 
-    RENAME(pszBaseFilePath, pszDestFile);
+    VMCACopyFile(pszBaseFilePath, pszDestFile);
 
 error:
     VMCA_SAFE_FREE_STRINGA(pszDestFile);

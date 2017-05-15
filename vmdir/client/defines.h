@@ -27,7 +27,11 @@
 
 #define VMDIR_MAX_CONFIG_VALUE_LENGTH 2048
 
+#define VMDIR_MAX_SCHEMACHECK_ATTR_COUNT 4
+
 #define SLEEP_INTERVAL_IN_SECS  10
+
+#define MAX_REPL_STATE_USN_SEARCH   64
 
 #define VMDIR_LOCALHOST         "localhost"
 
@@ -103,7 +107,8 @@ the buffer size will always be adequate.
     } \
 }
 
-#define VMDIR_DEFAULT_SERVICE_PRINCIPAL_INITIALIZER { "ldap", "vmca", "host" }
+#define VMDIR_DEFAULT_SERVICE_PRINCIPAL_INITIALIZER { "ldap", "vmca", "host", "http", "DNS" }
+#define VMDIR_CLIENT_SERVICE_PRINCIPAL_INITIALIZER { "host", "http" }
 
 // Error handling
 // vmdir ldap error space using macros defined in ldap.h
@@ -241,6 +246,8 @@ the buffer size will always be adequate.
         "Insufficient access"}, \
     {VMDIR_ERROR_NOT_FOUND, \
         "Not found"}, \
+    {VMDIR_ERROR_CANNOT_LOAD_LIBRARY, \
+        "Cannot load library"}, \
     {VMDIR_ERROR_STRUCTURE_VIOLATION, \
         "Structure violation"}, \
     {VMDIR_ERROR_BUSY, \
@@ -1050,3 +1057,4 @@ the buffer size will always be adequate.
 {rpc_s_fault_codeset_conv_error, \
     "(rpc_s_fault_codeset_conv_error) Fault codeset conversion error"}, \
 };
+

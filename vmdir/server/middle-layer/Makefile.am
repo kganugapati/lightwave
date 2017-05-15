@@ -10,23 +10,26 @@
 noinst_LTLIBRARIES = libmiddle-layer.la
 
 libmiddle_layer_la_SOURCES = \
-    add.c	\
-    bind.c	\
-    computedattribute.c	\
-    delete.c    \
-    dn.c	\
-    globals.c	\
-    group.c	\
-    krb.c       \
-    lockoutpolicy.c	\
-    modify.c	\
-    password.c	\
-    plugin.c	\
-    sasl.c      \
+    add.c \
+    bind.c \
+    computedattribute.c \
+    delete.c \
+    dn.c \
+    globals.c \
+    group.c \
+    index.c \
+    krb.c \
+    lockoutpolicy.c \
+    modify.c \
+    password.c \
+    plugin.c \
+    pscache.c \
+    sasl.c \
     saslsockbuf.c \
-    search.c	\
-    specialsearch.c	\
-    srputil.c	\
+    search.c \
+    specialsearch.c \
+    srputil.c \
+    util.c \
     libmain.c
 
 libmiddle_layer_la_CPPFLAGS = \
@@ -37,7 +40,6 @@ libmiddle_layer_la_CPPFLAGS = \
     -I$(top_srcdir)/thirdparty/openldap/libraries/libldap \
     -I$(top_srcdir)/server/include \
     @OPENSSL_INCLUDES@ \
-    @BDB_INCLUDES@ \
     @LW_INCLUDES@
 
 libmiddle_layer_la_LDFLAGS = \

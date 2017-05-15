@@ -1,3 +1,11 @@
+/*
+ * Copyright (C) 2014 VMware, Inc. All rights reserved.
+ *
+ * Module   : authdbutil.c
+ *
+ * Abstract :
+ *
+ */
 #include "includes.h"
 
 static
@@ -57,7 +65,7 @@ VecsDbSetSecurityDescriptor (
         BAIL_ON_VECS_ERROR (dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_WRITE);
     BAIL_ON_VECS_ERROR (dwError);
 
     if (!pDbContext->pQuerySetSecurityDescriptor)
@@ -105,6 +113,7 @@ VecsDbSetSecurityDescriptor (
     }
 
     pDbQuery = pDbContext->pQuerySetSecurityDescriptor;
+
 
     if (!pDbContext->bInTx)
     {
@@ -257,7 +266,7 @@ VecsDbGetSecurityDescriptor (
         BAIL_ON_VECS_ERROR (dwError);
     }
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR (dwError);
 
     if (!pDbContext->pQueryGetSecurityDescriptor)
@@ -417,7 +426,7 @@ VecsDbEnumFilteredStores (
                             );
     BAIL_ON_VECS_ERROR (dwError);*/
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_READ);
     BAIL_ON_VECS_ERROR (dwError);
 
     dwError = VecsDbGetFilteredStoreCount (
@@ -560,6 +569,12 @@ VecsDbAddAces (
     {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VECS_ERROR (dwError);
+    }
+
+    if (pDbContext->dbOpenMode != VMAFD_DB_MODE_WRITE)
+    {
+        dwError = ERROR_INVALID_ACCESS;
+        BAIL_ON_VECS_ERROR(dwError);
     }
 
     pAceList = pAcl->pAceList;
@@ -943,7 +958,146 @@ error:
     goto cleanup;
 }
 
+#ifndef _WIN32
+DWORD
+VecsDbCleanupPermissions(VOID)
+{
+    DWORD dwError = 0;
+    PVECS_DB_CONTEXT pDbContext = NULL;
+    sqlite3_stmt* pDbCleanSD = NULL;
+    sqlite3_stmt* pDbCleanACE = NULL;
+    DWORD dwContextSize = 0;
+    DWORD dwSizeUsed = 0;
+    PVM_AFD_SECURITY_CONTEXT pRootContext = NULL;
+    PVOID pRootContextBlob = NULL;
 
+    CHAR szCleanSD[] = "UPDATE SDTable "
+                       "SET ContextSize = :contextsize,"
+                       "ContextBlob = :rootBlob "
+                       "WHERE ContextSize != :contextsize;";
+    CHAR szCleanACE[] = "DELETE FROM AceTable WHERE ContextSize != :contextsize;";
+
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_WRITE);
+    BAIL_ON_VECS_ERROR (dwError);
+
+    dwError = sqlite3_prepare_v2 (
+                    pDbContext->pDb,
+                    szCleanSD,
+                    -1,
+                    &pDbCleanSD,
+                    NULL
+                    );
+    BAIL_ON_VECS_ERROR (dwError);
+
+    dwError = sqlite3_prepare_v2 (
+                    pDbContext->pDb,
+                    szCleanACE,
+                    -1,
+                    &pDbCleanACE,
+                    NULL
+                    );
+    BAIL_ON_VECS_ERROR (dwError);
+
+    if (!pDbContext->bInTx)
+    {
+        dwError = VecsDbBeginTransaction (pDbContext->pDb);
+        BAIL_ON_VECS_ERROR (dwError);
+
+        pDbContext->bInTx = TRUE;
+    }
+
+    dwError = VmAfdCreateWellKnownContext(
+                              VM_AFD_CONTEXT_TYPE_ROOT,
+                              &pRootContext
+                              );
+    BAIL_ON_VECS_ERROR(dwError);
+
+    dwError = VmAfdGetSecurityContextSize (
+                                pRootContext,
+                                &dwContextSize
+                                );
+    BAIL_ON_VECS_ERROR (dwError);
+
+    dwError = VecsBindDword (
+                    pDbCleanSD,
+                    ":contextsize",
+                    dwContextSize
+                    );
+    BAIL_ON_VECS_ERROR (dwError);
+
+    dwError = VmAfdAllocateMemory (
+                        dwContextSize,
+                        (PVOID *)&pRootContextBlob
+                        );
+    BAIL_ON_VECS_ERROR (dwError);
+
+    dwError = VmAfdEncodeSecurityContext (
+                        pRootContext,
+                        pRootContextBlob,
+                        dwContextSize,
+                        &dwSizeUsed
+                        );
+    BAIL_ON_VECS_ERROR (dwError);
+
+    dwError = VecsBindBlob(
+                        pDbCleanSD,
+                        ":rootBlob",
+                        pRootContextBlob,
+                        dwContextSize
+                        );
+    BAIL_ON_VECS_ERROR (dwError);
+
+    dwError = VecsBindDword (
+                    pDbCleanACE,
+                    ":contextsize",
+                    dwContextSize
+                    );
+    BAIL_ON_VECS_ERROR (dwError);
+
+    dwError = VecsDbStepSql(pDbCleanSD);
+    BAIL_ON_VECS_ERROR (dwError);
+
+    dwError = VecsDbStepSql(pDbCleanACE);
+    BAIL_ON_VECS_ERROR (dwError);
+
+    dwError = VecsDbCommitTransaction (pDbContext->pDb);
+    BAIL_ON_VECS_ERROR (dwError);
+
+    pDbContext->bInTx = FALSE;
+
+cleanup:
+    VMAFD_SAFE_FREE_MEMORY(pRootContextBlob);
+    if (pRootContext)
+    {
+        VmAfdFreeSecurityContext(pRootContext);
+    }
+    if (pDbCleanSD)
+    {
+        sqlite3_reset(pDbCleanSD);
+        sqlite3_finalize(pDbCleanSD);
+    }
+    if (pDbCleanACE)
+    {
+        sqlite3_reset(pDbCleanACE);
+        sqlite3_finalize(pDbCleanACE);
+    }
+    if (pDbContext)
+    {
+        VecsDbReleaseContext (pDbContext);
+    }
+
+    return dwError;
+
+error:
+    if (pDbContext && pDbContext->bInTx)
+    {
+        VecsDbRollbackTransaction(pDbContext->pDb);
+        pDbContext->bInTx = FALSE;
+    }
+
+    goto cleanup;
+}
+#endif
 
 /*static
 DWORD

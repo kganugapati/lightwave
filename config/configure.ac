@@ -41,6 +41,44 @@ AC_ARG_ENABLE([debug],
         fi
     ])
 
+# Ant component
+
+AC_ARG_WITH([ant],
+    [AC_HELP_STRING([--with-ant=<dir>], [use Ant binaries rooted at prefix <dir> ])],
+    [
+        ANT_HOME="$withval"
+        ANT_CLASSPATH=$ANT_HOME/lib/ant.jar:$ANT_HOME/lib/ant-launcher.jar
+    ])
+
+AC_PATH_PROG([ANT], [ant], [no], [$PATH:$JAVA_HOME/bin:$ANT_HOME/bin])
+
+if test x"$ANT" = x"no"; then
+    AC_MSG_ERROR([ANT compiler not found])
+fi
+
+AC_SUBST(ANT_HOME)
+AC_SUBST(ANT_CLASSPATH)
+
+# Java component
+
+AC_ARG_WITH([java],
+    [AC_HELP_STRING([--with-java=<dir>], [use Java binaries rooted at prefix <dir> ])],
+    [
+        JAVA_HOME="$withval"
+        JAVA=$JAVA_HOME/bin/java
+        TOOLS_CLASSPATH=$JAVA_HOME/lib/tools.jar
+    ])
+
+AC_PATH_PROG([JAVAC], [javac], [no], [$PATH:$JAVA_HOME/bin])
+
+if test x"$JAVAC" = x"no"; then
+    AC_MSG_ERROR([JAVAC compiler not found])
+fi
+
+AC_SUBST(JAVA_HOME)
+AC_SUBST(JAVA)
+AC_SUBST(TOOLS_CLASSPATH)
+
 # Likewise components
 
 AC_ARG_WITH([likewise],
@@ -89,6 +127,8 @@ saved_CPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$CPPFLAGS $LW_INCLUDES $OPENSSL_INCLUDES"
 AC_CHECK_HEADERS(lw/base.h lw/types.h uuid/uuid.h lwrpcrt/lwrpcrt.h dce/rpc.h)
 AC_CHECK_HEADERS(lwsm/lwsm.h)
+AC_CHECK_HEADERS(reg/lwreg.h)
+AC_CHECK_HEADERS(reg/regutil.h)
 CPPFLAGS="$saved_CPPFLAGS"
 
 # VMDIR component
@@ -199,6 +239,47 @@ CPPFLAGS="$CPPFLAGS $VMCA_INCLUDES $LW_INCLUDES"
 AC_CHECK_HEADERS(vmca.h)
 CPPFLAGS="$saved_CPPFLAGS"
 
+# vmdns component
+
+AC_ARG_WITH([vmdns],
+    [AC_HELP_STRING([--with-vmdns=<dir>], [use vmdns binaries rooted at prefix <dir> ])],
+    [
+        VMDNS_BASE_PATH="$withval"
+        VMDNS_INCLUDES="-I$withval/include"
+        VMDNS_LDFLAGS="-L$withval/lib64 -Wl,-rpath,/opt/vmware/lib64"
+    ])
+
+AC_ARG_WITH([vmdns-includes],
+    [AC_HELP_STRING([--with-vmdns-includes=<dir>], [use vmdns headers located in prefix <dir> ])],
+    [
+        VMDNS_INCLUDES="-I$withval"
+    ])
+
+AC_ARG_WITH([vmdns-libs],
+    [AC_HELP_STRING([--with-vmdns-libs=<dir>], [use vmdns libraries located in prefix <dir> ])],
+    [
+        VMDNS_LDFLAGS="-L$withval"
+    ])
+
+AC_SUBST(VMDNS_INCLUDES)
+AC_SUBST(VMDNS_LDFLAGS)
+
+saved_CPPFLAGS="$CPPFLAGS"
+CPPFLAGS="$CPPFLAGS $VMDNS_INCLUDES $LW_INCLUDES"
+AC_CHECK_HEADERS(vmdns.h)
+CPPFLAGS="$saved_CPPFLAGS"
+
+# vmsts component
+
+AC_ARG_WITH([sts],
+    [AC_HELP_STRING([--with-sts=<dir>], [use VMware STS Client binaries rooted at prefix <dir> ])],
+    [
+        VMSTS_HOME="$withval"
+        VMSTS_CLASSPATH=$VMSTS_HOME/jars
+    ])
+
+AC_SUBST(VMSTS_HOME)
+AC_SUBST(VMSTS_CLASSPATH)
 
 AC_HEADER_STDC
 AC_CHECK_HEADERS(pthread.h errno.h sys/types.h sys/stat.h stdio.h string.h strings.h)
@@ -344,6 +425,12 @@ AC_CHECK_LIB(
     [VMCA_LIBS="-lvmcaclient"],
     [],
     [$VMCA_LDFLAGS -lvmcaclient $LW_LDFLAGS $DCERPC_LIBS $SCHANNEL_LIBS $LWMSG_LIBS $LWRSUTILS_LIBS $LWREG_LIBS $LWIO_LIBS $LWBASE_LIBS $LDAP_LIBS $PTHREAD_LIBS $UUID_LIBS $LWBASE_LIBS $GSSAPI_LIBS $OPENSSL_LDFLAGS $CRYPTO_LIBS])
+AC_CHECK_LIB(
+    [vmdnsclient],
+    [VmDnsOpenServerA],
+    [VMDNS_LIBS="-lvmdnsclient"],
+    [],
+    [$VMDNS_LDFLAGS -lvmdnsclient $LW_LDFLAGS $DCERPC_LIBS $SCHANNEL_LIBS $LWMSG_LIBS $LWRSUTILS_LIBS $LWREG_LIBS $LWIO_LIBS $LWBASE_LIBS $LDAP_LIBS $PTHREAD_LIBS $UUID_LIBS $LWBASE_LIBS $GSSAPI_LIBS $OPENSSL_LDFLAGS $CRYPTO_LIBS])
 
 AC_SUBST(DL_LIBS)
 AC_SUBST(PTHREAD_LIBS)
@@ -364,6 +451,7 @@ AC_SUBST(LDAP_LIBS)
 AC_SUBST(VMDIR_LIBS)
 AC_SUBST(VMAFD_LIBS)
 AC_SUBST(VMCA_LIBS)
+AC_SUBST(VMDNS_LIBS)
 
 #AC_PATH_PROG([IDL], [dceidl], [no], [$PATH:$DCERPC_PATH])
 
@@ -374,11 +462,25 @@ AC_SUBST(VMCA_LIBS)
 pscsetupbindir=$prefix/bin
 AC_SUBST(pscsetupbindir)
 
+systemddir=/lib/systemd/system
+AC_SUBST(systemddir)
+
+scriptsconfdir="$datadir/config"
+AC_SUBST(scriptsconfdir)
+
+pscsetupjarsdir=$prefix/jars
+AC_SUBST(pscsetupjarsdir)
+
 AC_CONFIG_FILES([Makefile
+                 jdepends/Makefile
                  cfgutils/Makefile
+                 pscsetup/Makefile
                  tools/Makefile
                  tools/ic-promote/Makefile
                  tools/ic-join/Makefile
+                 scripts/Makefile
+                 scripts/configure-lightwave-server
+                 scripts/configure-identity-server
                 ])
 AC_OUTPUT
 

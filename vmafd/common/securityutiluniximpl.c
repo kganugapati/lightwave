@@ -1,3 +1,17 @@
+/*
+ * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
 #include "includes.h"
 
 DWORD
@@ -7,13 +21,21 @@ VmAfdInitializeSecurityContextImpl(
     )
 {
     DWORD dwError = 0;
+#ifndef __MACH__
     struct ucred credentials = {0};
     int credLength = sizeof (struct ucred);
+    int sockopt = SO_PEERCRED;
+#else
+    struct xucred credentials = {0};
+    int credLength = sizeof (struct xucred);
+    int sockopt = LOCAL_PEERCRED;
+#endif
+
     PVM_AFD_SECURITY_CONTEXT pSecurityContext = NULL;
     if ((getsockopt (
             pConnection->fd,
             SOL_SOCKET,
-            SO_PEERCRED,
+            sockopt,
             &credentials,
             &credLength)) < 0){
       dwError = LwErrnoToWin32Error (errno);
@@ -23,7 +45,13 @@ VmAfdInitializeSecurityContextImpl(
                     sizeof (VM_AFD_SECURITY_CONTEXT),
                     (PVOID *)&pSecurityContext);
     BAIL_ON_VMAFD_ERROR (dwError);
+#ifndef __MACH__
     pSecurityContext->uid = credentials.uid;
+    pConnection->pid = credentials.pid;
+#else
+    pSecurityContext->uid = credentials.cr_uid;
+#endif
+
     *ppSecurityContext = pSecurityContext;
 cleanup:
     return dwError;
@@ -189,9 +217,16 @@ VmAfdAllocateContextFromNameImpl (
         )
 {
     DWORD dwError = 0;
-    struct passwd *pd = NULL;
     PSTR psazAccountName = NULL;
     PVM_AFD_SECURITY_CONTEXT pSecurityContext = NULL;
+
+
+    PSTR pszBuffer = NULL;
+    struct passwd pd = {0};
+    struct passwd *pd_result = NULL;
+    size_t szBufSize = 0;
+    DWORD dwError1 = 0;
+
 
     dwError = VmAfdAllocateStringAFromW (
                             pszAccountName,
@@ -199,11 +234,32 @@ VmAfdAllocateContextFromNameImpl (
                             );
     BAIL_ON_VMAFD_ERROR (dwError);
 
-    pd = getpwnam (psazAccountName);
-    if (pd == NULL)
+    szBufSize = sysconf(_SC_GETPW_R_SIZE_MAX);
+    if (szBufSize == -1)
     {
-        dwError = ERROR_NONE_MAPPED;
-        BAIL_ON_VMAFD_ERROR (dwError);
+        szBufSize = MAX_GWTPWR_BUF_LENGTH;
+    }
+
+    dwError = VmAfdAllocateMemory(szBufSize, (PVOID*)&pszBuffer);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError1 = getpwnam_r(
+                    psazAccountName,
+                    &pd,
+                    pszBuffer,
+                    szBufSize,
+                    &pd_result
+                    );
+
+    if (dwError1)
+    {
+        dwError = LwErrnoToWin32Error(dwError1);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+    if (!pd_result)
+    {
+        dwError = ERROR_NO_SUCH_USER;
+        BAIL_ON_VMAFD_ERROR(dwError);
     }
 
     dwError = VmAfdAllocateMemory (
@@ -213,12 +269,13 @@ VmAfdAllocateContextFromNameImpl (
     BAIL_ON_VMAFD_ERROR (dwError);
 
 
-    pSecurityContext->uid = pd->pw_uid;
+    pSecurityContext->uid = pd.pw_uid;
 
     *ppSecurityContext = pSecurityContext;
 
 cleanup:
     VMAFD_SAFE_FREE_MEMORY (psazAccountName);
+    VMAFD_SAFE_FREE_MEMORY (pszBuffer);
 
     return dwError;
 error:
@@ -408,6 +465,63 @@ VmAfdContextBelongsToGroupImpl (
 }
 
 DWORD
+VmAfdCheckAclContextImpl(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PSTR pszSddlAcl,
+    BOOL *pbIsAllowed
+    )
+{
+    DWORD dwError = 0;
+    BOOL bIsAllowed = FALSE;
+    GENERIC_MAPPING GenericMapping = {0};
+    PACCESS_TOKEN pAccessToken = NULL;
+    ACCESS_MASK accessDesired = KEY_READ;
+    ACCESS_MASK accessGranted = 0;
+    PSECURITY_DESCRIPTOR_RELATIVE pSDRel = NULL;
+    PSECURITY_DESCRIPTOR_ABSOLUTE pSDAbs = NULL;
+    DWORD dwSDRelSize = 0;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(pConnectionContext, dwError);
+
+    dwError = VmAfdCreateAccessTokenFromSecurityContext(
+                  pConnectionContext->pSecurityContext,
+                  &pAccessToken);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateSecurityDescriptorFromSddlCString(
+                  &pSDRel,
+                  &dwSDRelSize,
+                  pszSddlAcl);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdSecurityAclSelfRelativeToAbsoluteSD(
+                  &pSDAbs,
+                  pSDRel);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    bIsAllowed = VmAfdAclAccessCheck(
+                  pSDAbs,
+                  pAccessToken,
+                  accessDesired,
+                  0,
+                  &GenericMapping,
+                  &accessGranted,
+                  &dwError);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *pbIsAllowed = bIsAllowed;
+
+cleanup:
+    VmAfdReleaseAccessToken(&pAccessToken);
+    VmAfdFreeAbsoluteSecurityDescriptor(&pSDAbs);
+    VMAFD_SAFE_FREE_MEMORY(pSDRel);
+    return dwError;
+
+error:
+    goto cleanup;
+}
+
+DWORD
 VmAfdGenRandomImpl (
         PDWORD pdwRandomNumber
         )
@@ -468,6 +582,8 @@ VmAfdAllocateNameFromContextImpl (
 
     WCHAR wszEveryone[] = GROUP_EVERYONE_W;
 
+    PSTR pszBuffer = NULL;
+
     if (pSecurityContext->uid == EVERYONE_UID)
     {
         dwError = VmAfdAllocateStringW(
@@ -478,22 +594,53 @@ VmAfdAllocateNameFromContextImpl (
     }
     else
     {
-        struct passwd *pd = NULL;
-        pd = getpwuid(pSecurityContext->uid);
+        struct passwd pd = {0};
+        struct passwd *pd_result = NULL;
+        size_t szBufSize = 0;
+        DWORD dwError1 = 0;
 
-        if (pd)
+        szBufSize = sysconf(_SC_GETPW_R_SIZE_MAX);
+        if (szBufSize == -1)
+        {
+            szBufSize = MAX_GWTPWR_BUF_LENGTH;
+        }
+
+        dwError = VmAfdAllocateMemory(szBufSize, (PVOID*)&pszBuffer);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError1 = getpwuid_r(
+                        pSecurityContext->uid,
+                        &pd,
+                        pszBuffer,
+                        szBufSize,
+                        &pd_result
+                        );
+
+        if (dwError1)
+        {
+            dwError = LwErrnoToWin32Error(dwError1);
+            BAIL_ON_VMAFD_ERROR(dwError);
+        }
+        if (pd_result)
         {
             dwError = VmAfdAllocateStringWFromA(
-                                                 pd->pw_name,
+                                                 pd.pw_name,
                                                  &pszAccountName
                                                );
             BAIL_ON_VMAFD_ERROR (dwError);
+        }
+        else
+        {
+            dwError = ERROR_NO_SUCH_USER;
+            BAIL_ON_VMAFD_ERROR(dwError);
         }
     }
 
     *ppszAccountName = pszAccountName;
 
 cleanup:
+
+    VMAFD_SAFE_FREE_MEMORY (pszBuffer);
     return dwError ;
 
 error:

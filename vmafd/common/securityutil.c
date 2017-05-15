@@ -1,3 +1,19 @@
+/*
+ * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
+
+
 #include "includes.h"
 
 
@@ -469,6 +485,34 @@ VmAfdContextBelongsToGroup (
 
 error:
     return bResult;
+}
+
+DWORD
+VmAfdCheckAclContext(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PSTR pszSddlAcl,
+    BOOL *pbIsAllowed
+    )
+{
+    DWORD dwError = 0;
+    BOOL bIsAllowed = FALSE;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(pConnectionContext, dwError);
+
+    dwError = gIPCVtable.pfnCheckAclContext(
+                  pConnectionContext,
+                  pszSddlAcl,
+                  &bIsAllowed
+              );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *pbIsAllowed = bIsAllowed;
+
+cleanup:
+    return dwError;
+
+error:
+    goto cleanup;
 }
 
 DWORD

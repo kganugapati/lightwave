@@ -21,7 +21,8 @@
 DWORD
 VmDirMDBSimpleEIdToEntry(
     ENTRYID     eId,
-    PVDIR_ENTRY      pEntry);
+    PVDIR_ENTRY pEntry
+    );
 
 DWORD
 VmDirMDBSimpleDnToEntry(
@@ -31,29 +32,33 @@ VmDirMDBSimpleDnToEntry(
 
 DWORD
 VmDirMDBMaxEntryId(
-    PVDIR_BACKEND_CTX   pBECtx,
-    ENTRYID *           pEId);
+    ENTRYID *   pEId
+    );
 
 DWORD
 VmDirMDBGetNextUSN(
     PVDIR_BACKEND_CTX   pBECtx,
-    USN *               usn);
+    USN *               usn
+    );
 
 DWORD
 VmDirMDBAddEntry(
     PVDIR_BACKEND_CTX   pBECtx,
-    PVDIR_ENTRY         pEntry);
+    PVDIR_ENTRY         pEntry
+    );
 
 DWORD
 VmDirMDBCheckRefIntegrity(
     PVDIR_BACKEND_CTX   pBECtx,
-    PVDIR_ENTRY         pEntry);
+    PVDIR_ENTRY         pEntry
+    );
 
 DWORD
 VmDirMDBDeleteEntry(
     PVDIR_BACKEND_CTX   pBECtx,
     PVDIR_MODIFICATION  pMods,
-    PVDIR_ENTRY         pEntry);
+    PVDIR_ENTRY         pEntry
+    );
 
 DWORD
 VmDirMDBDNToEntry(
@@ -61,13 +66,22 @@ VmDirMDBDNToEntry(
     PVDIR_SCHEMA_CTX            pSchemaCtx,
     VDIR_BERVALUE*              pDn,
     PVDIR_ENTRY                 pEntry,
-    VDIR_BACKEND_ENTRY_LOCKTYPE entryLockType);
+    VDIR_BACKEND_ENTRY_LOCKTYPE entryLockType
+    );
 
 DWORD
 VmDirMDBDNToEntryId(
     PVDIR_BACKEND_CTX   pBECtx,
     VDIR_BERVALUE*      pDn,
-    ENTRYID*            pEId);
+    ENTRYID*            pEId
+    );
+
+DWORD
+VmDirMDBObjectGUIDToEntryId(
+    PVDIR_BACKEND_CTX   pBECtx,
+    PCSTR               pszObjectGUID,
+    ENTRYID*            pEId
+    );
 
 DWORD
 VmDirMDBEIdToEntry(
@@ -75,26 +89,30 @@ VmDirMDBEIdToEntry(
     PVDIR_SCHEMA_CTX            pSchemaCtx,
     ENTRYID                     eId,
     PVDIR_ENTRY                 pEntry,
-    VDIR_BACKEND_ENTRY_LOCKTYPE entryLockType);
+    VDIR_BACKEND_ENTRY_LOCKTYPE entryLockType
+    );
 
 DWORD
 VmDirMDBModifyEntry(
     PVDIR_BACKEND_CTX   pBECtx,
     VDIR_MODIFICATION*  pMods,
-    PVDIR_ENTRY         pEntry);
+    PVDIR_ENTRY         pEntry
+    );
 
-// indexer.c
+// readutil.c
 DWORD
 VmDirMDBCheckIfALeafNode(
     PVDIR_BACKEND_CTX   pBECtx,
     ENTRYID             eId,
-    PBOOLEAN            pIsLeafEntry);
+    PBOOLEAN            pIsLeafEntry
+    );
 
 DWORD
 VmDirMDBGetAttrMetaData(
     PVDIR_BACKEND_CTX   pBECtx,
     VDIR_ATTRIBUTE *    attr,
-    ENTRYID             entryId);
+    ENTRYID             entryId
+    );
 
 DWORD
 VmDirMDBGetAllAttrsMetaData(
@@ -105,9 +123,41 @@ VmDirMDBGetAllAttrsMetaData(
     );
 
 DWORD
-VmDirMDBGetCandidates(
+VmDirMDBGetAttrValueMetaData(
     PVDIR_BACKEND_CTX   pBECtx,
-    VDIR_FILTER*        pFilter);
+    ENTRYID             entryId,
+    short               attrId,
+    PDEQUE              metaValueData
+    );
+
+DWORD
+VmDirMDBGetAllAttrValueMetaData(
+    PVDIR_BACKEND_CTX   pBECtx,
+    ENTRYID             entryId,
+    PDEQUE              metaValueData
+    );
+
+// writeutil.c
+DWORD
+VmDirMdbUpdateAttrValueMetaData(
+    PVDIR_BACKEND_CTX   pBECtx,
+    ENTRYID             entryId,
+    short               attrId,
+    ULONG               ulOPMask,
+    PDEQUE              metaValueData
+    );
+
+DWORD
+VmDirMdbDeleteAllAttrValueMetaData(
+    PVDIR_BACKEND_CTX   pBECtx,
+    PVDIR_SCHEMA_CTX    pSchemaCtx,
+    ENTRYID             entryId
+    );
+
+DWORD
+VmDirMdbApplyIndicesNewMR(
+    VOID
+    );
 
 // txn.c
 DWORD
@@ -129,38 +179,149 @@ VmDirMDBTxnCommit(
 // init.c
 PVDIR_BACKEND_INTERFACE
 VmDirMDBBEInterface (
-    VOID);
+    VOID
+    );
 
 DWORD
-VmDirMDBBEInit ( // beInit
-    VOID);
+VmDirMDBInitializeDB (
+    VOID
+    );
 
 DWORD
-VmDirMDBInitializeDB ( // DBOpen
-    VOID);
+VmDirMDBShutdownDB(
+    VOID
+    );
 
 DWORD
-VmDirMDBInitializeIndexDB( // IndexOpen
-    VOID);
+VmDirSetMdbBackendState(
+    DWORD               dwFileTransferState,
+    DWORD               *pdwLogNum,
+    DWORD               *pdwDbSizeMb,
+    DWORD               *pdwDbMapSizeMb,
+    PSTR                pszDbPath,
+    DWORD               dwDbPathSize
+    );
+
+// generic.c
+DWORD
+VmDirMDBDupKeyGetValues(
+    PVDIR_BACKEND_CTX   pBECtx,
+    PCSTR               pszKey,
+    PVMDIR_STRING_LIST* ppStrList
+    );
 
 DWORD
-VmDirMDBShutdownDB( // Shutdown
-    VOID);
+VmDirMDBDupKeySetValues(
+    PVDIR_BACKEND_CTX   pBECtx,
+    PCSTR               pszKey,
+    PVMDIR_STRING_LIST  pStrList
+    );
 
 DWORD
-VmDirMDBGlobalIndexStructAdd( // MDBIndexAdd
-    PVDIR_CFG_ATTR_INDEX_DESC   pIndexDesc);
+VmDirMDBUniqKeyGetValue(
+    PVDIR_BACKEND_CTX   pBECtx,
+    PCSTR               pszKey,
+    PSTR*               ppszValue
+    );
 
-// attrindexing.c
-
-/*
- * Create new attribute indices for a batch of entries
- */
 DWORD
-VmDirMDBIndicesCreate(
-    PVDIR_CFG_ATTR_INDEX_DESC*  ppIndexDesc,
-    DWORD                       dwNumIndices,
-    DWORD                       dwStartEntryId,
-    DWORD                       dwBatchSize);
+VmDirMDBUniqKeySetValue(
+    PVDIR_BACKEND_CTX   pBECtx,
+    PCSTR               pszKey,
+    PCSTR               pszValue
+    );
+
+// index.c
+DWORD
+VmDirMDBInitializeIndexDB(
+    VOID
+    );
+
+VOID
+VmDirMDBShutdownIndexDB(
+    VOID
+    );
+
+DWORD
+VmDirMDBIndexOpen(
+    PVDIR_INDEX_CFG     pIndexCfg
+    );
+
+BOOLEAN
+VmDirMDBIndexExist(
+    PVDIR_INDEX_CFG     pIndexCfg
+    );
+
+DWORD
+VmDirMDBIndexDelete(
+    PVDIR_INDEX_CFG     pIndexCfg
+    );
+
+DWORD
+VmDirMDBIndicesPopulate(
+    PLW_HASHMAP pIndexCfgs,
+    ENTRYID     startEntryId,
+    DWORD       dwBatchSize
+    );
+
+// iterate.c
+DWORD
+VmDirMDBIndexIteratorInit(
+    PVDIR_INDEX_CFG                 pIndexCfg,
+    PSTR                            pszInitVal, // optional
+    PVDIR_BACKEND_INDEX_ITERATOR*   ppIterator
+    );
+
+DWORD
+VmDirMDBIndexIterate(
+    PVDIR_BACKEND_INDEX_ITERATOR    pIterator,
+    PSTR*                           ppszVal,
+    ENTRYID*                        pEId
+    );
+
+VOID
+VmDirMDBIndexIteratorFree(
+    PVDIR_BACKEND_INDEX_ITERATOR    pIterator
+    );
+
+DWORD
+VmDirMDBParentIdIndexIteratorInit(
+    ENTRYID                                 parentId,
+    PVDIR_BACKEND_PARENT_ID_INDEX_ITERATOR* ppIterator
+    );
+
+DWORD
+VmDirMDBParentIdIndexIterate(
+    PVDIR_BACKEND_PARENT_ID_INDEX_ITERATOR  pIterator,
+    ENTRYID*                                pEntryId
+    );
+
+VOID
+VmDirMDBParentIdIndexIteratorFree(
+    PVDIR_BACKEND_PARENT_ID_INDEX_ITERATOR  pIterator
+    );
+
+DWORD
+VmDirMDBEntryBlobIteratorInit(
+    ENTRYID                                 EId,
+    PVDIR_BACKEND_ENTRYBLOB_ITERATOR*       ppIterator
+    );
+
+DWORD
+VmDirMDBEntryBlobIterate(
+    PVDIR_BACKEND_ENTRYBLOB_ITERATOR    pIterator,
+    ENTRYID*                            pEntryId
+    );
+
+VOID
+VmDirMDBEntryBlobIteratorFree(
+    PVDIR_BACKEND_ENTRYBLOB_ITERATOR  pIterator
+    );
+
+// config.c
+DWORD
+VmDirMDBConfigureFsync(
+    BOOLEAN bFsyncOn
+    );
 
 #endif /* MDB_STORE_INTERFACE_H_ */

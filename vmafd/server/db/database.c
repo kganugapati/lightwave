@@ -1,3 +1,11 @@
+/*
+ * Copyright (C) 2014 VMware, Inc. All rights reserved.
+ *
+ * Module   : database.c
+ *
+ * Abstract :
+ *
+ */
 #include "includes.h"
 
 #ifdef _WIN32
@@ -5,10 +13,24 @@
 #endif
 
 static
+VOID
+VmAfdSqliteLogCallback(
+        PVOID *pArg,
+        DWORD  dwError,
+        PCSTR  pszMessage
+        );
+
+static
 DWORD
 VecsDbLocalAuthenticationTablesCreate (
         sqlite3 *pDb
         );
+
+static
+DWORD
+CdcCreateAppDatabase(
+    const char* pszDBName
+    );
 
 DWORD
 VecsDbDatabaseInitialize(
@@ -19,6 +41,8 @@ VecsDbDatabaseInitialize(
 
     dwError = VecsDbCreateAppDatabase(pszAppDBName);
     BAIL_ON_VECS_ERROR(dwError);
+
+    sqlite3_config(SQLITE_CONFIG_LOG, VmAfdSqliteLogCallback, NULL);
 
 #ifndef _WIN32
     // NT has no correspoding ownership or mod change ?
@@ -37,6 +61,30 @@ VecsDbDatabaseInitialize(
 error:
 
     return dwError;
+}
+
+DWORD
+CdcDbInitialize(
+    PCSTR pszDbPath
+    )
+{
+    DWORD dwError = 0;
+
+    if (IsNullOrEmptyString(pszDbPath))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    dwError = CdcCreateAppDatabase(pszDbPath);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+
+    return dwError;
+error:
+
+    goto cleanup;
 }
 
 DWORD
@@ -108,7 +156,8 @@ VecsDbCreateAppDatabase(
                                 "CHECK( EntryType == 1"
                                 " OR EntryType == 2"
                                 " OR EntryType == 3"
-                                " OR EntryType == 4),"
+                                " OR EntryType == 4"
+                                " OR EntryType == 5),"
                                 "FOREIGN KEY(StoreID) REFERENCES StoreTable(StoreID));"
                                 );
         BAIL_ON_VECS_ERROR(dwError);
@@ -188,7 +237,7 @@ VecsDbResetAppDatabase(
     BOOL bInTx = FALSE;
     PVECS_DB_CONTEXT pDbContext = NULL;
 
-    dwError = VecsDbCreateContext(&pDbContext);
+    dwError = VecsDbCreateContext(&pDbContext, VMAFD_DB_MODE_WRITE);
     BAIL_ON_VECS_ERROR(dwError);
 
     dwError = VecsDbBeginTransaction(pDbContext->pDb);
@@ -551,7 +600,7 @@ DWORD
 VecsBindWideString(
     sqlite3_stmt* pSqlStatement,
     PSTR pszParamName,
-    PWSTR pwszValue
+    PCWSTR pwszValue
     )
 {
     DWORD dwError = 0;
@@ -892,6 +941,23 @@ error :
     return dwError;
 }
 
+
+static
+VOID
+VmAfdSqliteLogCallback(
+        PVOID *pArg,
+        DWORD  dwError,
+        PCSTR  pszMessage
+        )
+{
+    VmAfdLog(VMAFD_DEBUG_ANY,
+             "[SQLITE_ERROR:%d] - %s",
+             dwError,
+             IsNullOrEmptyString(pszMessage)?"":pszMessage
+             );
+}
+
+
 static
 DWORD
 VecsDbLocalAuthenticationTablesCreate (
@@ -988,6 +1054,127 @@ cleanup:
     return dwError;
 
 error:
+    goto cleanup;
+}
+
+
+static
+DWORD
+CdcCreateAppDatabase(
+    const char* pszDBName
+    )
+{
+    DWORD dwError = 0;
+    sqlite3 * pDB = NULL;
+    BOOL bInTx = FALSE;
+    DWORD bTableExists = 0;
+
+    dwError = sqlite3_open_v2(
+                        pszDBName,
+                        &pDB,
+                        SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,
+                        NULL
+                        );
+    BAIL_ON_VECS_ERROR(dwError);
+
+    dwError = VecsCheckifTableExists(pDB, "DCTable", &bTableExists);
+    BAIL_ON_VECS_ERROR(dwError);
+
+    if (bTableExists != 1)
+    {
+
+        VecsDbBeginTransaction(pDB);
+        bInTx = TRUE;
+
+        dwError = VecsDbSqliteExecuteTransaction(
+                        pDB,
+                        "CREATE TABLE IF NOT EXISTS DCTable ("
+                        "DCID INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE NOT NULL,"
+                        "DCName  VARCHAR(256)  COLLATE NOCASE NOT NULL,"
+                        "Site VARCHAR(128),"
+                        "Domain VARCHAR(256),"
+                        "LastPing DATE DEFAULT (STRFTIME('%s','now')),"
+                        "PingResponse INTEGER,"
+                        "PingError    INTEGER,"
+                        "IsAlive INTEGER,"
+                        "UNIQUE(DCName,Domain));"
+                        );
+        BAIL_ON_VECS_ERROR(dwError);
+
+        dwError = VecsDbSqliteExecuteTransaction(
+                        pDB,
+                        "CREATE TABLE IF NOT EXISTS AffinitizedDC ("
+                        "DCID INTEGER,"
+                        "Domain VARCHAR(256),"
+                        "AffinitizedSince DATE DEFAULT (STRFTIME('%s','now')),"
+                        "UNIQUE(Domain),"
+                        "FOREIGN KEY(DCID) REFERENCES DCTable(DCID));"
+                        );
+        BAIL_ON_VECS_ERROR(dwError);
+
+        dwError = VecsDbSqliteExecuteTransaction(
+                        pDB,
+                        "CREATE TABLE IF NOT EXISTS AfdProperties ("
+                        "Property VARCHAR(128) COLLATE NOCASE NOT NULL,"
+                        "Value INTEGER,"
+                        " UNIQUE(Property)"
+                        " ON CONFLICT REPLACE);"
+                        );
+        BAIL_ON_VECS_ERROR(dwError);
+
+        dwError = VecsDbSqliteExecuteTransaction(
+                       pDB,
+                       "CREATE TABLE IF NOT EXISTS DCServiceStatus ("
+                       "DCID INTEGER,"
+                       "ServiceName VARCHAR(128) COLLATE NOCASE NOT NULL,"
+                       "Port INTEGER,"
+                       "IsAlive INTEGER,"
+                       "LastHeartbeat INTEGER,"
+                       "FOREIGN KEY(DCID) REFERENCES DCTable(DCID),"
+                       "UNIQUE(ServiceName,Port,DCID));"
+                       );
+        BAIL_ON_VECS_ERROR(dwError);
+
+        dwError = VecsDbSqliteExecuteTransaction(
+                                pDB,
+                                "CREATE TRIGGER delete_dc "
+                                "AFTER DELETE on DCTable "
+                                "BEGIN "
+                                "DELETE FROM AffinitizedDC "
+                                "WHERE DCID = old.DCID;"
+                                "END;");
+        BAIL_ON_VECS_ERROR(dwError);
+
+        dwError = VecsDbSqliteExecuteTransaction(
+                                pDB,
+                                "CREATE TRIGGER delete_dc_status "
+                                "AFTER DELETE on DCTable "
+                                "BEGIN "
+                                "DELETE FROM DCServiceStatus "
+                                "WHERE DCID = old.DCID;"
+                                "END;");
+        BAIL_ON_VECS_ERROR(dwError);
+
+
+        VecsDbCommitTransaction(pDB);
+    }
+
+cleanup:
+
+    if (pDB)
+    {
+        VecsDbDatabaseClose(pDB);
+    }
+
+    return dwError;
+
+error:
+
+    if (bInTx)
+    {
+        VecsDbRollbackTransaction(pDB);
+    }
+
     goto cleanup;
 }
 

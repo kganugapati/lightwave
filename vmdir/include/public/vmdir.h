@@ -1,10 +1,10 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2017 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -45,6 +45,9 @@ extern "C" {
 #define DEFAULT_LDAPS_PORT_NUM          636
 #define DEFAULT_LDAPS_PORT_STR          "636"
 
+#define DEFAULT_REST_PORT_NUM           7477
+#define DEFAULT_REST_PORT_STR           "7477p" // TODO remove p
+
 #define LEGACY_DEFAULT_LDAP_PORT_NUM       11711
 #define LEGACY_DEFAULT_LDAP_PORT_STR       "11711"
 #define LEGACY_DEFAULT_LDAPS_PORT_NUM      11712
@@ -62,6 +65,9 @@ extern "C" {
 #define CFG_INDEX_ENTRY_DN                      "cn=indices,cn=config"
 #define CFG_INDEX_ORGANIZATION_DN               "cn=organization,cn=config"
 #define SERVER_STATUS_DN                        "cn=serverstatus"
+#define REPLICATION_STATUS_DN                   "cn=replicationstatus"
+#define SCHEMA_REPL_STATUS_DN                   "cn=schemareplstatus"
+#define INTEGRITY_CHECK_STATUS_DN               "cn=integritycheckstatus"
 
 #define VMDIR_DOMAIN_CONTROLLERS_RDN_VAL        "Domain Controllers"
 #define VMDIR_COMPUTERS_RDN_VAL                 "Computers"
@@ -81,6 +87,7 @@ extern "C" {
 #define PASSWD_SCHEME_DEFAULT       "DEFAULT-vmdird-v1"
 #define PASSWD_SCHEME_SSO_V1_1      "SSO-V1-1"
 #define PASSWD_SCHEME_SSO_V1_2      "SSO-V1-2"
+#define PASSWD_SCHEME_SHA1          "SHA1"
 
 #define DSE_ROOT_ENTRY_ID              1
 #define SCHEMA_NAMING_CONTEXT_ID       2
@@ -100,6 +107,8 @@ extern "C" {
 #define ATTR_SN_LEN                         sizeof(ATTR_SN)-1
 #define ATTR_GIVEN_NAME                     "givenName"
 #define ATTR_GIVEN_NAME_LEN                 sizeof(ATTR_GIVEN_NAME)-1
+#define ATTR_DESCRIPTION                    "description"
+#define ATTR_DESCRIPTION_LEN                sizeof(ATTR_DESCRIPTION)-1
 #define ATTR_DN                             "entryDN"
 #define ATTR_DN_LEN                         sizeof(ATTR_DN)-1
 #define ATTR_EID                            "entryid"
@@ -126,6 +135,8 @@ extern "C" {
 #define ATTR_USN_CHANGED_LEN                sizeof(ATTR_USN_CHANGED)-1
 #define ATTR_ATTR_META_DATA                 "attributeMetaData"
 #define ATTR_ATTR_META_DATA_LEN             sizeof(ATTR_ATTR_META_DATA)-1
+#define ATTR_ATTR_VALUE_META_DATA           "attributeValueMetaData"
+#define ATTR_ATTR_VALUE_META_DATA_LEN       sizeof(ATTR_ATTR_VALUE_META_DATA)-1
 #define ATTR_IS_DELETED                     "isDeleted"
 #define ATTR_IS_DELETED_LEN                 sizeof(ATTR_IS_DELETED)-1
 #define ATTR_OBJECT_GUID                    "objectGUID"
@@ -208,12 +219,24 @@ extern "C" {
 #define ATTR_SRP_SECRET_LEN                 sizeof(ATTR_SRP_SECRET)-1
 #define ATTR_SITE_GUID                      "siteGUID"
 #define ATTR_SITE_GUID_LEN                  sizeof(ATTR_SITE_GUID)-1
+#define ATTR_VMWITCUSTOMERNUMBER            "vmwitcustomernumber"
+#define ATTR_VMWITCUSTOMERNUMBER_LEN        sizeof(ATTR_VMWITCUSTOMERNUMBER)-1
+#define ATTR_UID                            "uid"
+#define ATTR_UID_LEN                        sizeof(ATTR_UID)-1
+#define ATTR_VMWITUSERGUID                  "vmwituserguid"
+#define ATTR_VMWITUSERGUID_LEN              sizeof(ATTR_VMWITUSERGUID)-1
+#define ATTR_LASTLOGONTIMESTAMP             "lastLogonTimestamp"
+#define ATTR_LASTLOGONTIMESTAMP_LEN         sizeof(ATTR_LASTLOGONTIMESTAMP)-1
 
 #define ATTR_VMW_OBJECT_SECURITY_DESCRIPTOR   "vmwSecurityDescriptor"
 #define ATTR_VMW_ORGANIZATION_GUID            "vmwOrganizationGuid"
 
 #define ATTR_OBJECT_SECURITY_DESCRIPTOR       "nTSecurityDescriptor"
 #define ATTR_OBJECT_SECURITY_DESCRIPTOR_LEN   sizeof(ATTR_OBJECT_SECURITY_DESCRIPTOR)-1
+
+#define ATTR_DEFAULT_SECURITY_DESCRIPTOR      "defaultSecurityDescriptor"
+#define ATTR_DEFAULT_SECURITY_DESCRIPTOR_LEN  sizeof(ATTR_DEFAULT_SECURITY_DESCRIPTOR)-1
+
 #define ATTR_ORG_LIST_DESC                    "vmwAttrOrganizationList"
 #define VDIR_ATTRIBUTE_SEQUENCE_RID           "vmwRidSequenceNumber"
 
@@ -235,9 +258,13 @@ extern "C" {
 #define ATTR_PASS_SPECIAL_CHARS             "vmwPasswordSpecialChars"
 // Attributes related to support for "functional levels" in vmdir
 #define ATTR_DOMAIN_FUNCTIONAL_LEVEL        "vmwDomainFunctionalLevel"
+#define ATTR_MAX_DOMAIN_FUNCTIONAL_LEVEL    "vmwMaximumDomainFunctionalLevel"
+#define ATTR_MAX_DOMAIN_FUNCTIONAL_LEVEL_LEN sizeof(ATTR_MAX_DOMAIN_FUNCTIONAL_LEVEL)-1
+
 #define ATTR_FOREST_FUNCTIONAL_LEVEL        "vmwForestFunctionalLevel"
 #define ATTR_SERVER_VERSION                 "vmwServerVersion"
 #define ATTR_PSC_VERSION                    "vmwPlatformServicesControllerVersion"
+#define ATTR_PSC_VERSION_LEN                sizeof(ATTR_PSC_VERSION)-1
 
 #define ATTR_OU                             "ou"
 #define ATTR_DC_ACCOUNT_DN                  "vmwDCAccountDN"
@@ -248,6 +275,15 @@ extern "C" {
 
 #define ATTR_MAX_SERVER_ID                  "vmwMaxServerId"
 #define ATTR_MAX_SERVER_ID_LEN              sizeof(ATTR_MAX_SERVER_ID)-1
+
+#define ATTR_ATTRIBUTETYPES                 "attributetypes"
+#define ATTR_ATTRIBUTETYPES_LEN             sizeof(ATTR_ATTRIBUTETYPES)-1
+#define ATTR_OBJECTCLASSES                  "objectclasses"
+#define ATTR_OBJECTCLASSES_LEN              sizeof(ATTR_OBJECTCLASSES)-1
+#define ATTR_DITCONTENTRULES                "ditcontentrules"
+#define ATTR_DITCONTENTRULES_LEN            sizeof(ATTR_DITCONTENTRULES)-1
+#define ATTR_LDAPSYNTAXES                   "ldapsyntaxes"
+#define ATTR_LDAPSYNTAXES_LEN               sizeof(ATTR_LDAPSYNTAXES)-1
 
 // ADSI support related attribute
 #define ATTR_ALLOWD_CHILD_CLASSES_EFFECTIVE     "allowedChildClassesEffective"
@@ -265,6 +301,49 @@ extern "C" {
 #define ATTR_ACL_STRING                     "vmwAclString"
 #define ATTR_ACL_STRING_LEN                 sizeof(ATTR_ACL_STRING)-1
 
+#define ATTR_COMMENT                        "comment"
+#define ATTR_COMMENT_LEN                    sizeof(ATTR_COMMENT)-1
+
+// Attribute schema objects
+#define ATTR_IS_SINGLE_VALUED               "issinglevalued"
+#define ATTR_IS_SINGLE_VALUED_LEN           sizeof(ATTR_IS_SINGLE_VALUED)-1
+#define ATTR_ATTRIBUTE_SYNTAX               "attributesyntax"
+#define ATTR_ATTRIBUTE_SYNTAX_LEN           sizeof(ATTR_ATTRIBUTE_SYNTAX)-1
+#define ATTR_LDAP_DISPLAYNAME               "ldapdisplayname"
+#define ATTR_LDAP_DISPLAYNAME_LEN           sizeof(ATTR_LDAP_DISPLAYNAME)-1
+#define ATTR_ATTRIBUTE_ID                   "attributeid"
+#define ATTR_ATTRIBUTE_ID_LEN               sizeof(ATTR_ATTRIBUTE_ID)-1
+#define ATTR_OMSYNTAX                       "omsyntax"
+#define ATTR_OMSYNTAX_LEN                   sizeof(ATTR_OMSYNTAX)-1
+#define ATTR_SCHEMAID_GUID                  "schemaidguid"
+#define ATTR_SCHEMAID_GUID_LEN              sizeof(ATTR_SCHEMAID_GUID)-1
+#define ATTR_VMW_ATTRIBUTE_USAGE            "vmwattributeusage"
+#define ATTR_VMW_ATTRIBUTE_USAGE_LEN        sizeof(ATTR_VMW_ATTRIBUTE_USAGE)-1
+#define ATTR_SEARCH_FLAGS                   "searchflags"
+#define ATTR_SEARCH_FLAGS_LEN               sizeof(ATTR_SEARCH_FLAGS)-1
+#define ATTR_UNIQUENESS_SCOPE               "vmwattruniquenessscope"
+#define ATTR_UNIQUENESS_SCOPE_LEN           sizeof(ATTR_UNIQUENESS_SCOPE)-1
+
+#define ATTR_SUBCLASSOF                     "subclassof"
+#define ATTR_SUBCLASSOF_LEN                 sizeof(ATTR_SUBCLASSOF)-1
+#define ATTR_GOVERNSID                      "governsid"
+#define ATTR_GOVERNSID_LEN                  sizeof(ATTR_GOVERNSID)-1
+#define ATTR_OBJECTCLASS_CATEGORY           "objectclasscategory"
+#define ATTR_OBJECTCLASS_CATEGORY_LEN       sizeof(ATTR_OBJECTCLASS_CATEGORY)-1
+#define ATTR_DEFAULT_OBJECT_CATEGORY        "defaultobjectcategory"
+#define ATTR_DEFAULT_OBJECT_CATEGORY_LEN    sizeof(ATTR_DEFAULT_OBJECT_CATEGORY)-1
+#define ATTR_SYSTEMMUSTCONTAIN              "systemmustcontain"
+#define ATTR_SYSTEMMUSTCONTAIN_LEN           sizeof(ATTR_SYSTEMMUSTCONTAIN)-1
+#define ATTR_SYSTEMMAYCONTAIN               "systemmaycontain"
+#define ATTR_SYSTEMMAYCONTAIN_LEN            sizeof(ATTR_SYSTEMMAYCONTAIN)-1
+#define ATTR_SYSTEMAUXILIARY_CLASS          "systemauxiliaryclass"
+#define ATTR_SYSTEMAUXILIARY_CLASS_LEN      sizeof(ATTR_SYSTEMAUXILIARY_CLASS)-1
+#define ATTR_MUSTCONTAIN                    "mustcontain"
+#define ATTR_MUSTCONTAIN_LEN                sizeof(ATTR_MUSTCONTAIN)-1
+#define ATTR_MAYCONTAIN                     "maycontain"
+#define ATTR_MAYCONTAIN_LEN                 sizeof(ATTR_MAYCONTAIN)-1
+#define ATTR_AUXILIARY_CLASS                "auxiliaryclass"
+#define ATTR_AUXILIARY_CLASS_LEN            sizeof(ATTR_AUXILIARY_CLASS)-1
 
 // Object classes
 #define OC_TOP                              "top"
@@ -311,6 +390,10 @@ extern "C" {
 #define OC_MANAGED_SERVICE_ACCOUNT       "msDS-ManagedServiceAccount"
 #define OC_GROUP                         "group"
 #define OC_GROUP_LEN                     sizeo(OC_GROUP)-1
+#define OC_ATTRIBUTE_SCHEMA             "attributeschema"
+#define OC_ATTRIBUTE_SCHEMA_LEN         sizeof(OC_ATTRIBUTE_SCHEMA)-1
+#define OC_CLASS_SCHEMA                 "classschema"
+#define OC_CLASS_SCHEMA_LEN             sizeof(OC_CLASS_SCHEMA)-1
 
 #define CM_COMPONENTMANAGER             "ComponentManager"
 #define CM_SITE                         "CMSites"
@@ -324,6 +407,43 @@ extern "C" {
 #define CM_OBJECTCLASS_SITE             "vmwCisSite"
 #define CM_OBJECTCLASS_LDU              "vmwCisLdu"
 
+// cn=integritycheck sudo entry
+#define INTEGRITY_CHECK_STATUS_CN       "IntegrityCheckStatus"
+
+// cn=replicationstatus sudo entry
+#define REPLICATION_STATUS_CN           "ReplicationStatus"
+#define REPL_STATUS_SERVER_NAME         "Server Name: "
+#define REPL_STATUS_SERVER_NAME_LEN     sizeof(REPL_STATUS_SERVER_NAME)-1
+#define REPL_STATUS_VISIBLE_USN         "USN: "
+#define REPL_STATUS_VISIBLE_USN_LEN     sizeof(REPL_STATUS_VISIBLE_USN)-1
+#define REPL_STATUS_CYCLE_COUNT         "Replication Cycle Count: "
+#define REPL_STATUS_CYCLE_COUNT_LEN     sizeof(REPL_STATUS_CYCLE_COUNT)-1
+#define REPL_STATUS_INVOCATION_ID       "InvocationID: "
+#define REPL_STATUS_INVOCATION_ID_LEN   sizeof(REPL_STATUS_INVOCATION_ID)-1
+#define REPL_STATUS_UTDVECTOR           "UtdVector: "
+#define REPL_STATUS_UTDVECTOR_LEN       sizeof(REPL_STATUS_UTDVECTOR)-1
+#define REPL_STATUS_PROCESSED_USN_VECTOR        "RAProcessedUSN Vector: "
+#define REPL_STATUS_PROCESSED_USN_VECTOR_LEN    sizeof(REPL_STATUS_PROCESSED_USN_VECTOR)-1
+#define REPL_STATUS_ORIGINATING_USN     "MaxOriginatingUSN: "
+#define REPL_STATUS_ORIGINATING_USN_LEN  sizeof(REPL_STATUS_ORIGINATING_USN)-1
+
+#define SCHEMA_REPL_STATUS_CN                       "SchemaReplStatus"
+#define SCHEMA_REPL_STATUS_HOST_NAME                "Host Name"
+#define SCHEMA_REPL_STATUS_DOMAIN_NAME              "Domain Name"
+#define SCHEMA_REPL_STATUS_CHECK_INITIATED          "Check Initiated"
+#define SCHEMA_REPL_STATUS_CHECK_SUCCEEDED          "Check Succeeded"
+#define SCHEMA_REPL_STATUS_TREE_IN_SYNC             "Tree In Sync"
+#define SCHEMA_REPL_STATUS_BLOB_IN_SYNC             "Blob In Sync"
+#define SCHEMA_REPL_STATUS_ATTR_MISSING_IN_TREE     "Attr Missing In Tree"
+#define SCHEMA_REPL_STATUS_ATTR_MISMATCH_IN_TREE    "Attr Mismatch In Tree"
+#define SCHEMA_REPL_STATUS_CLASS_MISSING_IN_TREE    "Class Missing In Tree"
+#define SCHEMA_REPL_STATUS_CLASS_MISMATCH_IN_TREE   "Class Mismatch In Tree"
+#define SCHEMA_REPL_STATUS_ATTR_MISSING_IN_BLOB     "Attr Missing In Blob"
+#define SCHEMA_REPL_STATUS_ATTR_MISMATCH_IN_BLOB    "Attr Mismatch In Blob"
+#define SCHEMA_REPL_STATUS_CLASS_MISSING_IN_BLOB    "Class Missing In Blob"
+#define SCHEMA_REPL_STATUS_CLASS_MISMATCH_IN_BLOB   "Class Mismatch In Blob"
+#define SCHEMA_REPL_STATUS_REFRESH_IN_PROGRESS      "Refresh In Progress"
+
 #define VMDIR_REPL_AGRS_CONTAINER_NAME  "Replication Agreements"
 #define VMDIR_SERVERS_CONTAINER_NAME    "Servers"
 #define VMDIR_SERVICES_CONTAINER_NAME   "Services"
@@ -332,10 +452,7 @@ extern "C" {
 #define VMDIR_CERT_GROUP_NAME           "CAAdmins"
 #define VMDIR_BUILTIN_CONTAINER_NAME    "Builtin"
 
-#define VDIR_DOMAIN_FUNCTIONAL_LEVEL    "1"
-#define VDIR_FOREST_FUNCTIONAL_LEVEL    "1"
 #define VDIR_SERVER_VERSION             "1.0"
-#define VDIR_PSC_VERSION                "6.0.0"
 
 #define SASL_MECH                       "GSSAPI SRP"
 
@@ -354,6 +471,9 @@ extern "C" {
 #define VDIR_LDAP_CONTROL_SHOW_MASTER_KEY         "9999.9990.9900.9000.1" //shouldn't be published
 // #define LDAP_CONTROL_SYNC       LDAP_SYNC_OID ".1" defined in ldap.h
 
+// vmw OID for Integrity Check Control Search
+#define LDAP_CONTROL_DIGEST_SEARCH                "1.3.6.1.4.1.6876.40.10.2"
+
 // Logging stuff
 #define MAX_LOG_MESSAGE_LEN    4096
 
@@ -370,33 +490,6 @@ extern "C" {
 #define NSECS_PER_SEC       1000000000
 #define NSECS_PER_MSEC      1000000
 #define MSECS_PER_SEC       1000
-
-/* Defines related to GSS_SRP authentication */
-#ifndef GSS_SRP_MECH_OID
-#define GSS_SRP_MECH_OID_LENGTH 9
-#define GSS_SRP_MECH_OID "\x2a\x86\x48\x86\xf7\x12\x01\x02\x0a"
-#endif
-
-#ifndef GSS_SRP_PASSWORD_OID
-#define GSS_SRP_PASSWORD_OID "\x2b\x06\x01\x04\x01\x81\xd6\x29\x03\x01"
-#define GSS_SRP_PASSWORD_LEN 10
-#endif
-
-/* Defines related to GSS_NTLM authentication */
-#ifndef GSS_NTLM_MECH_OID
-#define GSS_NTLM_MECH_OID_LENGTH 10
-#define GSS_NTLM_MECH_OID "\x2b\x06\x01\x04\x01\x82\x37\x02\x02\x0a"
-#endif
-
-#ifndef GSS_NTLM_PASSWORD_OID
-#define GSS_NTLM_PASSWORD_OID "\x2b\x06\x01\x04\x01\x81\xd6\x29\x03\x01"
-#define GSS_NTLM_PASSWORD_LEN 10
-#endif
-
-#ifndef SPNEGO_OID
-#define SPNEGO_OID_LENGTH 6
-#define SPNEGO_OID "\x2b\x06\x01\x05\x05\x02"
-#endif
 
 #ifdef __cplusplus
 }

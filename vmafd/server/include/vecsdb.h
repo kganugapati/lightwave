@@ -77,23 +77,8 @@ VecsDbReset(
     );
 
 DWORD
-VecsDbCreateContext(
-    PVECS_DB_CONTEXT* ppDbContext
-    );
-
-DWORD
-VecsDbCtxBeginTransaction(
-    PVECS_DB_CONTEXT	pDbContext
-    );
-
-DWORD
-VecsDbCtxCommitTransaction(
-    PVECS_DB_CONTEXT	pDbContext
-    );
-
-DWORD
-VecsDbCtxRollbackTransaction(
-    PVECS_DB_CONTEXT	pDbContext
+VecsDbCleanupPermissions(
+    VOID
     );
 
 DWORD
@@ -293,32 +278,6 @@ VecsDbVerifyCertificate(
     );
 
 DWORD
-VecsInsertCertificate(
-    PVECS_DB_CERTIFICATE_ENTRY pEntry
-    );
-
-DWORD
-VecsEnumCertificates(
-    unsigned int dwStartIndex,
-    unsigned int dwNumCertificates,
-    CERTIFICATE_STORE_TYPE dwStatus,
-    PVMAFD_CERT_ARRAY* ppCertArray
-);
-
-
-DWORD
-VecsGetCertificatebyAlias(
-    PCWSTR pwszAlias,
-    PDWORD pdwCount,
-    PVMAFD_CERT_CONTAINER* pContainer
-);
-
-
-DWORD
-VecsDeleteCertificateByAlias(PCWSTR pwszAlias);
-
-
-DWORD
 VecsDbQueryCertificateByAlias(
     PVECS_DB_CONTEXT            pDbContext,
     PVECS_DB_CERTIFICATE_ENTRY* ppCertEntryArray,
@@ -326,6 +285,15 @@ VecsDbQueryCertificateByAlias(
     PCWSTR                      pwszAlias
 );
 
+DWORD
+VecsDbSetDbVersion(
+    DWORD dwVersion
+    );
+
+DWORD
+VecsDbGetDbVersion(
+    PDWORD pdwVersion
+    );
 
 #ifdef __cplusplus
 }

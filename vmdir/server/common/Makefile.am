@@ -17,6 +17,7 @@ libsrvcommon_la_SOURCES = \
     security-sd.c         \
     srp.c                 \
     util.c                \
+    vmafdlib.c            \
     vmdirentry.c          \
     vmdirtoldaperror.c
 
@@ -33,7 +34,6 @@ libsrvcommon_la_CPPFLAGS = \
     -I$(top_srcdir)/server/include \
     @OPENSSL_INCLUDES@ \
     @DCERPC_INCLUDES@ \
-    @BDB_INCLUDES@ \
     @LW_INCLUDES@
 
 libsrvcommon_la_LDFLAGS = \

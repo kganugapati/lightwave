@@ -22,9 +22,13 @@ VMAF_CFG_PACKAGE gVmAfPosixCfgApiTable =
         .pfnOpenRootKey     = &VmAfPosixCfgOpenRootKey,
         .pfnOpenKey         = &VmAfPosixCfgOpenKey,
         .pfnCreateKey       = &VmAfPosixCfgCreateKey,
+        .pfnDeleteKey       = &VmAfPosixCfgDeleteKey,
+        .pfnEnumKeys        = &VmAfPosixCfgEnumKeys,
         .pfnReadStringValue = &VmAfPosixCfgReadStringValue,
         .pfnReadDWORDValue  = &VmAfPosixCfgReadDWORDValue,
         .pfnSetValue        = &VmAfPosixCfgSetValue,
+        .pfnDeleteValue     = &VmAfPosixCfgDeleteValue,
+        .pfnGetSecurity     = &VmAfPosixCfgGetSecurity,
         .pfnCloseKey        = &VmAfPosixCfgCloseKey,
         .pfnCloseConnection = &VmAfPosixCfgCloseConnection
 };

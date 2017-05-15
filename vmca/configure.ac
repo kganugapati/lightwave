@@ -55,6 +55,55 @@ AC_ARG_ENABLE([gcov],
         fi
     ])
 
+ENABLE_PYTHON=false
+AC_ARG_ENABLE([python],
+    [AC_HELP_STRING([--enable-python], [enable python module (default: disabled)])],
+    [
+        if test x"$enableval" = x"yes"
+        then
+            ENABLE_PYTHON=true
+        fi
+    ])
+AM_CONDITIONAL(ENABLE_PYTHON, [$ENABLE_PYTHON])
+
+# Java component
+
+AC_ARG_WITH([java],
+    [AC_HELP_STRING([--with-java=<dir>], [use Java binaries rooted at prefix <dir> ])],
+    [
+        JAVA_HOME="$withval"
+        JAVA=$JAVA_HOME/bin/java
+        TOOLS_CLASSPATH=$JAVA_HOME/lib/tools.jar
+    ])
+
+AC_PATH_PROG([JAVAC], [javac], [no], [$PATH:$JAVA_HOME/bin])
+
+if test x"$JAVAC" = x"no"; then
+    AC_MSG_ERROR([JAVAC compiler not found])
+fi
+
+AC_SUBST(JAVA_HOME)
+AC_SUBST(JAVA)
+AC_SUBST(TOOLS_CLASSPATH)
+
+# Ant component
+
+AC_ARG_WITH([ant],
+    [AC_HELP_STRING([--with-ant=<dir>], [use Ant binaries rooted at prefix <dir> ])],
+    [
+        ANT_HOME="$withval"
+        ANT_CLASSPATH=$ANT_HOME/lib/ant.jar:$ANT_HOME/lib/ant-launcher.jar
+    ])
+
+AC_PATH_PROG([ANT], [ant], [no], [$PATH:$JAVA_HOME/bin:$ANT_HOME/bin])
+
+if test x"$ANT" = x"no"; then
+    AC_MSG_ERROR([ANT compiler not found])
+fi
+
+AC_SUBST(ANT_HOME)
+AC_SUBST(ANT_CLASSPATH)
+
 # openssl component
 
 AC_ARG_WITH([ssl],
@@ -81,33 +130,6 @@ AC_SUBST(OPENSSL_BASE_PATH)
 AC_SUBST(OPENSSL_INCLUDES)
 AC_SUBST(OPENSSL_LDFLAGS)
 
-# vmdir component
-
-AC_ARG_WITH([vmdir],
-    [AC_HELP_STRING([--with-vmdir=<dir>], [use directory-server binaries rooted at prefix <dir> ])],
-    [
-        VMDIR_BASE_PATH="$withval"
-        VMDIR_INCLUDES="-I$withval/include"
-        VMDIR_LDFLAGS="-L$withval/lib -Wl,-rpath,/opt/vmware/lib64 -Wl,-rpath-link,/opt/vmware/lib64"
-    ])
-
-AC_ARG_WITH([vmdir-includes],
-    [AC_HELP_STRING([--with-vmdir-includes=<dir>], [use directory-server headers located in prefix <dir> ])],
-    [
-        VMDIR_INCLUDES="-I$withval"
-    ])
-
-AC_ARG_WITH([vmdir-libs],
-    [AC_HELP_STRING([--with-vmdir-libs=<dir>], [use directory-server libraries located in prefix <dir> ])],
-    [
-        VMDIR_LDFLAGS="-L$withval"
-    ])
-
-AC_SUBST(VMDIR_BASE_PATH)
-AC_SUBST(VMDIR_INCLUDES)
-AC_SUBST(VMDIR_LDFLAGS)
-
-
 # vmafd component
 
 AC_ARG_WITH([afd],
@@ -115,7 +137,7 @@ AC_ARG_WITH([afd],
     [
         VMAFD_BASE_PATH="$withval"
         VMAFD_INCLUDES="-I$withval/include"
-        VMAFD_LDFLAGS="-L$withval/lib64 -Wl,-rpath,/opt/vmware/lib64 -Wl,-rpath-link,/opt/vmware/lib64"
+        VMAFD_LDFLAGS="-L$withval/lib64 -Wl,-rpath,/opt/vmware/lib64 -Wl,-rpath-link,$withval/lib64"
     ])
 
 AC_ARG_WITH([afd-includes],
@@ -130,6 +152,12 @@ AC_ARG_WITH([afd-libs],
         VMAFD_LDFLAGS="-L$withval"
     ])
 
+AC_ARG_WITH([afd-rpath],
+    [AC_HELP_STRING([--with-afd-rpath=<dir>], [use afd-server libraries located at <dir> at runtime])],
+    [
+        VMAFD_LDFLAGS="-L$VMAFD_BASE_PATH/lib64 -Wl,-rpath,$withval -Wl,-rpath-link,$VMAFD_BASE_PATH/lib64"
+    ])
+
 saved_CPPFLAGS="$CPPFLAGS"
 CPPFLAGS="$CPPFLAGS $VMAFD_INCLUDES $DCERPC_INCLUDES"
 AC_CHECK_HEADERS(vmafdclient.h)
@@ -139,6 +167,74 @@ VMAFD_LIBS="-lvmafdclient"
 AC_SUBST(VMAFD_BASE_PATH)
 AC_SUBST(VMAFD_INCLUDES)
 AC_SUBST(VMAFD_LDFLAGS)
+
+# OIDC
+
+OIDC_DEFAULT_PATH=/opt/vmware/lib64
+SSOCOMMON_LDFLAGS=$OIDC_DEFAULT_PATH
+AC_ARG_WITH([ssocommon],
+    [AC_HELP_STRING([--with-ssocommon=<dir>], [use ssocommon binaries rooted at prefix <dir> ])],
+    [
+        SSOCOMMON_BASE_PATH="$withval"
+        SSOCOMMON_INCLUDES="-I$withval/include"
+        SSOCOMMON_LDFLAGS="-L$withval/lib64 -Wl,-rpath,/opt/vmware/lib64 -Wl,-rpath-link,/opt/vmware/lib64"
+    ])
+
+SSOCOMMON_LIBS="-lssocommon"
+AC_SUBST(SSOCOMMON_BASE_PATH)
+AC_SUBST(SSOCOMMON_INCLUDES)
+AC_SUBST(SSOCOMMON_LDFLAGS)
+
+OIDC_LDFLAGS=$OIDC_DEFAULT_PATH
+AC_ARG_WITH([oidc],
+    [AC_HELP_STRING([--with-oidc=<dir>], [use oidc binaries rooted at prefix <dir> ])],
+    [
+        OIDC_BASE_PATH="$withval"
+        OIDC_INCLUDES="-I$withval/include"
+        OIDC_LDFLAGS="-L$withval/lib64 -Wl,-rpath,/opt/vmware/lib64 -Wl,-rpath-link,/opt/vmware/lib64"
+    ])
+
+OIDC_LIBS="-loidc"
+AC_CHECK_HEADERS(oidc.h)
+AC_CHECK_HEADERS(oidc_types.h)
+AC_CHECK_HEADERS(common_types.h)
+AC_SUBST(OIDC_BASE_PATH)
+AC_SUBST(OIDC_INCLUDES)
+AC_SUBST(OIDC_LDFLAGS)
+
+
+# Trident
+
+AC_ARG_WITH([trident],
+    [AC_HELP_STRING([--with-trident=<dir>], [use trident-server binaries rooted at prefix <dir> ])],
+    [
+        TRIDENT_BASE_PATH="$withval"
+        TRIDENT_INCLUDES="-I$withval/include/vmware-rest"
+        TRIDENT_LDFLAGS="-L$withval/lib64 -Wl,-rpath,/opt/vmware/lib64 -Wl,-rpath-link,/opt/vmware/lib64"
+    ])
+
+TRIDENT_LIBS="-lrestengine"
+AC_CHECK_HEADERS(vmrest.h)
+AC_SUBST(TRIDENT_BASE_PATH)
+AC_SUBST(TRIDENT_INCLUDES)
+AC_SUBST(TRIDENT_LDFLAGS)
+
+# Jansson
+
+AC_ARG_WITH([jansson],
+    [AC_HELP_STRING([--with-jansson=<dir>], [use jansson binaries rooted at prefix <dir> ])],
+    [
+        JANSSON_BASE_PATH="$withval"
+        JANSSON_INCLUDES="-I$withval/include"
+        JANSSON_LDFLAGS="-L$withval/lib64 -Wl,-rpath,/opt/vmware/lib64 -Wl,-rpath-link,/opt/vmware/lib64"
+    ])
+
+JANSSON_LIBS="-ljansson"
+AC_CHECK_HEADERS(jansson.h)
+AC_SUBST(JANSSON_BASE_PATH)
+AC_SUBST(JANSSON_INCLUDES)
+AC_SUBST(JANSSON_LDFLAGS)
+
 
 
 # Likewise components
@@ -280,6 +376,7 @@ AC_ARG_WITH([boost],
     [
         BOOST_BASE_PATH="$withval"
         BOOST_INCLUDES="-I$withval/include"
+        BOOST_LIB_PATH="$withval/lib"
         BOOST_LDFLAGS="-L$withval/lib"
     ])
 
@@ -292,11 +389,13 @@ AC_ARG_WITH([boost-includes],
 AC_ARG_WITH([boost-libs],
     [AC_HELP_STRING([--with-boost-libs=<dir>], [use BOOST libraries located in prefix <dir> ])],
     [
+        BOOST_LIB_PATH="$withval"
         BOOST_LDFLAGS="-L$withval"
     ])
 
 AC_SUBST(BOOST_BASE_PATH)
 AC_SUBST(BOOST_INCLUDES)
+AC_SUBST(BOOST_LIB_PATH)
 AC_SUBST(BOOST_LDFLAGS)
 
 saved_CPPFLAGS="$CPPFLAGS"
@@ -358,6 +457,20 @@ echo $BOOST_BASE_PATH
 echo $BOOST_LDFLAGS
 
 AC_CHECK_LIB(
+        [boost_unit_test_framework-gcc41-mt-1_55],
+        [main],
+        [BOOST_LIBS="-lboost_system-gcc41-mt-s-1_55 -lboost_filesystem-gcc41-mt-s-1_55 -lboost_program_options-gcc41-mt-s-1_55"],
+        [],
+        [$BOOST_LDFLAGS])
+
+AC_CHECK_LIB(
+        [boost_unit_test_framework-xgcc42-mt-1_55],
+        [main],
+        [BOOST_LIBS="-lboost_system-xgcc42-mt-s-1_55 -lboost_filesystem-xgcc42-mt-s-1_55 -lboost_program_options-xgcc42-mt-s-1_55"],
+        [],
+        [$BOOST_LDFLAGS])
+
+AC_CHECK_LIB(
         [boost_unit_test_framework],
         [main],
         [BOOST_LIBS="-lboost_thread -lboost_system -lboost_filesystem -lboost_program_options"],
@@ -365,7 +478,7 @@ AC_CHECK_LIB(
         [$BOOST_LDFLAGS])
 AC_LANG_POP([C++])
 
-AC_CHECK_LIB([sqlite3], [sqlite3_open], [SQLITE_LIBS="-lsqlite3"], [], [$SQLITE_LDFLAGS])
+AC_CHECK_LIB([sqlite3], [sqlite3_open], [SQLITE_LIBS="-lsqlite3"], [], [$SQLITE_LDFLAGS $DL_LIBS $PTHREAD_LIBS])
 AC_CHECK_LIB([python2.7 ],  [PyArg_Parse], [PYTHON_LIBS="-lpython2.7"], [], [$PYTHON_LDFLAGS])
 
 AC_LANG_PUSH([C++])
@@ -485,7 +598,10 @@ AC_SUBST(LDAP_LIBS)
 AC_SUBST(LBER_LIBS)
 AC_SUBST(PYTHON_LIBS)
 AC_SUBST(VMAFD_LIBS)
-
+AC_SUBST(TRIDENT_LIBS)
+AC_SUBST(JANSSON_LIBS)
+AC_SUBST(OIDC_LIBS)
+AC_SUBST(SSOCOMMON_LIBS)
 
 
 AC_PATH_PROG([IDL], [dceidl], [no], [$PATH:$DCERPC_PATH])
@@ -510,10 +626,15 @@ if test x"$IDL" = x"no"; then
     AC_MSG_ERROR([DCERPC IDL compiler not found])
 fi
 
+AS_AC_EXPAND(VMCA_INSTALL_DIR, $prefix)
+AC_DEFINE_UNQUOTED(VMCA_INSTALL_DIR, "$VMCA_INSTALL_DIR", [Install folder])
+
 vmcaconfdir="$datadir/config"
 AC_SUBST(vmcaconfdir)
+
 AS_AC_EXPAND(VMCA_CONFIG_DIR, $vmcaconfdir)
 AC_SUBST(VMCA_CONFIG_DIR)
+
 AC_DEFINE_UNQUOTED(VMCA_CONFIG_DIR, "$VMCA_CONFIG_DIR", [Config directory])
 
 vmcatoolsdir=$prefix/bin
@@ -521,6 +642,9 @@ AC_SUBST(vmcatoolsdir)
 
 vmcapyutilsdir=$prefix/site-packages/cis
 AC_SUBST(vmcapyutilsdir)
+
+vmcajarsdir="$prefix/jars"
+AC_SUBST(vmcajarsdir)
 
 AC_CONFIG_FILES([Makefile
                  include/Makefile
@@ -533,9 +657,9 @@ AC_CONFIG_FILES([Makefile
                  vmcadb/Makefile
                  certool/Makefile
                  test/Makefile
-                 tools/Makefile
-                 tools/certificate-manager/Makefile
                  python/Makefile
+                 jdepends/Makefile
+                 java/Makefile
                 ])
 AC_OUTPUT
 

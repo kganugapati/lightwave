@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -68,9 +68,7 @@ VmAfSrvGetDomainName(
     dwError = _ConfigGetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
                                VMAFD_REG_KEY_DOMAIN_NAME,
                                &pwszDomain);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded", __FUNCTION__);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
     *ppwszDomain = pwszDomain;
 
@@ -125,9 +123,7 @@ VmAfSrvSetDomainName(
     dwError = _ConfigSetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
                                VMAFD_REG_KEY_DOMAIN_NAME,
                                pwszDomain);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded", __FUNCTION__);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -137,6 +133,56 @@ error:
 
     VmAfdLog(VMAFD_DEBUG_ERROR, "%s failed. Error(%u)", __FUNCTION__, dwError);
 
+    goto cleanup;
+}
+
+DWORD
+VmAfSrvSetSiteName(
+    PWSTR    pwszSiteName        /* IN     */
+    )
+{
+    DWORD dwError = 0;
+
+    dwError = _ConfigSetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
+                               VMAFD_REG_KEY_SITE_NAME,
+                               pwszSiteName);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
+
+cleanup:
+
+    return dwError;
+
+error:
+
+    VmAfdLog(VMAFD_DEBUG_ERROR, "%s failed. Error(%u)", __FUNCTION__, dwError);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfSrvGetSiteName(
+    PWSTR*   ppwszSiteName        /*    OUT */
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszSiteName = NULL;
+
+    dwError = _ConfigGetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
+                               VMAFD_REG_KEY_SITE_NAME,
+                               &pwszSiteName);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
+
+    *ppwszSiteName = pwszSiteName;
+
+cleanup:
+
+    return dwError;
+
+error:
+
+    VmAfdLog(VMAFD_DEBUG_ERROR, "%s failed. Error(%u)", __FUNCTION__, dwError);
+
+    VMAFD_SAFE_FREE_MEMORY(pwszSiteName);
     goto cleanup;
 }
 
@@ -156,9 +202,7 @@ VmAfSrvSetDomainNameA(
     dwError = _ConfigSetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
                                VMAFD_REG_KEY_DOMAIN_NAME,
                                pwszDomain);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded", __FUNCTION__);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -183,7 +227,7 @@ VmAfSrvGetDomainState(
 
     dwError = _ConfigGetInteger(VMAFD_REG_KEY_DOMAIN_STATE,
                                 &dwValue);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
     *pDomainState = (VMAFD_DOMAIN_STATE)dwValue;
 
@@ -207,9 +251,7 @@ VmAfSrvSetDomainState(
 
     dwError = _ConfigSetInteger(VMAFD_REG_KEY_DOMAIN_STATE,
                                 (DWORD)domainState);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded", __FUNCTION__);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -233,9 +275,7 @@ VmAfSrvGetLDU(
     dwError = _ConfigGetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
                                VMAFD_REG_KEY_LDU,
                                &pwszLDU);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded", __FUNCTION__);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
     *ppwszLDU = pwszLDU;
 
@@ -260,9 +300,7 @@ VmAfSrvSetLDU(
     dwError = _ConfigSetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
                                VMAFD_REG_KEY_LDU,
                                pwszLDU);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded", __FUNCTION__);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -285,7 +323,7 @@ VmAfSrvGetRHTTPProxyPort(
 
     dwError = _ConfigGetInteger(VMAFD_REG_KEY_RHTTPPROXY_PORT,
                                 &dwPort);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
     *pdwPort = dwPort;
 
@@ -312,9 +350,7 @@ VmAfSrvSetRHTTPProxyPort(
 
     dwError = _ConfigSetInteger(VMAFD_REG_KEY_RHTTPPROXY_PORT,
                                 dwPort);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded", __FUNCTION__);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -337,9 +373,7 @@ VmAfSrvGetDCPort(
 
     dwError = _ConfigGetInteger(VMAFD_REG_KEY_DC_PORT,
                                 &dwPort);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded", __FUNCTION__);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
     *pdwPort = dwPort;
 
@@ -366,9 +400,7 @@ VmAfSrvSetDCPort(
 
     dwError = _ConfigSetInteger(VMAFD_REG_KEY_DC_PORT,
                                 dwPort);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded", __FUNCTION__);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -470,7 +502,7 @@ VmAfSrvGetLSLocation(
     PSTR pszDCName = NULL;
     DWORD dwPort = 0;
 
-    dwError = VmAfSrvGetDCName(&pwszDCName);
+    dwError = VmAfSrvGetAffinitizedDC(&pwszDCName);
     BAIL_ON_VMAFD_ERROR(dwError);
 
     dwError = VmAfdAllocateStringAFromW(
@@ -502,8 +534,8 @@ VmAfSrvGetLSLocation(
 
 cleanup:
 
+    VMAFD_SAFE_FREE_MEMORY(pszDCName);
     VMAFD_SAFE_FREE_MEMORY(pwszDCName);
-    VMAFD_SAFE_FREE_STRINGA(pszDCName);
     VMAFD_SAFE_FREE_STRINGA(pszLSLocation);
 
     return dwError;
@@ -546,20 +578,85 @@ VmAfSrvSetDCName(
     PWSTR    pwszDCName     /* IN     */
     )
 {
-    DWORD dwError = 0;
-    PSTR pszDCName = NULL;
+    DWORD           dwError = 0;
+    PSTR            pszDCName = NULL;
+    PVMAFD_REG_ARG  pArgs = NULL;
+    LDAP*           pLDAP = NULL;
+    VMAFD_DOMAIN_STATE domainState = VMAFD_DOMAIN_STATE_NONE;
 
     dwError = VmAfdAllocateStringAFromW(pwszDCName, &pszDCName);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    dwError = _ConfigSetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
-                               VMAFD_REG_KEY_DC_NAME,
-                               pwszDCName);
+    dwError = VmAfSrvGetDomainState(&domainState);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded, DCName=%s", __FUNCTION__, pszDCName);
+    switch (domainState)
+    {
+    case VMAFD_DOMAIN_STATE_NONE:
+        /* allow initial setting of DCName */
+        dwError = _ConfigSetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
+                               VMAFD_REG_KEY_DC_NAME,
+                               pwszDCName);
+        BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
+        break;
+
+    case VMAFD_DOMAIN_STATE_CONTROLLER:
+        /* cannot change DC after promoted to controller */
+        dwError = ERROR_OPERATION_NOT_PERMITTED;
+        BAIL_ON_VMAFD_ERROR(dwError);
+        break;
+
+    case VMAFD_DOMAIN_STATE_CLIENT:
+        /*
+         * allow re-pointing if new DC is in the same Lotus federation.
+         * Verify this via machine account authentication to new DC.
+         */
+        dwError = VmAfdGetMachineInfo( &pArgs );
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = VmAfdLDAPConnect(
+                        pszDCName,  // new DC
+                        0,          // use default LDAP port
+                        pArgs->pszAccountUPN,
+                        pArgs->pszPassword,
+                        &pLDAP);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = _ConfigSetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
+                               VMAFD_REG_KEY_DC_NAME,
+                               pwszDCName);
+        BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
+
+        dwError = VmAfSrvRefreshSiteName();
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = CdcSrvShutdownDefaultHAMode(gVmafdGlobals.pCdcContext);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        dwError = CdcSrvInitDefaultHAMode(gVmafdGlobals.pCdcContext);
+        BAIL_ON_VMAFD_ERROR(dwError);
+
+        break;
+
+    default:
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+
+    VmAfdLog(VMAFD_DEBUG_DEBUG, "%s succeeded, DCName=%s", __FUNCTION__, pszDCName);
 
 cleanup:
+
+    if ( pArgs != NULL )
+    {
+        VmAfdFreeRegArgs( pArgs );
+    }
+
+    if ( pLDAP != NULL )
+    {
+        ldap_unbind_ext(pLDAP, NULL, NULL);
+    }
 
     VMAFD_SAFE_FREE_STRINGA(pszDCName);
 
@@ -583,7 +680,7 @@ VmAfSrvGetPNID(
     dwError = _ConfigGetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
                                VMAFD_REG_KEY_PNID,
                                &pwszPNID);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
     *ppwszPNID = pwszPNID;
 
@@ -608,9 +705,7 @@ VmAfSrvSetPNID(
     dwError = _ConfigSetString(VMAFD_CONFIG_PARAMETER_KEY_PATH,
                                VMAFD_REG_KEY_PNID,
                                pwszPNID);
-    BAIL_ON_VMAFD_ERROR(dwError);
-
-    VmAfdLog(VMAFD_DEBUG_ANY, "%s succeeded", __FUNCTION__);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -634,7 +729,7 @@ VmAfSrvGetCAPath(
     dwError = _ConfigGetString( VMAFD_CONFIG_PARAMETER_KEY_PATH,
                                 VMAFD_REG_KEY_CA_PATH,
                                 &pwszPath);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
     *ppwszPath = pwszPath;
 
@@ -657,7 +752,7 @@ VmAfSrvSetCAPath(
     DWORD dwError = 0;
 
     dwError = _ConfigSetString(VMAFD_CONFIG_PARAMETER_KEY_PATH, VMAFD_REG_KEY_CA_PATH, pwszPath);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
 cleanup:
 
@@ -798,7 +893,7 @@ VecsSrvGetDBBasePath(
     dwError = _ConfigGetString(VMAFD_REG_PATH,
                                VMAFD_REG_KEY_DB_PATH,
                                &pwszDbPath);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
     dwError = VmAfdAllocateStringAFromW(
                                         pwszDbPath,
@@ -1281,6 +1376,61 @@ error:
     goto cleanup;
 }
 
+DWORD
+VmAfSrvChangePNID(
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword,
+    PCWSTR pwszPNID
+    )
+{
+    DWORD dwError = 0;
+    PSTR pszUserName = NULL;
+    PSTR pszPassword = NULL;
+    PSTR pszPNID = NULL;
+
+    if (IsNullOrEmptyString(pwszUserName) ||
+        IsNullOrEmptyString(pwszPassword) ||
+        IsNullOrEmptyString(pwszPNID))
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR (dwError);
+    }
+
+    dwError = VmAfdAllocateStringAFromW(pwszUserName, &pszUserName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringAFromW(pwszPassword, &pszPassword);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdAllocateStringAFromW(pwszPNID, &pszPNID);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmDirChangePNID(pszUserName, pszPassword, pszPNID);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = _ConfigSetString(
+            VMAFD_CONFIG_PARAMETER_KEY_PATH,
+            VMAFD_REG_KEY_PNID,
+            pwszPNID);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = _ConfigSetString(
+            VMAFD_CONFIG_PARAMETER_KEY_PATH,
+            VMAFD_REG_KEY_DC_NAME,
+            pwszPNID);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    VMAFD_SAFE_FREE_STRINGA(pszUserName);
+    VMAFD_SAFE_FREE_STRINGA(pszPassword);
+    VMAFD_SAFE_FREE_STRINGA(pszPNID);
+    return dwError;
+
+error:
+    VmAfdLog(VMAFD_DEBUG_ANY, "%s failed. Error(%u)", __FUNCTION__, dwError);
+    goto cleanup;
+}
+
 static
 DWORD
 _ConfigGetString(
@@ -1477,7 +1627,7 @@ _ConfigGetInteger(
                     NULL,
                     pszValueName,
                     &dwValue);
-    BAIL_ON_VMAFD_ERROR(dwError);
+    BAIL_ON_VMAFD_ERROR_NO_LOG(dwError);
 
     *pdwValue = dwValue;
 
@@ -1635,6 +1785,67 @@ cleanup:
 error:
 
     VMAFD_SAFE_FREE_STRINGA(pszUrl);
+
+    goto cleanup;
+}
+
+DWORD
+VmAfSrvGetRegKeySecurity(
+    PCSTR    pszSubKey,      /* IN     */
+    PSTR*    ppszSecurity    /*    OUT */
+    )
+{
+    DWORD dwError = 0;
+    PVMAF_CFG_CONNECTION pConnection = NULL;
+    PVMAF_CFG_KEY pRootKey = NULL;
+    PVMAF_CFG_KEY pParamsKey = NULL;
+    PSTR  pszSecurity = NULL;
+
+    dwError = VmAfConfigOpenConnection(&pConnection);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfConfigOpenRootKey(
+                    pConnection,
+                    "HKEY_LOCAL_MACHINE",
+                    0,
+                    KEY_READ,
+                    &pRootKey);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfConfigOpenKey(
+                    pConnection,
+                    pRootKey,
+                    pszSubKey,
+                    0,
+                    KEY_READ,
+                    &pParamsKey);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfConfigGetSecurity(
+                    pParamsKey,
+                    &pszSecurity);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppszSecurity = pszSecurity;
+
+cleanup:
+
+    if (pParamsKey)
+    {
+        VmAfConfigCloseKey(pParamsKey);
+    }
+    if (pRootKey)
+    {
+        VmAfConfigCloseKey(pRootKey);
+    }
+    if (pConnection)
+    {
+        VmAfConfigCloseConnection(pConnection);
+    }
+
+    return dwError;
+
+error:
 
     goto cleanup;
 }

@@ -44,7 +44,6 @@
 #pragma once
 #include <errno.h>
 #include "targetver.h"
-#define WIN32_LEAN_AND_MEAN // Exclude rarely-used stuff from Windows headers
 #include <windows.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -55,6 +54,12 @@
 #include <Winreg.h>
 #include <assert.h>
 #include <Ws2tcpip.h>
+
+#define LW_STRICT_NAMESPACE
+#include <lw/types.h>
+#include <lw/hash.h>
+#include <lw/security-types.h>
+
 #endif
 
 //SUNG vmkdc merge,

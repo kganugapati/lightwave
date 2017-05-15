@@ -39,6 +39,12 @@ VmDirFreeSidGenState(
     PVDIR_SID_GEN_STATE pGsidGenState
     );
 
+static
+BOOLEAN
+_VmDirIsLegacyACLMode(
+    VOID
+    );
+
 DWORD
 VmDirVmAclInit(
     VOID
@@ -60,6 +66,8 @@ VmDirVmAclInit(
     dwError = VmDirInitRidSynchThr( &(gSidGenState.pRIDSyncThr) );
     BAIL_ON_VMDIR_ERROR(dwError);
 
+    bLegacySecurityDescriptorsNeeded = _VmDirIsLegacyACLMode();
+
 cleanup:
     return dwError;
 
@@ -72,16 +80,11 @@ VmDirVmAclShutdown(
     VOID
     )
 {
-#define RID_BUF_SIZE24	24
-    DWORD                 dwCount = 0;
-    PLW_HASHTABLE_NODE pNode = NULL;
-    LW_HASHTABLE_ITER  iter = LW_HASHTABLE_ITER_INIT;
-    CHAR                  RIDBuf[RID_BUF_SIZE24] = {0};
+    PLW_HASHTABLE_NODE    pNode = NULL;
+    LW_HASHTABLE_ITER     iter = LW_HASHTABLE_ITER_INIT;
 
     if (gSidGenState.pHashtable)
     {
-        dwCount = LwRtlHashTableGetCount(gSidGenState.pHashtable);
-
         while ((pNode = LwRtlHashTableIterate(gSidGenState.pHashtable, &iter)))
         {
             DWORD                      RidSeq = 0;
@@ -89,10 +92,7 @@ VmDirVmAclShutdown(
             VmDirFindDomainRidSequenceWithDN( pState->pszDomainDn, &RidSeq);
             if (RidSeq > 0)
             {
-                if ( VmDirStringPrintFA( RIDBuf, RID_BUF_SIZE24 -1, "%lu", RidSeq) == 0 )
-                {
-                    VmDirSyncRIDSeqToDB( pState->pszDomainDn, RIDBuf ); // ignore error.
-                }
+                (VOID)VmDirSyncRIDSeqToDB(pState->pszDomainDn, RidSeq);
             }
         }
     }
@@ -109,10 +109,30 @@ VmDirVmAclShutdown(
     return;
 }
 
+
+DWORD
+VmDirRegisterACLMode(
+    VOID
+    )
+{
+    DWORD dwError = 0;
+
+    dwError = VmDirBackendUniqKeySetValue(
+                VMDIR_KEY_BE_GENERIC_ACL_MODE,
+                VMDIR_ACL_MODE_ENABLED,
+                TRUE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+cleanup:
+    return dwError;
+error:
+    goto cleanup;
+}
+
 static
-PCVOID
+LW_PCVOID
 _DomainSIDGenStateGetKey(
-    PLW_HASHTABLE_NODE   pNode,
+    PLW_HASHTABLE_NODE      pNode,
     PVOID                   pUnused
     )
 {
@@ -124,7 +144,7 @@ _DomainSIDGenStateGetKey(
 static
 ULONG
 _LwRtlHashDigestPstr(
-    PCVOID pKey,
+    LW_PCVOID pKey,
     PVOID pUnused
     )
 {
@@ -154,8 +174,8 @@ _LwRtlHashDigestPstr(
 static
 BOOLEAN
 _LwRtlHashEqualPstr(
-    PCVOID pKey1,
-    PCVOID pKey2,
+    LW_PCVOID pKey1,
+    LW_PCVOID pKey2,
     PVOID pUnused
     )
 {
@@ -194,14 +214,14 @@ VmDirInitSidGenState(
 {
     DWORD dwError = 0;
 
-    dwError = LwNtStatusToWin32Error(
-                LwRtlCreateHashTable(
+    dwError = LwRtlCreateHashTable(
                     &pGsidGenState->pHashtable,
                     _DomainSIDGenStateGetKey,
                     _LwRtlHashDigestPstr,
                     _LwRtlHashEqualPstr,
                     NULL,
-                    VMDIR_DOMAIN_SID_GEN_HASH_TABLE_SIZE));
+                    VMDIR_DOMAIN_SID_GEN_HASH_TABLE_SIZE);
+    dwError = LwNtStatusToWin32Error(dwError);
     BAIL_ON_VMDIR_ERROR(dwError);
 
 	VmDirAllocateMutex( &pGsidGenState->mutex );
@@ -216,7 +236,7 @@ VmDirFreeSidGenState(
     PVDIR_SID_GEN_STATE pGsidGenState
     )
 {
-	BOOLEAN bInLock = FALSE;
+    BOOLEAN bInLock = FALSE;
     PLW_HASHTABLE_NODE pNode = NULL;
     LW_HASHTABLE_ITER iter = LW_HASHTABLE_ITER_INIT;
 
@@ -244,4 +264,43 @@ VmDirFreeSidGenState(
 
 cleanup:
     return;
+}
+
+VOID
+VmDirSetACLMode(
+    VOID
+    )
+{
+    bLegacySecurityDescriptorsNeeded = _VmDirIsLegacyACLMode();
+}
+
+static
+BOOLEAN
+_VmDirIsLegacyACLMode(
+    VOID
+    )
+{
+    DWORD dwError = 0;
+    BOOLEAN bIsLegacy = TRUE;
+    PSTR pValue = NULL;
+
+    dwError = VmDirBackendUniqKeyGetValue(
+                VMDIR_KEY_BE_GENERIC_ACL_MODE,
+                &pValue);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    // We should have value "enabled" found for ACL enabled case.
+    bIsLegacy = VmDirStringCompareA(pValue, VMDIR_ACL_MODE_ENABLED, FALSE) != 0;
+
+cleanup:
+    if (bIsLegacy)
+    {
+        VMDIR_LOG_INFO(VMDIR_LOG_MASK_ALL, "ACL MODE: Legacy");
+    }
+    VMDIR_SAFE_FREE_MEMORY(pValue);
+
+    return bIsLegacy;
+
+error:
+    goto cleanup;
 }

@@ -51,6 +51,21 @@ VmAfPosixCfgCreateKey(
     );
 
 DWORD
+VmAfPosixCfgDeleteKey(
+    PVMAF_CFG_CONNECTION pConnection,
+    PVMAF_CFG_KEY        pKey,
+    PCSTR                pszSubKey
+    );
+
+DWORD
+VmAfPosixCfgEnumKeys(
+    PVMAF_CFG_CONNECTION pConnection,
+    PVMAF_CFG_KEY        pKey,
+    PSTR                 **pppszKeyNames,
+    PDWORD               pdwKeyNameCount
+    );
+
+DWORD
 VmAfPosixCfgReadStringValue(
     PVMAF_CFG_KEY       pKey,
     PCSTR               pszSubkey,
@@ -74,6 +89,18 @@ VmAfPosixCfgSetValue(
 	PBYTE               pValue,
 	DWORD               dwSize
 	);
+
+DWORD
+VmAfPosixCfgDeleteValue(
+	PVMAF_CFG_KEY       pKey,
+	PCSTR               pszValue
+	);
+
+DWORD
+VmAfPosixCfgGetSecurity(
+    PVMAF_CFG_KEY           pKey,
+    PSTR                   *ppszSecurityDescriptor
+    );
 
 VOID
 VmAfPosixCfgCloseKey(

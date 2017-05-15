@@ -1,7 +1,18 @@
+/*
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the “License”); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS, without
+ * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
 // EventLogClient.c : Defines the exported functions for the DLL application.
-//
-
-
 #include "stdafx.h"
 
 static
@@ -14,10 +25,10 @@ static
 DWORD
 EventLogMarshallEventContainer(
     PEVENTLOG_CONTAINER pEventContainer,
-    PBYTE                   pBuffer,
-    size_t                  curOffset,
-    size_t*                 pBytesRequired,
-    size_t*                 pBytesWritten
+    PBYTE               pBuffer,
+    size_t              curOffset,
+    size_t*             pBytesRequired,
+    size_t*             pBytesWritten
     );
 
 static
@@ -25,10 +36,10 @@ DWORD
 EventLogMarshallEventEntry(
     PEVENTLOG_ENTRY pAppEntry,     /* IN              */
     PEVENTLOG_ENTRY pAppEntryCopy, /* IN OUT OPTIONAL */
-    PBYTE               pBuffer,       /* IN OUT OPTIONAL */
-    size_t              curOffset,     /* IN              */
-    size_t*             pBytesRequired,/* IN OUT OPTIONAL */
-    size_t*             pBytesWritten  /* IN OUT OPTIONAL */
+    PBYTE           pBuffer,       /* IN OUT OPTIONAL */
+    size_t          curOffset,     /* IN              */
+    size_t*         pBytesRequired,/* IN OUT OPTIONAL */
+    size_t*         pBytesWritten  /* IN OUT OPTIONAL */
     );
 
 
@@ -54,17 +65,14 @@ EventLogDCEGetErrorCode(
     DWORD dwError = 0;
 
     dwError = dcethread_exc_getstatus (pDceException);
-#ifndef _WIN32
-    return LwNtStatusToWin32Error(LwRpcStatusToNtStatus(dwError));
-#else
-    return GetLastError();
-#endif
+
+    return dwError;
 }
 
 #ifndef _WIN32
 __attribute__ ((constructor))
 #endif
-DWORD 
+DWORD
 EventLogInitialize()
 {
     setlocale(LC_ALL, "");
@@ -74,7 +82,6 @@ EventLogInitialize()
 DWORD
 EventLogAdd(
     RP_PCSTR pszServerName,
-    RP_PCSTR pszServerEndPoint,
     DWORD dwEventID,
     DWORD dwEventType,
     RP_PCSTR pszMessage
@@ -82,22 +89,15 @@ EventLogAdd(
 {
     handle_t BindingHandle = NULL;
     DWORD dwError = 0;
-    RP_PWSTR pwszServerNameUnicode = NULL;
     RP_PWSTR pwszMessage = NULL;
 
     dwError = EventLogCreateBindingHandleA(
                     pszServerName,
-                    pszServerEndPoint,
+                    NULL,
                     &BindingHandle
                     );
     BAIL_ON_ERROR(dwError);
 
-    dwError = EventLogAllocateStringWFromA(
-                        pszServerName,
-                        &pwszServerNameUnicode
-                        );
-    BAIL_ON_ERROR(dwError);
-    
     dwError = EventLogAllocateStringWFromA(
                         pszMessage,
                         &pwszMessage
@@ -108,7 +108,6 @@ EventLogAdd(
     {
         dwError = RpcEventLogAdd(
                 BindingHandle,
-                pwszServerNameUnicode,
                 dwEventID,
                 dwEventType,
                 pwszMessage);
@@ -125,9 +124,6 @@ error:
     if (BindingHandle) {
         EventLogFreeBindingHandle(&BindingHandle);
     }
-    if (pwszServerNameUnicode) {
-        EventLogFreeStringW(pwszServerNameUnicode);
-    }
     if (pwszMessage) {
         EventLogFreeStringW(pwszMessage);
     }
@@ -137,32 +133,23 @@ error:
 DWORD
 EventLogInitEnumEventsHandle(
     RP_PCSTR pszServerName,
-    RP_PCSTR pszServerEndpoint,
     PDWORD   pdwHandle
     )
 {
     handle_t BindingHandle = NULL;
     DWORD dwError = 0;
-    RP_PWSTR pwszServerNameUnicode = NULL;
 
     dwError = EventLogCreateBindingHandleA(
                     pszServerName,
-                    pszServerEndpoint,
+                    NULL,
                     &BindingHandle
                     );
-    BAIL_ON_ERROR(dwError);
-
-    dwError = EventLogAllocateStringWFromA(
-                        pszServerName,
-                        &pwszServerNameUnicode
-                        );
     BAIL_ON_ERROR(dwError);
 
     DCETHREAD_TRY
     {
         dwError = RpcEventLogInitEnumHandle(
                 BindingHandle,
-                pwszServerNameUnicode,
                 pdwHandle);
     }
     DCETHREAD_CATCH_ALL(THIS_CATCH)
@@ -177,18 +164,12 @@ error:
     if (BindingHandle) {
         EventLogFreeBindingHandle( &BindingHandle);
     }
-
-    if (pwszServerNameUnicode) {
-        EventLogFreeStringW(pwszServerNameUnicode);
-    }
-
     return dwError;
 }
 
 DWORD
 EventLogEnumEvents(
     RP_PCSTR pszServerName,
-    RP_PCSTR pszServerEndpoint,
     DWORD dwHandle,
     DWORD dwStartIndex,
     DWORD dwNumEvents,
@@ -197,7 +178,6 @@ EventLogEnumEvents(
 {
     DWORD dwError = 0;
     handle_t BindingHandle = NULL;
-    RP_PWSTR pwszServerNameUnicode = NULL;
     PEVENTLOG_CONTAINER pEventContainer = NULL;
     PBYTE  pBuffer = NULL;
     size_t bufferSize = 0;
@@ -210,22 +190,15 @@ EventLogEnumEvents(
 
     dwError = EventLogCreateBindingHandleA(
                     pszServerName,
-                    pszServerEndpoint,
+                    NULL,
                     &BindingHandle
                     );
-    BAIL_ON_ERROR(dwError);
-
-    dwError = EventLogAllocateStringWFromA(
-                        pszServerName,
-                        &pwszServerNameUnicode
-                        );
     BAIL_ON_ERROR(dwError);
 
     DCETHREAD_TRY
     {
         dwError = RpcEventLogEnumEvents(
                 BindingHandle,
-                pwszServerNameUnicode,
                 dwHandle,
                 dwStartIndex,
                 dwNumEvents,
@@ -278,11 +251,6 @@ cleanup:
         EventLogFreeBindingHandle( &BindingHandle);
     }
 
-    if (pwszServerNameUnicode)
-    {
-        EventLogFreeStringW(pwszServerNameUnicode);
-    }
-
     return dwError;
 
 error:
@@ -303,11 +271,11 @@ error:
 static
 DWORD
 EventLogMarshallEventContainer(
-    PEVENTLOG_CONTAINER pEventContainer,     /* IN              */
-    PBYTE                   pBuffer,           /* IN OUT OPTIONAL */
-    size_t                  curOffset,         /* IN              */
-    size_t*                 pBytesRequired,    /* IN OUT OPTIONAL */
-    size_t*                 pBytesWritten      /* IN OUT OPTIONAL */
+    PEVENTLOG_CONTAINER pEventContainer,   /* IN              */
+    PBYTE               pBuffer,           /* IN OUT OPTIONAL */
+    size_t              curOffset,         /* IN              */
+    size_t*             pBytesRequired,    /* IN OUT OPTIONAL */
+    size_t*             pBytesWritten      /* IN OUT OPTIONAL */
     )
 {
     DWORD dwError = 0;
@@ -418,10 +386,10 @@ DWORD
 EventLogMarshallEventEntry(
     PEVENTLOG_ENTRY pEventEntry,      /* IN              */
     PEVENTLOG_ENTRY pEventEntryCopy,  /* IN OUT OPTIONAL */
-    PBYTE               pBuffer,        /* IN OUT OPTIONAL */
-    size_t              curOffset,      /* IN              */
-    size_t*             pBytesRequired, /* IN OUT OPTIONAL */
-    size_t*             pBytesWritten   /* IN OUT OPTIONAL */
+    PBYTE           pBuffer,          /* IN OUT OPTIONAL */
+    size_t          curOffset,        /* IN              */
+    size_t*         pBytesRequired,   /* IN OUT OPTIONAL */
+    size_t*         pBytesWritten     /* IN OUT OPTIONAL */
     )
 {
     DWORD  dwError = 0;

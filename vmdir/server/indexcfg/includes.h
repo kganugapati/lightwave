@@ -61,11 +61,7 @@
 
 #pragma once
 #include "targetver.h"
-#define WIN32_LEAN_AND_MEAN // Exclude rarely-used stuff from Windows headers
 #include <windows.h>
-#if !defined(HAVE_DCERPC_WIN32)
-#include <rpc.h>
-#endif
 #include <stdint.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -79,7 +75,10 @@
 #include <lber_pvt.h>
 #include <lber-int.h>
 
-#include "banned.h"
+#define LW_STRICT_NAMESPACE
+#include <lw/types.h>
+#include <lw/hash.h>
+#include <lw/security-types.h>
 
 #include <vmdir.h>
 #include <vmdirtypes.h>
@@ -102,5 +101,6 @@
 #include "prototypes.h"
 #include "externs.h"
 
+#include "banned.h"
 
 #endif

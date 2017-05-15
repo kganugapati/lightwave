@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -19,7 +19,7 @@
 void VmAfdCloseFileCRLFileHandle(void **ctx);
 
 DWORD
-VmAfdRpcGetStatus(
+Srv_VmAfdRpcGetStatus(
     handle_t      hBinding, /* IN     */
     PVMAFD_STATUS pStatus   /* IN OUT */
     )
@@ -49,7 +49,7 @@ error:
 }
 
 DWORD
-VmAfdRpcGetDomainName(
+Srv_VmAfdRpcGetDomainName(
     rpc_binding_handle_t hBinding,          /* IN     */
     PWSTR*   ppwszDomain        /*    OUT */
     )
@@ -97,7 +97,7 @@ error:
 }
 
 DWORD
-VmAfdRpcSetDomainName(
+Srv_VmAfdRpcSetDomainName(
     rpc_binding_handle_t hBinding,         /* IN     */
     PWSTR    pwszDomain        /* IN     */
     )
@@ -133,7 +133,7 @@ error:
 }
 
 DWORD
-VmAfdRpcGetDomainState(
+Srv_VmAfdRpcGetDomainState(
     rpc_binding_handle_t hBinding,         /* IN     */
     PVMAFD_DOMAIN_STATE  pDomainState      /*    OUT */
     )
@@ -165,7 +165,7 @@ error:
 }
 
 DWORD
-VmAfdRpcGetLDU(
+Srv_VmAfdRpcGetLDU(
     rpc_binding_handle_t hBinding,      /* IN     */
     PWSTR*   ppwszLDU       /*    OUT */
     )
@@ -213,7 +213,44 @@ error:
 }
 
 DWORD
-VmAfdRpcSetRHTTPProxyPort(
+Srv_VmAfdRpcGetRHTTPProxyPort(
+    rpc_binding_handle_t hBinding,
+    PDWORD pdwPort
+    )
+{
+    DWORD dwError = 0;
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+    DWORD dwPort = 0;
+
+    BAIL_ON_VMAFD_INVALID_POINTER(pdwPort, dwError);
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfSrvGetRHTTPProxyPort(&dwPort);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *pdwPort = dwPort;
+
+cleanup:
+
+    return dwError;
+
+error:
+
+    if (pdwPort)
+    {
+        *pdwPort = 0;
+    }
+    VmAfdLog(VMAFD_DEBUG_ERROR, "RpcVmAfdGetRHTTPProxyPort failed. Error(%u)",
+                              dwError);
+
+    goto cleanup;
+}
+
+DWORD
+Srv_VmAfdRpcSetRHTTPProxyPort(
     rpc_binding_handle_t hBinding,      /* IN     */
     DWORD dwPort                        /* IN     */
     )
@@ -241,7 +278,7 @@ error:
 }
 
 DWORD
-VmAfdRpcSetDCPort(
+Srv_VmAfdRpcSetDCPort(
     rpc_binding_handle_t hBinding,      /* IN     */
     DWORD dwPort                        /* IN     */
     )
@@ -269,7 +306,7 @@ error:
 }
 
 DWORD
-VmAfdRpcSetLDU(
+Srv_VmAfdRpcSetLDU(
     rpc_binding_handle_t hBinding,         /* IN     */
     PWSTR    pwszLDU           /* IN     */
     )
@@ -305,7 +342,7 @@ error:
 }
 
 DWORD
-VmAfdRpcGetCMLocation(
+Srv_VmAfdRpcGetCMLocation(
     rpc_binding_handle_t hBinding,        /* IN     */
     PWSTR*   ppwszCMLocation  /*    OUT */
     )
@@ -353,7 +390,7 @@ error:
 }
 
 DWORD
-VmAfdRpcGetLSLocation(
+Srv_VmAfdRpcGetLSLocation(
     rpc_binding_handle_t hBinding,        /* IN     */
     PWSTR*   ppwszLSLocation  /*    OUT */
     )
@@ -401,7 +438,7 @@ error:
 }
 
 DWORD
-VmAfdRpcGetDCName(
+Srv_VmAfdRpcGetDCName(
     rpc_binding_handle_t hBinding,      /* IN     */
     PWSTR*   ppwszDCName    /*    OUT */
     )
@@ -449,7 +486,7 @@ error:
 }
 
 DWORD
-VmAfdRpcSetDCName(
+Srv_VmAfdRpcSetDCName(
     rpc_binding_handle_t hBinding,      /* IN     */
     PWSTR    pwszDCName     /* IN     */
     )
@@ -485,7 +522,7 @@ error:
 }
 
 DWORD
-VmAfdRpcGetPNID(
+Srv_VmAfdRpcGetPNID(
     rpc_binding_handle_t hBinding,
     PWSTR* ppwszPNID
     )
@@ -533,7 +570,7 @@ error:
 }
 
 DWORD
-VmAfdRpcSetPNID(
+Srv_VmAfdRpcSetPNID(
     rpc_binding_handle_t hBinding,
     PWSTR pwszPNID
     )
@@ -569,7 +606,7 @@ error:
 }
 
 DWORD
-VmAfdRpcGetCAPath(
+Srv_VmAfdRpcGetCAPath(
     rpc_binding_handle_t hBinding,
     PWSTR* ppwszPath
     )
@@ -617,7 +654,7 @@ error:
 }
 
 DWORD
-VmAfdRpcSetCAPath(
+Srv_VmAfdRpcSetCAPath(
     rpc_binding_handle_t hBinding,
     PWSTR pwszPath
     )
@@ -653,7 +690,7 @@ error:
 }
 
 UINT32
-VmAfdRpcGetSiteGUID(
+Srv_VmAfdRpcGetSiteGUID(
     rpc_binding_handle_t hBinding, /* IN              */
     PWSTR*               ppwszGUID /*    OUT          */
     )
@@ -693,12 +730,14 @@ error:
     {
         VmAfdRpcServerFreeMemory(pwszGUID_rpc);
     }
+    VmAfdLog(VMAFD_DEBUG_ERROR, "VmAfdRpcGetSiteGUID failed. Error(%u)",
+                              dwError);
 
     goto cleanup;
 }
 
 UINT32
-VmAfdRpcGetMachineID(
+Srv_VmAfdRpcGetMachineID(
     rpc_binding_handle_t hBinding, /* IN              */
     PWSTR*               ppwszGUID /*    OUT          */
     )
@@ -738,12 +777,14 @@ error:
     {
         VmAfdRpcServerFreeMemory(pwszGUID_rpc);
     }
+    VmAfdLog(VMAFD_DEBUG_ERROR, "VmAfdRpcGetMachineID failed. Error(%u)",
+                              dwError);
 
     goto cleanup;
 }
 
 UINT32
-VmAfdRpcSetMachineID(
+Srv_VmAfdRpcSetMachineID(
     rpc_binding_handle_t hBinding, /* IN              */
     PWSTR                pwszGUID /*  IN              */
     )
@@ -764,12 +805,14 @@ cleanup:
     return dwError;
 
 error:
+    VmAfdLog(VMAFD_DEBUG_ERROR, "VmAfdRpcSetMachineID failed. Error(%u)",
+                              dwError);
 
     goto cleanup;
 }
 
 DWORD
-VmAfdRpcQueryAD(
+Srv_VmAfdRpcQueryAD(
     rpc_binding_handle_t hBinding,  /* IN              */
     PWSTR  *ppwszComputer,          /*    OUT          */
     PWSTR  *ppwszDomain,            /*    OUT          */
@@ -814,7 +857,7 @@ error:
 }
 
 DWORD
-VmAfdRpcForceReplication(
+Srv_VmAfdRpcForceReplication(
     rpc_binding_handle_t hBinding, /* IN              */
     PWSTR   pwszServerName         /* IN              */
     )
@@ -846,7 +889,7 @@ error:
 }
 
 DWORD
-VmAfdRpcTriggerRootCertsRefresh(
+Srv_VmAfdRpcTriggerRootCertsRefresh(
     handle_t hBinding
 )
 {
@@ -858,19 +901,16 @@ VmAfdRpcTriggerRootCertsRefresh(
     dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
     BAIL_ON_VMAFD_ERROR(dwError);
 
-    if (!gVmafdGlobals.pCertUpdateThr)
-    {
-        dwError = ERROR_INVALID_STATE;
-        BAIL_ON_VMAFD_ERROR(dwError);
-    }
-
-    dwError = VmAfdWakeupCertificateUpdatesThr(gVmafdGlobals.pCertUpdateThr, TRUE);
+    dwError = VmAfdRootFetchTask(TRUE);
     BAIL_ON_VMAFD_ERROR(dwError);
 
 cleanup:
     return dwError;
 
 error:
+    VmAfdLog(VMAFD_DEBUG_ERROR, "VmAfdRpcTriggerRootCertsRefresh failed. Error(%u)",
+                              dwError);
+
     goto cleanup;
 }
 
@@ -878,7 +918,7 @@ error:
  * Creates a certificate store
  */
 DWORD
-VecsRpcCreateCertStore(
+Srv_VecsRpcCreateCertStore(
      rpc_binding_handle_t hBinding,
      PWSTR pszStoreName,
      PWSTR pszPassword,
@@ -958,7 +998,7 @@ error:
 }
 
 DWORD
-VecsRpcOpenCertStore(
+Srv_VecsRpcOpenCertStore(
         rpc_binding_handle_t hBinding,
         PWSTR pszStoreName,
         PWSTR pszPassword,
@@ -1004,7 +1044,7 @@ error:
 }
 
 DWORD
-VecsRpcCloseCertStore(
+Srv_VecsRpcCloseCertStore(
         rpc_binding_handle_t hBinding,
         vecs_store_handle_t *ppStore
         )
@@ -1032,12 +1072,18 @@ cleanup:
 
     return dwError;
 error:
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
 
     goto cleanup;
 }
 
 UINT32
-VecsRpcEnumCertStore(
+Srv_VecsRpcEnumCertStore(
     rpc_binding_handle_t hBinding,
     PVMAFD_CERT_STORE_ARRAY * ppCertStoreArray
     )
@@ -1092,12 +1138,18 @@ error:
     {
         VecsSrvRpcFreeCertStoreArray(pCertStoreArray);
     }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
 
     goto cleanup;
 }
 
 UINT32
-VecsRpcDeleteCertStore(
+Srv_VecsRpcDeleteCertStore(
     rpc_binding_handle_t hBinding,
     PWSTR                pwszStoreName
     )
@@ -1120,12 +1172,17 @@ VecsRpcDeleteCertStore(
     BAIL_ON_VMAFD_ERROR(dwError);
 
 error:
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
 
     return dwError;
 }
 
 UINT32
-VecsRpcBeginEnumCerts(
+Srv_VecsRpcBeginEnumCerts(
     rpc_binding_handle_t      hBinding,
     vecs_store_handle_t       pStore,
     UINT32                    dwMaxCount,
@@ -1178,19 +1235,24 @@ error:
     {
       VecsSrvReleaseEnumContext(pEnumContext);
     }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
 
     goto cleanup;
 }
 
 UINT32
-VecsRpcEnumCerts(
+Srv_VecsRpcEnumCerts(
     rpc_binding_handle_t     hBinding,
     vecs_entry_enum_handle_t pEnumContext,
     PVMAFD_CERT_ARRAY*       ppCertContainer
     )
 {
     DWORD dwError = 0;
-    PVECS_SRV_ENUM_CONTEXT pContext = (PVECS_SRV_ENUM_CONTEXT)pEnumContext;
+    PVECS_SRV_ENUM_CONTEXT pContext = NULL;
     PVMAFD_CERT_ARRAY pCertContainer = NULL;
     PVMAFD_CERT_ARRAY pCertContainer_rpc = NULL;
     DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
@@ -1205,6 +1267,8 @@ VecsRpcEnumCerts(
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMAFD_ERROR(dwError);
     }
+
+    pContext = (PVECS_SRV_ENUM_CONTEXT)pEnumContext;
 
     pContext = VecsSrvAcquireEnumContext(pContext);
 
@@ -1240,12 +1304,17 @@ error:
     {
       VecsSrvRpcFreeCertArray(pCertContainer_rpc);
     }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
 
     goto cleanup;
 }
 
 UINT32
-VecsRpcEndEnumCerts(
+Srv_VecsRpcEndEnumCerts(
     rpc_binding_handle_t      hBinding,
     vecs_entry_enum_handle_t* ppEnumContext
     )
@@ -1273,12 +1342,17 @@ cleanup:
     return dwError;
 
 error:
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
 
     goto cleanup;
 }
 
 UINT32
-VecsRpcGetEntryCount(
+Srv_VecsRpcGetEntryCount(
     rpc_binding_handle_t hBinding,
     vecs_store_handle_t pStore,
     PDWORD pdwSize
@@ -1286,7 +1360,7 @@ VecsRpcGetEntryCount(
 {
     DWORD dwError = 0;
     DWORD dwSize = 0;
-    PVECS_SERV_STORE pStore2 = (PVECS_SERV_STORE)pStore;
+    PVECS_SERV_STORE pStore2 = NULL;
     DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTHZ;
@@ -1299,6 +1373,8 @@ VecsRpcGetEntryCount(
       dwError = ERROR_INVALID_PARAMETER;
       BAIL_ON_VMAFD_ERROR (dwError);
     }
+
+    pStore2 = (PVECS_SERV_STORE)pStore;
 
     pStore2 = VecsSrvAcquireCertStore(pStore2);
 
@@ -1320,12 +1396,17 @@ error:
     {
         *pdwSize = 0;
     }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
 
     goto cleanup;
 }
 
 UINT32
-VecsRpcGetCertificateByAlias(
+Srv_VecsRpcGetCertificateByAlias(
     rpc_binding_handle_t hBinding,
     vecs_store_handle_t pStore,
     PWSTR pszAliasName,
@@ -1335,7 +1416,7 @@ VecsRpcGetCertificateByAlias(
     DWORD dwError = 0;
     PWSTR pszCert = NULL;
     PWSTR pszCert_rpc = NULL;
-    PVECS_SERV_STORE pStore2 = (PVECS_SERV_STORE)pStore;
+    PVECS_SERV_STORE pStore2 = NULL;
     DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTHZ;
@@ -1351,6 +1432,8 @@ VecsRpcGetCertificateByAlias(
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMAFD_ERROR (dwError);
     }
+
+    pStore2 = (PVECS_SERV_STORE)pStore;
 
     pStore2 = VecsSrvAcquireCertStore(pStore2);
 
@@ -1382,12 +1465,17 @@ error:
     {
       VmAfdRpcServerFreeMemory(pszCert_rpc);
     }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
 
     goto cleanup;
 }
 
 UINT32
-VecsRpcGetPrivateKeyByAlias(
+Srv_VecsRpcGetPrivateKeyByAlias(
     rpc_binding_handle_t hBinding,
     vecs_store_handle_t pStore,
     PWSTR pszAliasName,
@@ -1398,7 +1486,7 @@ VecsRpcGetPrivateKeyByAlias(
     DWORD dwError = 0;
     PWSTR pszPrivateKey = NULL;
     PWSTR pszPrivateKey_Rpc = NULL;
-    PVECS_SERV_STORE pStore2 = (PVECS_SERV_STORE)pStore;
+    PVECS_SERV_STORE pStore2 = NULL;
     DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTHZ;
@@ -1414,6 +1502,8 @@ VecsRpcGetPrivateKeyByAlias(
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMAFD_ERROR (dwError);
     }
+
+    pStore2 = (PVECS_SERV_STORE)pStore;
 
     pStore2 = VecsSrvAcquireCertStore(pStore2);
 
@@ -1446,12 +1536,17 @@ error:
     {
         VmAfdRpcServerFreeMemory(pszPrivateKey_Rpc);
     }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
 
     goto cleanup;
 }
 
 UINT32
-VecsRpcAddCertificate(
+Srv_VecsRpcAddCertificate(
     rpc_binding_handle_t hBinding,
     vecs_store_handle_t pStore,
     UINT32 entryType,
@@ -1463,7 +1558,7 @@ VecsRpcAddCertificate(
     )
 {
     DWORD dwError = 0;
-    PVECS_SERV_STORE pStore2 = (PVECS_SERV_STORE)pStore;
+    PVECS_SERV_STORE pStore2 = NULL;
     CERT_ENTRY_TYPE entryType1 = CERT_ENTRY_TYPE_UNKNOWN;
     BOOLEAN bAutoRefresh1 = FALSE;
     DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
@@ -1486,6 +1581,8 @@ VecsRpcAddCertificate(
         bAutoRefresh1 = TRUE;
     }
 
+    pStore2 = (PVECS_SERV_STORE)pStore;
+
     pStore2 = VecsSrvAcquireCertStore(pStore2);
 
     dwError = VecsSrvAddCertificate(
@@ -1506,11 +1603,17 @@ cleanup:
     }
     return dwError;
 error:
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
     goto cleanup;
 }
 
 UINT32
-VecsRpcGetEntryTypeByAlias(
+Srv_VecsRpcGetEntryTypeByAlias(
     rpc_binding_handle_t hBinding,
     vecs_store_handle_t pStore,
     PWSTR pszAliasName,
@@ -1519,7 +1622,7 @@ VecsRpcGetEntryTypeByAlias(
 {
     DWORD dwError = 0;
     CERT_ENTRY_TYPE entryType = CERT_ENTRY_TYPE_UNKNOWN;
-    PVECS_SERV_STORE pStore2 = (PVECS_SERV_STORE)pStore;
+    PVECS_SERV_STORE pStore2 = NULL;
     DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTHZ;
@@ -1535,6 +1638,8 @@ VecsRpcGetEntryTypeByAlias(
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMAFD_ERROR (dwError);
     }
+
+    pStore2 = (PVECS_SERV_STORE)pStore;
 
     pStore2 = VecsSrvAcquireCertStore (pStore2);
 
@@ -1559,12 +1664,17 @@ error:
     {
         *pEntryType = 0;
     }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
 
     goto cleanup;
 }
 
 UINT32
-VecsRpcGetEntryDateByAlias(
+Srv_VecsRpcGetEntryDateByAlias(
     rpc_binding_handle_t hBinding,
     vecs_store_handle_t pStore,
     PWSTR pszAliasName,
@@ -1573,7 +1683,7 @@ VecsRpcGetEntryDateByAlias(
 {
     DWORD dwError = 0;
     DWORD dwDate = 0;
-    PVECS_SERV_STORE pStore2 = (PVECS_SERV_STORE)pStore;
+    PVECS_SERV_STORE pStore2 = NULL;
     DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTHZ;
@@ -1589,6 +1699,8 @@ VecsRpcGetEntryDateByAlias(
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMAFD_ERROR (dwError);
     }
+
+    pStore2 = (PVECS_SERV_STORE)pStore;
 
     pStore2 = VecsSrvAcquireCertStore(pStore2);
 
@@ -1609,11 +1721,17 @@ error:
     {
         *pdwDate = 0;
     }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
     goto cleanup;
 }
 
 UINT32
-VecsRpcGetEntryByAlias(
+Srv_VecsRpcGetEntryByAlias(
     rpc_binding_handle_t hBinding,
     vecs_store_handle_t pStore,
     PWSTR pszAliasName,
@@ -1622,7 +1740,7 @@ VecsRpcGetEntryByAlias(
     )
 {
     DWORD dwError = 0;
-    PVECS_SERV_STORE pStore2 = (PVECS_SERV_STORE)pStore;
+    PVECS_SERV_STORE pStore2 = NULL;
     ENTRY_INFO_LEVEL infoLevel = ENTRY_INFO_LEVEL_UNDEFINED;
     PVMAFD_CERT_ARRAY pCertContainer_rpc = NULL;
     PVMAFD_CERT_ARRAY pCertContainer = NULL;
@@ -1644,6 +1762,8 @@ VecsRpcGetEntryByAlias(
 
     dwError = VecsSrvValidateInfoLevel (dwInfoLevel, &infoLevel);
     BAIL_ON_VMAFD_ERROR (dwError);
+
+    pStore2 = (PVECS_SERV_STORE)pStore;
 
     pStore2 = VecsSrvAcquireCertStore(pStore2);
 
@@ -1676,19 +1796,24 @@ error:
     {
         VecsSrvRpcFreeCertArray(pCertContainer_rpc);
     }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
 
     goto cleanup;
 }
 
 UINT32
-VecsRpcDeleteCertificate(
+Srv_VecsRpcDeleteCertificate(
     rpc_binding_handle_t hBinding,
     vecs_store_handle_t pStore,
     PWSTR pszAliasName
     )
 {
     DWORD dwError = 0;
-    PVECS_SERV_STORE pStore2 = (PVECS_SERV_STORE)pStore;
+    PVECS_SERV_STORE pStore2 = NULL;
     DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP
                      | VMAFD_RPC_FLAG_REQUIRE_AUTHZ;
@@ -1702,6 +1827,8 @@ VecsRpcDeleteCertificate(
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMAFD_ERROR (dwError);
     }
+
+    pStore2 = (PVECS_SERV_STORE)pStore;
 
     pStore2 = VecsSrvAcquireCertStore(pStore2);
 
@@ -1718,9 +1845,387 @@ cleanup:
 
     return dwError;
 error:
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
     goto cleanup;
 }
 
+UINT32
+Srv_VmAfdRpcGetHeartbeatStatus(
+    rpc_binding_handle_t hBinding,
+    PVMAFD_HB_STATUS_W  *ppHeartbeatStatus
+    )
+{
+    DWORD dwError = 0;
+    PVMAFD_HB_STATUS_W pHeartbeatStatus = NULL;
+    PVMAFD_HB_STATUS_W pRpcHeartbeatStatus = NULL;
+
+    if (!ppHeartbeatStatus)
+    {
+        dwError = ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMAFD_ERROR (dwError);
+    }
+
+    dwError = VmAfSrvGetHeartbeatStatus(
+                                    &pHeartbeatStatus
+                                    );
+    BAIL_ON_VMAFD_ERROR (dwError);
+
+    dwError = VmAfdRpcAllocateHeartbeatStatus(
+                                    pHeartbeatStatus,
+                                    &pRpcHeartbeatStatus
+                                    );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppHeartbeatStatus = pRpcHeartbeatStatus;
+
+cleanup:
+
+    if (pHeartbeatStatus)
+    {
+        VmAfdFreeHbStatusW(pHeartbeatStatus);
+    }
+    return dwError;
+error:
+
+    if (ppHeartbeatStatus)
+    {
+        *ppHeartbeatStatus = NULL;
+    }
+    if (pRpcHeartbeatStatus)
+    {
+        VmAfdRpcFreeHeartbeatStatus(pRpcHeartbeatStatus);
+    }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
+    goto cleanup;
+}
+
+UINT32
+Srv_VmAfdRpcGetSiteName(
+    rpc_binding_handle_t hBinding,
+    PWSTR*  ppwszSiteName
+    )
+{
+    DWORD dwError = 0;
+    PWSTR pwszSiteName = NULL;
+    PWSTR pwszRpcSiteName = NULL;
+
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfSrvGetSiteName(&pwszSiteName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdRpcServerAllocateStringW(pwszSiteName, &pwszRpcSiteName);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppwszSiteName = pwszRpcSiteName;
+
+cleanup:
+    VMAFD_SAFE_FREE_STRINGW(pwszSiteName);
+    return dwError;
+error:
+    if (pwszSiteName)
+    {
+        VmAfdRpcServerFreeMemory(pwszRpcSiteName);
+    }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
+    goto cleanup;
+}
+
+UINT32
+Srv_CdcRpcGetCurrentState(
+    rpc_binding_handle_t hBinding,
+    PCDC_DC_STATE pState
+    )
+{
+    DWORD dwError = 0;
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = CdcSrvGetCurrentState(pState);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    return dwError;
+error:
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
+    goto cleanup;
+}
+
+UINT32
+Srv_CdcRpcEnableDefaultHA(
+    rpc_binding_handle_t hBinding
+    )
+{
+    DWORD dwError = 0;
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTHZ;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = CdcSrvEnableDefaultHA(gVmafdGlobals.pCdcContext);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    return dwError;
+error:
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
+    goto cleanup;
+}
+
+UINT32
+Srv_CdcRpcEnableLegacyModeHA(
+    rpc_binding_handle_t hBinding
+    )
+{
+    DWORD dwError = 0;
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTHZ;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = CdcSrvEnableLegacyModeHA(gVmafdGlobals.pCdcContext);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    return dwError;
+error:
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
+    goto cleanup;
+}
+
+UINT32
+Srv_CdcRpcGetDCName(
+    rpc_binding_handle_t hBinding,
+    PWSTR pszDomainName,
+    PWSTR pszSiteName,
+    UINT32 dwFlags,
+    PCDC_DC_INFO_W *ppDomainControllerInfo
+    )
+{
+    DWORD dwError = 0;
+    PCDC_DC_INFO_W pAffinitizedDC = NULL;
+    PCDC_DC_INFO_W pRpcAffinitizedDC = NULL;
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = CdcSrvGetDCName(pszDomainName, dwFlags, &pAffinitizedDC);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = CdcRpcServerAllocateDCInfoW(pAffinitizedDC, &pRpcAffinitizedDC);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    *ppDomainControllerInfo = pRpcAffinitizedDC;
+
+cleanup:
+    if (pAffinitizedDC)
+    {
+        VmAfdFreeDomainControllerInfoW(pAffinitizedDC);
+    }
+    return dwError;
+error:
+    if (pRpcAffinitizedDC)
+    {
+        CdcRpcServerFreeDCInfoW(pRpcAffinitizedDC);
+    }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
+    goto cleanup;
+}
+
+UINT32
+Srv_CdcRpcEnumDCEntries(
+    rpc_binding_handle_t hBinding,
+    PCDC_DC_ENTRIES_W *ppDCEntries
+    )
+{
+    DWORD dwError = 0;
+    PCDC_DC_ENTRIES_W pDCEntries = NULL;
+    PWSTR *pwszDCEntriesArray = NULL;
+    PWSTR *pwszRpcDCEntriesArray = NULL;
+    DWORD dwDCEntriesCount = 0;
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTHZ;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = CdcSrvEnumDCEntries(
+                    &pwszDCEntriesArray,
+                    &dwDCEntriesCount
+                    );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdRpcServerAllocateMemory(
+                    sizeof(CDC_DC_ENTRIES_W),
+                    (VOID*)&pDCEntries);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (dwDCEntriesCount > 0)
+    {
+        dwError = VmAfdRpcServerAllocateStringArrayW(
+                        dwDCEntriesCount,
+                        (PCWSTR*)pwszDCEntriesArray,
+                        &pwszRpcDCEntriesArray);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    pDCEntries->ppszEntries = pwszRpcDCEntriesArray;
+    pDCEntries->dwCount = dwDCEntriesCount;
+
+    *ppDCEntries = pDCEntries;
+
+cleanup:
+    VmAfdFreeStringArrayW(pwszDCEntriesArray, dwDCEntriesCount);
+    return dwError;
+error:
+    VmAfdRpcServerFreeStringArrayW(pwszRpcDCEntriesArray, dwDCEntriesCount);
+    VmAfdRpcServerFreeMemory(pDCEntries);
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
+    goto cleanup;
+}
+
+UINT32
+Srv_CdcRpcGetDCStatusInfo(
+    rpc_binding_handle_t hBinding,
+    PWSTR pwszDCName,
+    PWSTR pwszDomainName,
+    PCDC_DC_STATUS_INFO_W *ppDCStatusInfo,
+    PVMAFD_HB_STATUS_W    *ppHbStatus
+    )
+{
+    DWORD dwError = 0;
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTHZ;
+    PCDC_DC_STATUS_INFO_W pDCStatusInfo = NULL;
+    PVMAFD_HB_STATUS_W    pHbStatus = NULL;
+
+    PCDC_DC_STATUS_INFO_W pRpcDCStatusInfo = NULL;
+    PVMAFD_HB_STATUS_W    pRpcHbStatus = NULL;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = CdcSrvGetDCStatusInfo(
+                    pwszDCName,
+                    pwszDomainName,
+                    &pDCStatusInfo,
+                    &pHbStatus
+                    );
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    if (pDCStatusInfo)
+    {
+        dwError = CdcRpcAllocateDCStatusInfo(
+                                       pDCStatusInfo,
+                                       &pRpcDCStatusInfo
+                                       );
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    if (pHbStatus)
+    {
+        dwError = VmAfdRpcAllocateHeartbeatStatus(
+                                        pHbStatus,
+                                        &pRpcHbStatus
+                                        );
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+    *ppDCStatusInfo = pRpcDCStatusInfo;
+    *ppHbStatus = pRpcHbStatus;
+
+cleanup:
+
+    if (pDCStatusInfo)
+    {
+        VmAfdFreeCdcStatusInfoW(pDCStatusInfo);
+    }
+    if (pHbStatus)
+    {
+        VmAfdFreeHbStatusW(pHbStatus);
+    }
+    return dwError;
+error:
+
+    if (ppDCStatusInfo)
+    {
+        *ppDCStatusInfo = NULL;
+    }
+    if (ppHbStatus)
+    {
+        *ppHbStatus = NULL;
+    }
+    if (pRpcDCStatusInfo)
+    {
+        CdcRpcFreeDCStatuInfo(pRpcDCStatusInfo);
+    }
+    if (pRpcHbStatus)
+    {
+        VmAfdRpcFreeHeartbeatStatus(pRpcHbStatus);
+    }
+    VmAfdLog (
+            VMAFD_DEBUG_ERROR,
+            "%s failed. Error (%u)",
+            __FUNCTION__,
+            dwError);
+
+    goto cleanup;
+}
 
 void
 vecs_store_handle_t_rundown(void *ctx)
@@ -1742,4 +2247,230 @@ vecs_entry_enum_handle_t_rundown(void *ctx)
 
         VecsSrvReleaseEnumContext(pContext);
     }
+}
+
+//
+// Rundown callback that will free the tracking information we use for paged
+// log retrieval.
+//
+void vmafd_superlog_cookie_t_rundown(void *ctx)
+{
+    if (ctx)
+    {
+        VmAfdFreeMemory(ctx);
+    }
+}
+
+
+UINT32
+Srv_RpcVmAfdSuperLogEnable(
+    handle_t    hBinding
+    )
+{
+    DWORD  dwError = 0;
+
+    /* ncalrpc is needed for self-ping operation at startup */
+
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_NCALRPC
+                     | VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdEnableSuperLogging(gVmafdGlobals.pLogger);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    return dwError;
+
+error:
+
+    VmAfdLog(VMAFD_DEBUG_ERROR, "RpcVmAfdSuperLogEnable failed. Error(%u)", dwError);
+    goto cleanup;
+}
+
+UINT32
+Srv_RpcVmAfdSuperLogDisable(
+    handle_t    hBinding
+    )
+{
+    DWORD  dwError = 0;
+
+    /* ncalrpc is needed for self-ping operation at startup */
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_NCALRPC
+                     | VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdDisableSuperLogging(gVmafdGlobals.pLogger);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    return dwError;
+
+error:
+
+    VmAfdLog(VMAFD_DEBUG_ERROR, "Srv_RpcVmAfdSuperLogDisable failed. Error(%u)", dwError);
+    goto cleanup;
+}
+
+UINT32
+Srv_RpcVmAfdIsSuperLogEnabled(
+    handle_t    hBinding,
+    UINT32*     pEnabled
+    )
+{
+    DWORD  dwError = 0;
+
+    /* ncalrpc is needed for self-ping operation at startup */
+
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_NCALRPC
+                     | VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdIsSuperLoggingEnabled(gVmafdGlobals.pLogger);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    return dwError;
+
+error:
+    VmAfdLog(VMAFD_DEBUG_ERROR, "Srv_RpcVmDirIsSuperLogEnabled failed (%u)", dwError );
+    goto cleanup;
+}
+
+UINT32
+Srv_RpcVmAfdClearSuperLog(
+    handle_t    hBinding
+    )
+{
+    DWORD  dwError = 0;
+
+    /* ncalrpc is needed for self-ping operation at startup */
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_NCALRPC
+                     | VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdFlushSuperLogging(gVmafdGlobals.pLogger);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    return dwError;
+
+error:
+    VmAfdLog(VMAFD_DEBUG_ERROR, "Srv_RpcVmAfdClearSuperLog failed (%u)", dwError );
+    goto cleanup;
+}
+
+UINT32
+Srv_RpcVmAfdSuperLogSetSize(
+    handle_t    hBinding,
+    UINT32      iSize
+    )
+{
+    DWORD  dwError = 0;
+
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_NCALRPC
+                     | VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdSetSuperLoggingSize(gVmafdGlobals.pLogger, iSize);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    return dwError;
+
+error:
+    VmAfdLog(VMAFD_DEBUG_ERROR, "Srv_RpcVmAfdSuperLogSetSize failed (%u)", dwError );
+    goto cleanup;
+}
+
+UINT32
+Srv_RpcVmAfdSuperLogGetSize(
+    handle_t    hBinding,
+    UINT32      *piSize
+    )
+{
+    DWORD  dwError = 0;
+
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_NCALRPC
+                     | VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdGetSuperLoggingSize(gVmafdGlobals.pLogger, piSize);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+cleanup:
+    return dwError;
+
+error:
+    VmAfdLog(VMAFD_DEBUG_ERROR, "Srv_RpcVmAfdSuperLogGetSize failed (%u)", dwError );
+    goto cleanup;
+}
+
+DWORD
+_VmAfdSuperLoggingInitializeCookie(
+    vmafd_superlog_cookie_t *pEnumerationCookie
+    )
+{
+    DWORD dwError = 0;
+
+    if (*pEnumerationCookie == NULL)
+    {
+        dwError = VmAfdAllocateMemory(sizeof(ULONG64), (PVOID*)pEnumerationCookie);
+        BAIL_ON_VMAFD_ERROR(dwError);
+    }
+
+error:
+    return dwError;
+}
+
+UINT32
+Srv_RpcVmAfdSuperLogGetEntries(
+    handle_t    hBinding,
+    vmafd_superlog_cookie_t *pEnumerationCookie,
+    UINT32 dwCountRequested,
+    PVMAFD_SUPERLOG_ENTRY_ARRAY *ppRpcEntries
+    )
+{
+    DWORD  dwError = 0;
+
+    DWORD dwRpcFlags = VMAFD_RPC_FLAG_ALLOW_NCALRPC
+                     | VMAFD_RPC_FLAG_ALLOW_TCPIP
+                     | VMAFD_RPC_FLAG_REQUIRE_AUTH_TCPIP;
+
+    dwError = VmAfdRpcServerCheckAccess(hBinding, dwRpcFlags);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = _VmAfdSuperLoggingInitializeCookie(pEnumerationCookie);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+    dwError = VmAfdCircularBufferGetSize(gVmafdGlobals.pLogger->pCircularBuffer, &dwCountRequested);
+
+    dwError = VmAfdSuperLoggingGetEntries(gVmafdGlobals.pLogger, (UINT64 *)*pEnumerationCookie, dwCountRequested, ppRpcEntries);
+    BAIL_ON_VMAFD_ERROR(dwError);
+
+
+cleanup:
+    return dwError;
+
+error:
+    VmAfdLog(VMAFD_DEBUG_ERROR, "RpcVmAfdSuperLogGetEntries failed. Error(%u)", dwError);
+
+    goto cleanup;
 }

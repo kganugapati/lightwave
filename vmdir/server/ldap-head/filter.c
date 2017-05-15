@@ -15,6 +15,7 @@
 
 
 #include "includes.h"
+#include "ldap_pvt.h"
 
 #define START_ANY_ALLOC_SIZE    5
 
@@ -64,6 +65,13 @@ TestSubstringsFilter(
     VDIR_ENTRY *     e,
     VDIR_FILTER *    f);
 
+static VDIR_FILTER_COMPUTE_RESULT
+TestSubstringAny(
+    VDIR_BERVALUE *any_array,
+    int any_size,
+    char *attr_val,
+    ber_len_t attr_len);
+
 DWORD
 VmDirConcatTwoFilters(
     PVDIR_SCHEMA_CTX pSchemaCtx,
@@ -79,6 +87,12 @@ VmDirConcatTwoFilters(
     PVDIR_FILTER pFilter2 = NULL;
     PVDIR_FILTER pAnd = NULL;
     PVDIR_SCHEMA_CTX pSchemaCtxCurr = NULL;
+
+    if ( !pszAttrFilterName1 || !pszAttrFilterVal1 || !pszAttrFilterName2 || !pszAttrFilterVal2 )
+    {
+        dwError = VMDIR_ERROR_INVALID_PARAMETER;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
 
     if (!pSchemaCtx)
     {
@@ -270,76 +284,6 @@ error:
     goto cleanup;
 }
 
-int
-AppendUSNChangedFilter(
-    VDIR_OPERATION *     op)
-{
-    int             retVal = LDAP_SUCCESS;
-    VDIR_FILTER *   f = NULL;
-    VDIR_FILTER *   usnChangedFilter = NULL;
-    char            usnStr[VMDIR_MAX_USN_STR_LEN + 1];
-    size_t          usnStrLen = 0;
-    VDIR_BERVALUE   usnBv = VDIR_BERVALUE_INIT;
-    PSTR            pszLocalErrMsg = NULL;
-
-    if ( op->syncReqCtrl != NULL )
-    {
-        retVal = VmDirAllocateMemory( sizeof( VDIR_FILTER ), (PVOID *)&f );
-        BAIL_ON_VMDIR_ERROR( retVal );
-
-        f->choice = LDAP_FILTER_AND;
-        retVal = VmDirAllocateMemory( sizeof( VDIR_FILTER ), (PVOID *)&usnChangedFilter );
-        BAIL_ON_VMDIR_ERROR( retVal );
-
-        usnChangedFilter->next = op->request.searchReq.filter;
-        f->filtComp.complex = usnChangedFilter;
-        f->next = NULL;
-
-        usnChangedFilter->choice = LDAP_FILTER_GE;
-        usnChangedFilter->filtComp.ava.type.lberbv.bv_val = ATTR_USN_CHANGED;
-        usnChangedFilter->filtComp.ava.type.lberbv.bv_len = ATTR_USN_CHANGED_LEN;
-
-        VmDirStringNPrintFA( usnStr, sizeof(usnStr), sizeof(usnStr) -1, "%ld",
-                  VmDirStringToLA( op->syncReqCtrl->value.syncReqCtrlVal.bvLastLocalUsnProcessed.lberbv.bv_val, NULL, 10 ) + 1);
-        usnBv.lberbv.bv_val = usnStr;
-        usnBv.lberbv.bv_len = usnStrLen = VmDirStringLenA( usnStr );
-        retVal = VmDirBervalContentDup( &usnBv, &usnChangedFilter->filtComp.ava.value );
-        BAIL_ON_VMDIR_ERROR( retVal );
-
-        if ((usnChangedFilter->filtComp.ava.pATDesc = VmDirSchemaAttrNameToDesc( op->pSchemaCtx,
-                                                                                 ATTR_USN_CHANGED )) == NULL)
-        {
-            retVal = VMDIR_ERROR_UNDEFINED_TYPE;
-            BAIL_ON_VMDIR_ERROR( retVal );
-        }
-        // Normalize DN value is owned by filter component, un-normalized value is owned by the caller.
-        retVal = VmDirSchemaBervalNormalize( op->pSchemaCtx,
-                                             usnChangedFilter->filtComp.ava.pATDesc,
-                                             &(usnChangedFilter->filtComp.ava.value) );
-        BAIL_ON_VMDIR_ERROR_WITH_MSG( retVal, pszLocalErrMsg, "BervalContentDup failed");
-
-        op->request.searchReq.filter = f;
-    }
-
-    retVal = LDAP_SUCCESS;
-
-cleanup:
-
-    VMDIR_SAFE_FREE_MEMORY(pszLocalErrMsg);
-
-    return retVal;
-
-error:
-
-    VMDIR_LOG_DEBUG( LDAP_DEBUG_TRACE, "AppendUSNChangedFilter: (%u)(%s)",
-                                retVal, VDIR_SAFE_STRING(pszLocalErrMsg) );
-
-    VMDIR_SAFE_FREE_MEMORY( f );
-    VMDIR_SAFE_FREE_MEMORY( usnChangedFilter );
-    goto cleanup;
-}
-
-
 /*
  * From RFC 4511, section 4.5.1.7:
  *     A filter of the "and" choice is TRUE if all the filters in the SET OF evaluate to TRUE, FALSE if at least one
@@ -419,6 +363,7 @@ CheckIfEntryPassesFilter(
             retVal = TestSubstringsFilter( op, e, f );
             break;
         case LDAP_FILTER_GE:
+        case LDAP_FILTER_LE:
             retVal = TestAvaFilter( op, e, f );
             break;
         case LDAP_FILTER_PRESENT:
@@ -470,6 +415,7 @@ DeleteFilter(
 
         case LDAP_FILTER_EQUALITY:
         case LDAP_FILTER_GE:
+        case LDAP_FILTER_LE:
             VmDirFreeBervalContent( &(f->filtComp.ava.value) );
             break;
 
@@ -501,26 +447,92 @@ DeleteFilter(
     }
 
     DeleteCandidates( &(f->candidates) );
+
+    if (f->pBer)
+    {
+        ber_free(f->pBer, 1);
+    }
+
     VMDIR_SAFE_FREE_MEMORY( f );
     VmDirLog( LDAP_DEBUG_TRACE, "DeleteFilter: End" );
 }
 
-void
-FilterToStrFilter(
-    VDIR_FILTER *    f,
-    VDIR_BERVALUE *  strFilter )
+DWORD
+StrFilterToFilter(
+    PCSTR pszString,
+    PVDIR_FILTER *ppFilter
+    )
 {
-    int     retVal = LDAP_SUCCESS;
+    DWORD dwError = 0;
+    int res = 0;
+    BerElement *ber = NULL;
+    PVDIR_OPERATION pOperation = NULL;
+    VDIR_LDAP_RESULT lr = {0};
+    PVDIR_FILTER pFilter = NULL;
 
-    assert( f != NULL && strFilter != NULL );
+    ber = ber_alloc_t(LBER_USE_DER);
+    if (ber == NULL)
+    {
+        dwError = LDAP_NO_MEMORY;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
 
-    VmDirLog( LDAP_DEBUG_TRACE, "FilterToStrFilter: Begin, filter type: %ld", f->choice );
+    // Private function from libldap.
+    res = ldap_pvt_put_filter(ber, pszString);
+    if (res)
+    {
+        dwError = LDAP_FILTER_ERROR;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    ber_rewind(ber);
+
+    dwError = VmDirExternalOperationCreate(ber, -1, LDAP_REQ_SEARCH, NULL, &pOperation);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    res = ParseFilter(pOperation, &pFilter, &lr);
+    if (res)
+    {
+        dwError = LDAP_FILTER_ERROR;
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+    pFilter->pBer = ber;
+    ber = NULL;
+
+    *ppFilter = pFilter;
+
+cleanup:
+    if (ber)
+    {
+        ber_free(ber, 1);
+    }
+    if (pOperation)
+    {
+        VmDirFreeOperation(pOperation);
+    }
+    return dwError;
+
+error:
+    goto cleanup;
+}
+
+DWORD
+FilterToStrFilter(
+    PVDIR_FILTER f,
+    PVDIR_BERVALUE strFilter
+    )
+{
+    DWORD dwError = 0;
+
+    VmDirLog(LDAP_DEBUG_TRACE, "FilterToStrFilter: Begin, filter type: %ld", f->choice);
 
     if (strFilter->lberbv.bv_val == NULL)
     {
-        size_t requiredSize = RequiredSizeForStrFilter( f );
-        retVal = VmDirAllocateMemory( requiredSize + 1, (PVOID *)&strFilter->lberbv.bv_val );
-        BAIL_ON_VMDIR_ERROR( retVal );
+        size_t requiredSize = RequiredSizeForStrFilter(f);
+        dwError = VmDirAllocateMemory(requiredSize + 1, (PVOID *)&strFilter->lberbv.bv_val);
+        BAIL_ON_VMDIR_ERROR(dwError);
+
         strFilter->bOwnBvVal = TRUE;
         strFilter->lberbv.bv_len = 0;
     }
@@ -533,7 +545,7 @@ FilterToStrFilter(
         case LDAP_FILTER_AND:
         case LDAP_FILTER_OR:
         {
-            VDIR_FILTER * curr = NULL;
+            PVDIR_FILTER curr = NULL;
 
             if (f->choice == LDAP_FILTER_AND)
             {
@@ -548,7 +560,8 @@ FilterToStrFilter(
 
             for ( curr = f->filtComp.complex; curr != NULL; curr = curr->next )
             {
-                FilterToStrFilter( curr, strFilter );
+                dwError = FilterToStrFilter(curr, strFilter);
+                BAIL_ON_VMDIR_ERROR(dwError);
             }
 
             VmDirStringPrintFA( strFilter->lberbv.bv_val + strFilter->lberbv.bv_len, 2, ")");
@@ -561,7 +574,8 @@ FilterToStrFilter(
             VmDirStringPrintFA( strFilter->lberbv.bv_val + strFilter->lberbv.bv_len, 3, "(!");
             strFilter->lberbv.bv_len += 2;
 
-            FilterToStrFilter( f->filtComp.complex, strFilter );
+            dwError = FilterToStrFilter(f->filtComp.complex, strFilter);
+            BAIL_ON_VMDIR_ERROR(dwError);
 
             VmDirStringPrintFA( strFilter->lberbv.bv_val + strFilter->lberbv.bv_len, 2, ")");
             strFilter->lberbv.bv_len += 1;
@@ -641,7 +655,18 @@ FilterToStrFilter(
                 f->filtComp.ava.type.lberbv.bv_val,
                 f->filtComp.ava.value.lberbv.bv_val
             );
-            strFilter->lberbv.bv_len += 1 + f->filtComp.ava.type.lberbv.bv_len + 1 + f->filtComp.ava.value.lberbv.bv_len + 1;
+            strFilter->lberbv.bv_len += 1 + f->filtComp.ava.type.lberbv.bv_len + 2 + f->filtComp.ava.value.lberbv.bv_len + 1;
+            break;
+
+        case LDAP_FILTER_LE:
+            VmDirStringPrintFA(
+                strFilter->lberbv.bv_val + strFilter->lberbv.bv_len,
+                1 + f->filtComp.ava.type.lberbv.bv_len + 2 + f->filtComp.ava.value.lberbv.bv_len + 1 + 1,
+                "(%s<=%s)",
+                f->filtComp.ava.type.lberbv.bv_val,
+                f->filtComp.ava.value.lberbv.bv_val
+            );
+            strFilter->lberbv.bv_len += 1 + f->filtComp.ava.type.lberbv.bv_len + 2 + f->filtComp.ava.value.lberbv.bv_len + 1;
             break;
 
         case LDAP_FILTER_PRESENT:
@@ -655,13 +680,19 @@ FilterToStrFilter(
             break;
 
         case FILTER_ONE_LEVEL_SEARCH:
+            break;
         default:
           VmDirLog( LDAP_DEBUG_ANY, "FilterToStrFilter: unknown filter type=%lu", f->choice );
           break;
     }
 
+cleanup:
+    VmDirLog(LDAP_DEBUG_TRACE, "FilterToStrFilter: End %d", dwError);
+    return dwError;
+
 error:
-    VmDirLog( LDAP_DEBUG_TRACE, "FilterToStrFilter: End %d", retVal );
+    VmDirFreeBervalContent(strFilter);
+    goto cleanup;
 }
 
 /* ParseFilter() parses filter present on the wire.
@@ -766,6 +797,7 @@ ParseFilter(
             break;
 
         case LDAP_FILTER_GE:
+        case LDAP_FILTER_LE:
             retVal = ParseAva( op, f, lr );
             BAIL_ON_VMDIR_ERROR( retVal );
             break;
@@ -1083,7 +1115,6 @@ ParseSubStrings(
                                                     "Error normalizing a filter attribute value");
                 }
                 f->filtComp.subStrings.anySize++;
-                f->computeResult = FILTER_RES_UNDEFINED; // Sub-string ANY filter type is not yet supported.
                 break;
             case LDAP_SUBSTRING_FINAL:
                 if (foundFinal)
@@ -1188,7 +1219,8 @@ RequiredSizeForStrFilter(
         }
 
         case LDAP_FILTER_GE:
-            strSize = f->filtComp.ava.type.lberbv.bv_len + f->filtComp.ava.value.lberbv.bv_len + 4 /* (>=) */;
+        case LDAP_FILTER_LE:
+            strSize = f->filtComp.ava.type.lberbv.bv_len + f->filtComp.ava.value.lberbv.bv_len + 4 /* (>=) or (<=) */;
             break;
 
         case LDAP_FILTER_PRESENT:
@@ -1196,6 +1228,7 @@ RequiredSizeForStrFilter(
             break;
 
         case FILTER_ONE_LEVEL_SEARCH:
+            break;
         default:
           VmDirLog( LDAP_DEBUG_ANY, "RequiredSizeForStrFilter: unknown filter type=%lu", f->choice );
           break;
@@ -1222,7 +1255,10 @@ TestAvaFilter(
     PFN_VDIR_COMPARE_FUNCTION   pCompareFunc = NULL;
     VDIR_SCHEMA_MATCH_TYPE      matchType = 0;
 
-    assert( op && e && f && (f->choice == LDAP_FILTER_EQUALITY || f->choice == LDAP_FILTER_GE));
+    assert( op && e && f &&
+            (f->choice == LDAP_FILTER_EQUALITY ||
+             f->choice == LDAP_FILTER_GE       ||
+             f->choice == LDAP_FILTER_LE));
 
     VmDirLog( LDAP_DEBUG_TRACE, "TestAvaFilter: Begin, filter attribute type = %s",
               f->filtComp.ava.type.lberbv.bv_val);
@@ -1250,6 +1286,16 @@ TestAvaFilter(
                 goto done;
             }
             matchType = VDIR_SCHEMA_MATCH_GE;
+            break;
+        case LDAP_FILTER_LE:
+            pCompareFunc = f->filtComp.ava.pATDesc->pOrderingMR ? f->filtComp.ava.pATDesc->pOrderingMR->pCompareFunc :
+                                                                  NULL;
+            if ( pCompareFunc == NULL )
+            {
+                retVal = FILTER_RES_UNDEFINED;
+                goto done;
+            }
+            matchType = VDIR_SCHEMA_MATCH_LE;
             break;
         default:
             assert( FALSE );
@@ -1405,10 +1451,16 @@ TestSubstringsFilter(
     VDIR_FILTER_COMPUTE_RESULT    retVal = FILTER_RES_FALSE;
     VDIR_ATTRIBUTE *       attr = NULL;
     // Filter is normalized (very early) during parsing.
-    char *                 normFiltVal = NULL;
-    ber_len_t              normFiltValLen = 0;
-    char *                 normAttrVal = NULL;
-    ber_len_t              normAttrValLen = 0;
+    char *                 initialFiltVal = NULL;
+    ber_len_t              initialFiltLen = 0;
+    char *                 finalFiltVal = NULL;
+    ber_len_t              finalFiltLen = 0;
+    int                    anyFiltSize = 0;
+    char *                 attrVal = NULL;
+    ber_len_t              attrValLen = 0;
+    int                    exist_initial_true = 0;
+    int                    exist_final_true = 0;
+    int                    exist_any_true = 0;
 
     assert( op && e && f && f->choice == LDAP_FILTER_SUBSTRINGS );
 
@@ -1419,21 +1471,27 @@ TestSubstringsFilter(
     {
         return f->computeResult;
     }
-    // SJ-TBD: It can be both and INITIAL and FINAL instead of one or the other.
+
     if (f->filtComp.subStrings.initial.lberbv.bv_len != 0)
     {
-        normFiltVal = BERVAL_NORM_VAL(f->filtComp.subStrings.initial);
-        normFiltValLen = BERVAL_NORM_LEN(f->filtComp.subStrings.initial);
+        initialFiltVal = BERVAL_NORM_VAL(f->filtComp.subStrings.initial);
+        initialFiltLen = BERVAL_NORM_LEN(f->filtComp.subStrings.initial);
+        exist_initial_true = 1;
     }
-    else if (f->filtComp.subStrings.final.lberbv.bv_len != 0)
+
+    if (f->filtComp.subStrings.final.lberbv.bv_len != 0)
     {
-        normFiltVal = BERVAL_NORM_VAL(f->filtComp.subStrings.final);
-        normFiltValLen = BERVAL_NORM_LEN(f->filtComp.subStrings.final);
+        finalFiltVal = BERVAL_NORM_VAL(f->filtComp.subStrings.final);
+        finalFiltLen = BERVAL_NORM_LEN(f->filtComp.subStrings.final);
+        exist_final_true = 1;
     }
-    else
+
+    anyFiltSize=f->filtComp.subStrings.anySize;
+    if (anyFiltSize)
     {
-        assert( FALSE );
+        exist_any_true = 1;
     }
+
     // Check if it is the DN filter
     if (VmDirStringCompareA( f->filtComp.ava.type.lberbv.bv_val, ATTR_DN, FALSE ) == 0)
     {
@@ -1445,12 +1503,12 @@ TestSubstringsFilter(
             goto done;
         }
 
-        normAttrVal = BERVAL_NORM_VAL(e->dn);
-        normAttrValLen = BERVAL_NORM_LEN(e->dn);
+        attrVal = BERVAL_NORM_VAL(e->dn);
+        attrValLen = BERVAL_NORM_LEN(e->dn);
 
-        if ((normAttrValLen >= normFiltValLen) && (memcmp( normFiltVal,
-                                                           normAttrVal + (normAttrValLen - normFiltValLen),
-                                                           normFiltValLen) == 0))
+        //Search with substree scope on entryDn should create a FINAL substring filter.
+        if (finalFiltLen && attrValLen >= finalFiltLen &&
+            memcmp( finalFiltVal, attrVal + (attrValLen - finalFiltLen), finalFiltLen) == 0)
         {
             retVal = FILTER_RES_TRUE;
         }
@@ -1473,6 +1531,14 @@ TestSubstringsFilter(
 
         for (j = 0; j < attr->numVals; j++)
         {
+            int eval_initial_true = 0;
+            int eval_final_true = 0;
+            int eval_any_true = 0;
+            int exist_map = 0;
+            int eval_map = 0;
+            ber_len_t initial_match_len = 0;
+            ber_len_t finial_match_len = 0;
+
             // Normalize attribute value if not already normalized.
             if (attr->vals[j].bvnorm_val == NULL &&
                 VmDirSchemaBervalNormalize( op->pSchemaCtx, f->filtComp.subStrings.pATDesc,
@@ -1485,35 +1551,36 @@ TestSubstringsFilter(
 
             }
 
-            normAttrVal = BERVAL_NORM_VAL(attr->vals[j]);
-            normAttrValLen = BERVAL_NORM_LEN(attr->vals[j]);
+            attrVal = BERVAL_NORM_VAL(attr->vals[j]);
+            attrValLen = BERVAL_NORM_LEN(attr->vals[j]);
 
-            // SJ-TBD: It can be both and INITIAL and FINAL instead of one or the other.
-            if (f->filtComp.subStrings.initial.lberbv.bv_len != 0)
+            if (initialFiltLen && (attrValLen >= initialFiltLen) &&
+                memcmp( initialFiltVal, attrVal, initialFiltLen) == 0)
             {
-                if ((normAttrValLen >= normFiltValLen) && (memcmp( normFiltVal, normAttrVal, normFiltValLen) == 0))
-                {
-                    retVal = FILTER_RES_TRUE;
-                    goto done;
-                }
+                eval_initial_true = 1;
+                initial_match_len = initialFiltLen;
             }
-            else if (f->filtComp.subStrings.final.lberbv.bv_len != 0)
+
+            if (finalFiltLen && (attrValLen >= finalFiltLen) &&
+                memcmp( finalFiltVal, attrVal + (attrValLen - finalFiltLen), finalFiltLen) == 0)
             {
-                if ((normAttrValLen >= normFiltValLen) && (memcmp( normFiltVal,
-                                                                   normAttrVal + (normAttrValLen - normFiltValLen),
-                                                                   normFiltValLen) == 0))
-                {
-                    retVal = FILTER_RES_TRUE;
-                    goto done;
-                }
+                eval_final_true = 1;
+                finial_match_len = finalFiltLen;
             }
-            else
+            if (anyFiltSize > 0 && TestSubstringAny(f->filtComp.subStrings.any, anyFiltSize,
+                                       (attrVal + initial_match_len),
+                                       (attrValLen - initial_match_len - finial_match_len))==FILTER_RES_TRUE)
             {
-                assert( FALSE );
+                eval_any_true = 1;
+            }
+            exist_map = exist_any_true << 2 | exist_final_true << 1 | exist_initial_true;
+            eval_map = eval_any_true << 2 | eval_final_true << 1 | eval_initial_true;
+            if ( (exist_map & eval_map) == exist_map )
+            {
+                retVal = FILTER_RES_TRUE;
+                goto done;
             }
         }
-        retVal = FILTER_RES_FALSE;
-        goto done;
     }
     retVal = FILTER_RES_FALSE;
 
@@ -1523,5 +1590,68 @@ done:
     return retVal;
 }
 
+/*
+ *  Return FILTER_RES_TRUE iif attr_val passed all substring "ANY" elements
+ *  any_array:  an array of "ANY" components
+ *  any_size: the size of any_array
+ *  attr_val: string form of the attribute value to be tested.
+ *  attr_len: the length of attr_val
+ *  e.g. filter cn=*abc*def* has two "ANY" elements: any_array[0]="abc" and any_array[1]="def" with any_size 2
+ *       filter cn=xy*abc*def*wz has two "ANY" elements though it also has an initial "xy" and a final "wz".
+*/
+static VDIR_FILTER_COMPUTE_RESULT
+TestSubstringAny(
+    VDIR_BERVALUE *any_array,
+    int any_size,
+    char *attr_val,
+    ber_len_t attr_len)
+{
+    int i = 0;
 
+    char *remainVal = attr_val;
+    ber_len_t remainLen = attr_len;
 
+    for (i = 0; i < any_size; i++ )
+    {
+        char *p_cur = NULL;
+        char *normFiltVal = BERVAL_NORM_VAL(any_array[i]);
+        ber_len_t normFiltValLen = BERVAL_NORM_LEN(any_array[i]);
+
+next_pos:
+        if ( normFiltValLen > remainLen )
+        {
+            break;
+        }
+
+        p_cur = memchr( remainVal, *normFiltVal, remainLen );
+
+        if( p_cur == NULL )
+        {
+            break;
+        }
+
+        remainLen -= (ber_len_t)(p_cur - remainVal);
+        remainVal = p_cur;
+
+        if ( normFiltValLen > remainLen )
+        {
+            break;
+        }
+
+        if ( memcmp( remainVal, normFiltVal, normFiltValLen ) != 0)
+        {
+            remainVal++;
+            remainLen--;
+            goto next_pos;
+        }
+
+        remainVal += normFiltValLen;
+        remainLen -= normFiltValLen;
+    }
+
+    if (i == any_size)
+    {
+        return FILTER_RES_TRUE;
+    }
+    return FILTER_RES_FALSE;
+}

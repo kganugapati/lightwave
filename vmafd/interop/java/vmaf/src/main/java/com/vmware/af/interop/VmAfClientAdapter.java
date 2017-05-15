@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -106,6 +106,12 @@ public class VmAfClientAdapter extends NativeAdapter
             );
 
         int
+        VmAfdGetRHTTPProxyPortA(
+            String pszServerName, /* IN     OPTIONAL */
+            IntByReference pdwPort
+            );
+
+        int
         VmAfdSetRHTTPProxyPortA(
             String pszServerName, /* IN     OPTIONAL */
             int port              /* IN              */
@@ -181,6 +187,12 @@ public class VmAfClientAdapter extends NativeAdapter
         VmAfdSetDCNameW(
             WString pwszServerName,  /* IN      OPTIONAL */
             WString pwszDCName       /* IN               */
+            );
+
+        int
+        VmAfdGetPNIDForUrlA(
+            String             pszServerName,
+            PointerByReference ppszPNID
             );
 
         int
@@ -322,6 +334,24 @@ public class VmAfClientAdapter extends NativeAdapter
             );
 
         int
+        VmAfdCreateComputerAccountA(
+            String pszUserName,              /* IN              */
+            String pszPassword,              /* IN              */
+            String pszMachineName,           /* IN              */
+            String pszOrgUnit,               /* IN              */
+            PointerByReference ppszOutPassword /* OUT             */
+            );
+
+        int
+        VmAfdCreateComputerAccountW(
+            WString pwszUserName,             /* IN              */
+            WString pwszPassword,             /* IN              */
+            WString pwszMachineName,          /* IN              */
+            WString pwszOrgUnit,              /* IN              */
+            PointerByReference ppwszOutPassword /* OUT             */
+            );
+
+        int
         VmAfdQueryADA(
             String pszServerName,                     /* IN              */
             PointerByReference ppszComputer,          /*    OUT          */
@@ -337,6 +367,18 @@ public class VmAfClientAdapter extends NativeAdapter
             PointerByReference ppwszDomain,            /*    OUT          */
             PointerByReference ppwszDistinguishedName, /*    OUT          */
             PointerByReference ppwszNetbiosName        /*    OUT          */
+            );
+
+        int
+        VmAfdGetSiteGUIDA(
+            String pszServerName,                      /* IN              */
+            PointerByReference ppszSiteGUID            /*    OUT          */
+            );
+
+        int
+        VmAfdGetSiteGUIDW(
+            WString pwszServerName,                   /* IN               */
+            PointerByReference ppwszSiteGUID          /*    OUT           */
             );
 
         void VmAfdFreeMemory(Pointer pMemory);
@@ -378,7 +420,28 @@ public class VmAfClientAdapter extends NativeAdapter
                 WString            pwszServerName,
                 PointerByReference ppwszMachineId
                 );
+
+        int
+        VmAfdStartHeartbeatA(
+                String             pszServiceName,
+                int                port,
+                PointerByReference ppHeartbeatHandle
+                );
+
+        int
+        VmAfdStartHeartbeatW(
+                WString            pwszServiceName,
+                int                port,
+                PointerByReference ppHeartbeatHandle
+                );
+
+        int
+        VmAfdStopHeartbeat(
+                Pointer           pHeartbeatHandle
+                );
     }
+
+    private Pointer _vmAfHeartbeatHandle;
 
     public static int getStatus(String hostname)
     {
@@ -532,6 +595,17 @@ public class VmAfClientAdapter extends NativeAdapter
         }
     }
 
+    public static int getRHTTPProxyPort(String hostname)
+    {
+        IntByReference pdwPort = new IntByReference(0);
+        int errCode = VmAfClientLibrary.INSTANCE.VmAfdGetRHTTPProxyPortA(hostname, pdwPort);
+        if( errCode != 0 )
+        {
+            throw new VmAfClientNativeException(errCode);
+        }
+        return pdwPort.getValue();
+    }
+
     public static void setRHTTPProxyPort(String hostname, int port)
     {
         int errCode = VmAfClientLibrary.INSTANCE.VmAfdSetRHTTPProxyPortA(
@@ -615,6 +689,33 @@ public class VmAfClientAdapter extends NativeAdapter
         try
         {
             int errCode = VmAfClientLibrary.INSTANCE.VmAfdGetPNIDA(
+                                                        hostname,
+                                                        ppszPNID);
+            if (errCode != 0)
+            {
+                throw new VmAfClientNativeException(errCode);
+            }
+
+            return ppszPNID.getValue().getString(0);
+        }
+        finally
+        {
+            Pointer val = ppszPNID.getValue();
+
+            if (val != Pointer.NULL)
+            {
+                VmAfClientLibrary.INSTANCE.VmAfdFreeMemory(val);
+            }
+        }
+    }
+    
+    public static String getPNIDUrl(String hostname)
+    {
+        PointerByReference ppszPNID = new PointerByReference();
+
+        try
+        {
+            int errCode = VmAfClientLibrary.INSTANCE.VmAfdGetPNIDForUrlA(
                                                         hostname,
                                                         ppszPNID);
             if (errCode != 0)
@@ -801,6 +902,41 @@ public class VmAfClientAdapter extends NativeAdapter
         if (errCode != 0)
         {
             throw new VmAfClientNativeException(errCode);
+        }
+    }
+
+    public static String
+    createComputerAccount(
+              String pszUserName,              /* IN              */
+              String pszPassword,              /* IN              */
+              String pszMachineName,           /* IN              */
+              String pszOrgUnit)               /* IN              */
+    {
+        PointerByReference ppszOutPassword = new PointerByReference();
+
+        try
+        {
+            int errCode = VmAfClientLibrary.INSTANCE.VmAfdCreateComputerAccountA(
+                              pszUserName,
+                              pszPassword,
+                              pszMachineName,
+                              pszOrgUnit,
+                              ppszOutPassword);
+            if (errCode != 0)
+            {
+                throw new VmAfClientNativeException(errCode);
+            }
+
+            return ppszOutPassword.getValue().getString(0);
+        }
+        finally
+        {
+            Pointer val = ppszOutPassword.getValue();
+
+            if (val != Pointer.NULL)
+            {
+                VmAfClientLibrary.INSTANCE.VmAfdFreeMemory(val);
+            }
         }
     }
 
@@ -1003,5 +1139,61 @@ public class VmAfClientAdapter extends NativeAdapter
                 VmAfClientLibrary.INSTANCE.VmAfdFreeMemory(pszPassword);
             }
             }
+    }
+
+    public static String getSiteGUID(String hostname)
+    {
+        PointerByReference ppszSiteGUID = new PointerByReference();
+
+        try
+        {
+            int errCode = VmAfClientLibrary.INSTANCE.VmAfdGetSiteGUIDA(
+                                                        hostname,
+                                                        ppszSiteGUID);
+            if (errCode != 0)
+            {
+                throw new VmAfClientNativeException(errCode);
+            }
+
+            return ppszSiteGUID.getValue().getString(0);
+        }
+        finally
+        {
+            Pointer val = ppszSiteGUID.getValue();
+
+            if (val != Pointer.NULL)
+            {
+                VmAfClientLibrary.INSTANCE.VmAfdFreeMemory(val);
+            }
+        }
+    }
+
+    public static Object
+    startHeartbeat(String ServiceName, int Port)
+    {
+        PointerByReference ppHeartbeatHandle = new PointerByReference();
+
+        int errCode = VmAfClientLibrary.INSTANCE.VmAfdStartHeartbeatA(
+                                                               ServiceName,
+                                                               Port,
+                                                               ppHeartbeatHandle);
+        if (errCode != 0)
+        {
+            throw new VmAfClientNativeException(errCode);
+        }
+
+        return ppHeartbeatHandle.getValue();
+    }
+
+    public static void
+    stopHeartbeat(Object pHeartbeatHandle)
+    {
+        Pointer HeartbeatPointer= null;
+        if (pHeartbeatHandle != null && pHeartbeatHandle instanceof Pointer)
+        {
+            HeartbeatPointer = (Pointer)pHeartbeatHandle;
+            VmAfClientLibrary.INSTANCE.VmAfdStopHeartbeat(HeartbeatPointer);
+            HeartbeatPointer = null;
+        }
     }
 }

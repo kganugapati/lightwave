@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -31,6 +31,7 @@ VmwDeployBuildParams(
     PCSTR pszPassword,
     PCSTR pszPartner,
     PCSTR pszSite,
+    PCSTR pszSubjectAltName,
     PVMW_IC_SETUP_PARAMS* ppSetupParams
     );
 
@@ -53,6 +54,9 @@ int main(int argc, char* argv[])
     DWORD dwError = 0;
     PVMW_IC_SETUP_PARAMS pSetupParams = NULL;
     PVMW_DEPLOY_LOG_CONTEXT pContext = NULL;
+    int retCode = 0;
+    PSTR pszErrorMsg = NULL;
+    PSTR pszErrorDesc = NULL;
 
     setlocale(LC_ALL, "");
 
@@ -60,7 +64,11 @@ int main(int argc, char* argv[])
     BAIL_ON_DEPLOY_ERROR(dwError);
 
     dwError = ParseArgs(argc-1, &argv[1], &pSetupParams);
-    BAIL_ON_DEPLOY_ERROR(dwError);
+    if (dwError)
+    {
+        ShowUsage();
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
 
     dwError = VmwDeployCreateLogContext(
                     VMW_DEPLOY_LOG_TARGET_FILE,
@@ -89,16 +97,86 @@ cleanup:
     }
     VmwDeployShutdown();
 
-    VMW_DEPLOY_LOG_ERROR("Domain controller setup failed. Error code: %u", dwError);
-
     return dwError;
 
 error:
 
-    if (dwError == ERROR_INVALID_PARAMETER)
+    switch (dwError)
     {
-        ShowUsage();
+
+    case ERROR_INVALID_PARAMETER:
+        retCode = 2;
+        pszErrorMsg = "Invalid parameter was given.";
+        break;
+    case ERROR_CANNOT_CONNECT_VMAFD:
+        retCode = 20;
+        pszErrorMsg = "Could not connect to the local service VMware AFD.\nVerify VMware AFD is running.";
+        break;
+    case VMDIR_ERROR_CANNOT_CONNECT_VMDIR:
+        retCode = 21;
+        pszErrorMsg = "Could not connect to the local service VMware Directory Service.\nVerify VMware Directory Service is running.";
+        break;
+    case ERROR_INVALID_CONFIGURATION:
+        retCode = 22;
+        pszErrorMsg = "Configuration is not correct.\n";
+        break;
+    case VMDIR_ERROR_SERVER_DOWN:
+        retCode = 23;
+        pszErrorMsg = "Could not connect to VMware Directory Service via LDAP.\nVerify VMware Directory Service is running on the appropriate system and is reachable from this host.";
+        break;
+    case VMDIR_ERROR_USER_INVALID_CREDENTIAL:
+        retCode = 24;
+        pszErrorMsg = "Authentication to VMware Directory Service failed.\nVerify the username and password.";
+        break;
+    case ERROR_ACCESS_DENIED:
+        retCode = 25;
+        pszErrorMsg = "Authorization failed.\nVerify account has proper administrative privileges.";
+        break;
+    case ERROR_INVALID_DOMAINNAME:
+        retCode = 26;
+        pszErrorMsg = "The domain name specified is invalid.";
+        break;
+    case ERROR_NO_SUCH_DOMAIN:
+        retCode = 27;
+        pszErrorMsg = "A domain controller for the given domain could not be located.";
+        break;
+    case ERROR_PASSWORD_RESTRICTION:
+        retCode = 28;
+        pszErrorMsg = "A required password was not specified or did not match complexity requirements.";
+        break;
+    case ERROR_HOST_DOWN:
+        retCode = 29;
+        pszErrorMsg = "The required service on the domain controller is unreachable.";
+        break;
+    case VMDIR_ERROR_SCHEMA_NOT_COMPATIBLE:
+        retCode = 30;
+        pszErrorMsg = "Could not join to the remote service VMWare Directory Service.\nThe remote schema is incompatible with the local schema.";
+        break;
+    default:
+        retCode = 1;
     }
+
+    if (retCode != 1)
+    {
+        fprintf(
+            stderr,
+            "Domain controller setup failed, error= %s %u\n",
+            pszErrorMsg,
+            dwError);
+    }
+    else
+    {
+        if (!VmAfdGetErrorMsgByCode(dwError, &pszErrorDesc))
+        {
+            fprintf(stderr, "ic-promoteDomain controller setup failed. Error %u: %s \n", dwError, pszErrorDesc);
+        }
+        else
+        {
+            fprintf(stderr, "Domain controller setup ic-promote failed with error: %u\n", dwError);
+        }
+    }
+
+    VMW_DEPLOY_LOG_ERROR("Domain controller setup failed. Error code: %u", dwError);
 
     goto cleanup;
 }
@@ -116,13 +194,15 @@ ParseArgs(
     PSTR  pszPartner  = NULL;
     PSTR  pszPassword = NULL;
     PSTR  pszSite     = NULL;
+    PSTR  pszSubjectAltName = NULL;
     enum PARSE_MODE
     {
         PARSE_MODE_OPEN = 0,
         PARSE_MODE_DOMAIN,
         PARSE_MODE_PARTNER,
         PARSE_MODE_PASSWORD,
-        PARSE_MODE_SITE
+        PARSE_MODE_SITE,
+        PARSE_MODE_SSL_SUBJECT_ALT_NAME
     } parseMode = PARSE_MODE_OPEN;
     int iArg = 0;
     PVMW_IC_SETUP_PARAMS pSetupParams = NULL;
@@ -149,6 +229,10 @@ ParseArgs(
                 else if (!strcmp(pszArg, "--site"))
                 {
                     parseMode = PARSE_MODE_SITE;
+                }
+                else if (!strcmp(pszArg, "--ssl-subject-alt-name"))
+                {
+                    parseMode = PARSE_MODE_SSL_SUBJECT_ALT_NAME;
                 }
                 else if (!strcmp(pszArg, "--help"))
                 {
@@ -219,6 +303,20 @@ ParseArgs(
 
                 break;
 
+            case PARSE_MODE_SSL_SUBJECT_ALT_NAME:
+
+                if (pszSubjectAltName)
+                {
+                    dwError = ERROR_INVALID_PARAMETER;
+                    BAIL_ON_DEPLOY_ERROR(dwError);
+                }
+
+                pszSubjectAltName = pszArg;
+
+                parseMode = PARSE_MODE_OPEN;
+
+                break;
+
             default:
 
                 dwError = ERROR_INVALID_PARAMETER;
@@ -233,6 +331,7 @@ ParseArgs(
                     pszPassword,
                     pszPartner,
                     pszSite,
+                    pszSubjectAltName,
                     &pSetupParams);
     BAIL_ON_DEPLOY_ERROR(dwError);
 
@@ -261,12 +360,14 @@ VmwDeployBuildParams(
     PCSTR pszPassword,
     PCSTR pszPartner,
     PCSTR pszSite,
+    PCSTR pszSubjectAltName,
     PVMW_IC_SETUP_PARAMS* ppSetupParams
     )
 {
     DWORD dwError = 0;
     PVMW_IC_SETUP_PARAMS pSetupParams = NULL;
     PSTR pszPassword1 = NULL;
+    PSTR pszHostname = NULL;
 
     dwError = VmwDeployAllocateMemory(
                     sizeof(*pSetupParams),
@@ -287,12 +388,29 @@ VmwDeployBuildParams(
         BAIL_ON_DEPLOY_ERROR(dwError);
     }
 
-    dwError = VmwDeployGetHostname(&pSetupParams->pszHostname);
+    dwError = VmwDeployGetHostname(&pszHostname);
     BAIL_ON_DEPLOY_ERROR(dwError);
 
     if (IsNullOrEmptyString(pszDomain))
     {
         pszDomain = VMW_DEFAULT_DOMAIN_NAME;
+    }
+
+    if (!strchr(pszHostname, '.'))
+    {
+        dwError = VmwDeployAllocateStringPrintf(
+                        &pSetupParams->pszHostname,
+                        "%s.%s",
+                        pszHostname,
+                        pszDomain);
+        BAIL_ON_DEPLOY_ERROR(dwError);
+    }
+    else
+    {
+        dwError = VmwDeployAllocateStringA(
+                        pszHostname,
+                        &pSetupParams->pszHostname);
+        BAIL_ON_DEPLOY_ERROR(dwError);
     }
 
     if (!pszPassword)
@@ -304,6 +422,14 @@ VmwDeployBuildParams(
         BAIL_ON_DEPLOY_ERROR(dwError);
 
         pszPassword = pszPassword1;
+    }
+
+    if (!IsNullOrEmptyString(pszSubjectAltName))
+    {
+        dwError = VmwDeployAllocateStringA(
+                        pszSubjectAltName,
+                        &pSetupParams->pszSubjectAltName);
+        BAIL_ON_DEPLOY_ERROR(dwError);
     }
 
     dwError = VmwDeployAllocateStringA(pszDomain, &pSetupParams->pszDomainName);
@@ -325,6 +451,10 @@ cleanup:
     if (pszPassword1)
     {
         VmwDeployFreeMemory(pszPassword1);
+    }
+    if (pszHostname)
+    {
+        VmwDeployFreeMemory(pszHostname);
     }
 
     return dwError;
@@ -433,5 +563,6 @@ ShowUsage(
            "[--domain   <fully qualified domain name. Default : vsphere.local>]\n"
            "--password  <password to administrator account>\n"
            "[--partner  <partner domain controller's hostname or IP Address>]\n"
+           "[--ssl-subject-alt-name <subject alternate name on generated SSL certificate. Default: hostname>]\n"
            "[--site     <infra site name>]\n\n");
 }

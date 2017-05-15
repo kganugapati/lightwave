@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -39,6 +39,16 @@ VmAfSrvSetDomainName(
 DWORD
 VmAfSrvSetDomainNameA(
     PSTR    pszDomain        /* IN     */
+    );
+
+DWORD
+VmAfSrvSetSiteName(
+    PWSTR    pwszSiteName        /* IN     */
+    );
+
+DWORD
+VmAfSrvGetSiteName(
+    PWSTR*   ppwszSiteName        /*    OUT */
     );
 
 DWORD
@@ -166,9 +176,29 @@ VmAfSrvJoinVmDir(
     );
 
 DWORD
+VmAfSrvJoinVmDir2(
+    PWSTR            pwszDomainName,     /* IN              */
+    PWSTR            pwszUserName,       /* IN              */
+    PWSTR            pwszPassword,       /* IN              */
+    PWSTR            pwszMachineName,    /* IN     OPTIONAL */
+    PWSTR            pwszOrgUnit,        /* IN     OPTIONAL */
+    VMAFD_JOIN_FLAGS dwFlags             /* IN              */
+    );
+
+DWORD
 VmAfSrvLeaveVmDir(
     PWSTR    pwszUserName,      /* IN              */
-    PWSTR    pwszPassword       /* IN              */
+    PWSTR    pwszPassword,      /* IN              */
+    DWORD    dwLeaveFlags       /* IN              */
+    );
+
+DWORD
+VmAfSrvCreateComputerAccount(
+    PCWSTR   pwszUserName,      /* IN            */
+    PCWSTR   pwszPassword,      /* IN            */
+    PCWSTR   pwszMachineName,   /* IN            */
+    PCWSTR   pwszOrgUnit,       /* IN   OPTIONAL */
+    PWSTR*   pszOutPassword     /* OUT           */
     );
 
 DWORD
@@ -282,6 +312,73 @@ VmAfSrvCfgSetMachineID(
 DWORD
 VmAfSrvCfgGetMachineID(
     PWSTR *ppszMachineID
+    );
+
+DWORD
+VmAfSrvChangePNID(
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword,
+    PCWSTR pwszPNID
+    );
+
+/* dcfinder.c */
+
+DWORD
+VmAfdGetDomainController(
+    PCSTR pszDomain,
+    PCSTR pszUserName,
+    PCSTR pszPassword,
+    PSTR* ppszHostname,
+    PSTR* ppszDCAddress
+    );
+
+DWORD
+VmAfdGetDomainControllerList(
+    PCSTR pszDomain,
+    PVMAFD_DC_INFO_W *ppVmAfdDCInfoList,
+    PDWORD pdCount
+    );
+
+/* dns.c */
+
+DWORD
+VmAfSrvConfigureDNSW(
+    PCWSTR pwszServerName,
+    PCWSTR pwszDomainName,
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword
+    );
+
+DWORD
+VmAfSrvConfigureDNSA(
+    PCSTR pszServerName,
+    PCSTR pszDomainName,
+    PCSTR pszUserName,
+    PCSTR pszPassword
+    );
+
+DWORD
+VmAfSrvUnconfigureDNSW(
+    PCWSTR pwszServerName,
+    PCWSTR pwszDomainName,
+    PCWSTR pwszUserName,
+    PCWSTR pwszPassword
+    );
+
+DWORD
+VmAfSrvUnconfigureDNSA(
+    PCSTR pszServerName,
+    PCSTR pszDomainName,
+    PCSTR pszUserName,
+    PCSTR pszPassword
+    );
+
+DWORD
+VmAfSrvGetIPAddressesWrap(
+    VMDNS_IP4_ADDRESS** ppV4Addresses,
+    PDWORD              pdwNumV4Address,
+    VMDNS_IP6_ADDRESS** ppV6Addresses,
+    PDWORD              pdwNumV6Address
     );
 
 /* init.c */
@@ -413,6 +510,17 @@ VmAfdRpcServerFreeStringArrayW(
     DWORD dwCount
     );
 
+DWORD
+CdcRpcServerAllocateDCInfoW(
+    PCDC_DC_INFO_W  pCdcInfo,
+    PCDC_DC_INFO_W  *ppRpcCdcInfo
+    );
+
+DWORD
+CdcRpcServerFreeDCInfoW(
+    PCDC_DC_INFO_W  pCdcInfo
+    );
+
 VOID
 VmAfdRpcServerFreeStringA(
     PSTR pszStr
@@ -497,7 +605,7 @@ ShowUsage(
 /* shutdown.c */
 
 VOID
-VmAfdShutdown(
+VmAfdServerShutdown(
     VOID
       );
 
@@ -518,18 +626,26 @@ VmAfdSrvGetDomainState(
     PVMAFD_DOMAIN_STATE
     );
 
-
 DWORD
-VmAfdGetRegArgs(
+VmAfdGetMachineInfo(
     PVMAFD_REG_ARG *ppArgs
     );
-
 
 VOID
 VmAfdFreeRegArgs(
     PVMAFD_REG_ARG pArgs
     );
 
+DWORD
+VmAfdConnectLdapWithMachineAccount(
+    LDAP** ppLotus
+    );
+
+DWORD
+VmAfdCheckDomainFunctionalLevel(
+    int nMinMajor,
+    int nMinMinor
+    );
 
 /* krbconfig.c */
 
@@ -547,6 +663,11 @@ VmAfdDestroyKrbConfig(
 DWORD
 VmAfdBackupKrbConfig(
     PVMAFD_KRB_CONFIG
+    );
+
+DWORD
+VmAfdBackupCopyKrbConfig(
+    PVMAFD_KRB_CONFIG pKrbConfig
     );
 
 DWORD
@@ -573,15 +694,6 @@ VmAfdWriteKrbConfig(
     );
 
 // certutil.c
-
-DWORD
-VecsAddCertificateInternal(
-    UINT32 dwStoreType,
-    PWSTR pwszAlias,
-    PWSTR pwszCertificate,
-    PWSTR pwszPrivateKey,
-    UINT32 uAutoRefresh
-    );
 
 DWORD
 VecsSrvRpcAllocateCertStoreArray(
@@ -685,20 +797,11 @@ VmAfSrvSetMachineID(
     );
 
 DWORD
-VecsAddCertificateInternal(
-    UINT32 dwStoreType,
-    PWSTR pwszAlias,
-    PWSTR pwszCertificate,
-    PWSTR pwszPrivateKey,
-    UINT32 uAutoRefresh
-    );
-
-DWORD
 VmAfdLDAPConnect(
     PSTR pszHostName,
     DWORD  Port,
-    PSTR pszUpn,
-    PSTR pszPassword,
+    PCSTR pszUpn,
+    PCSTR pszPassword,
     LDAP** ppLotus
     );
 
@@ -723,6 +826,12 @@ VmAfdWakeupCertificateUpdatesThr(
     PVMAFD_THREAD pCertThread,
     BOOLEAN forceFlush
     );
+
+DWORD
+VmAfdRootFetchTask(
+    BOOLEAN bLogOnDuplicate
+    );
+
 
 // rootflush.c
 
@@ -752,7 +861,7 @@ VmAfdShutdownPassRefreshThread(
 
 typedef struct _IDM_USER_IDENTITY_
 {
-	unsigned long clientProcessID;//TODO change to ULONG
+    unsigned long clientProcessID;//TODO change to ULONG
 } IDM_USER_IDENTITY, *PSECURITY_IDENTITY;
 
 
@@ -772,12 +881,12 @@ VmAfdIpcServerShutDown(
 
 DWORD
 VmAfdLocalAPIHandler(
-	PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
-	PBYTE pRequest,
-	DWORD dwRequestSize,
-	PBYTE * ppResponse,
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
     DWORD * pdwResponseSize
-	);
+    );
 
 //ipclocalapi.c
 
@@ -989,6 +1098,15 @@ VmAfdIpcSetLDU(
     );
 
 DWORD
+VmAfdIpcGetRHTTPProxyPort(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
 VmAfdIpcSetRHTTPProxyPort(
     PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
     PBYTE pRequest,
@@ -1061,6 +1179,15 @@ VmAfdIpcGetSiteGUID(
     );
 
 DWORD
+VmAfdIpcGetSiteName(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
 VmAfdIpcGetMachineID(
     PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
     PBYTE pRequest,
@@ -1097,6 +1224,22 @@ VmAfdIpcDemoteVmDir(
     );
 
 DWORD
+VmAfdIpcJoinValidateCredentials(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmAfSrvJoinValidateCredentials(
+    PWSTR pwszDomainName,       /* IN            */
+    PWSTR pwszUserName,         /* IN            */
+    PWSTR pwszPassword          /* IN            */
+    );
+
+DWORD
 VmAfdIpcJoinVmDir(
     PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
     PBYTE pRequest,
@@ -1106,7 +1249,25 @@ VmAfdIpcJoinVmDir(
     );
 
 DWORD
+VmAfdIpcJoinVmDir2(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
 VmAfdIpcLeaveVmDir(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmAfdIpcCreateComputerAccount(
     PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
     PBYTE pRequest,
     DWORD dwRequestSize,
@@ -1192,6 +1353,123 @@ VmAfdIpcTriggerRootCertsRefresh(
     PBYTE pRequest,
     DWORD dwRequestSize,
     PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmAfdIpcRefreshSiteName(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmAfdIpcConfigureDNS(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+CdcIpcGetDCName(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE *ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+CdcIpcGetCurrentState(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE *ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+CdcIpcForceRefreshCache(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE *ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+CdcIpcEnumDCEntries(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE *ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+CdcIpcEnableDefaultHA(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE *ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+CdcIpcEnableLegacyModeHA(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE *ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+CdcIpcGetDCStatusInfo(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE *ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmAfdIpcPostHeartbeatStatus(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE *ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmAfdIpcGetHeartbeatStatus(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE *ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmAfdIpcChangePNID(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
+    );
+
+DWORD
+VmAfdIpcGetDCList(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE *ppResponse,
     PDWORD pdwResponseSize
     );
 
@@ -1365,15 +1643,25 @@ VecsSrvValidateAddEntryInput(
     );
 
 DWORD
-VecsSrvFlushCertificate(
+VecsSrvFlushRootCertificate(
     PVECS_SERV_STORE pStore,
-    PWSTR pszCanonicalCertPEM
+    PWSTR pszCanonicalCertPEM,
+    BOOLEAN bLogOnDuplicate
+    );
+
+DWORD
+VecsSrvFlushMachineSslCertificate(
+    PVECS_SERV_STORE pStore,
+    PWSTR pszCanonicalCertPEM,
+    PWSTR pszCanonicalKeyPEM,
+    BOOL  bLogOnError
     );
 
 DWORD
 VecsSrvFlushCrl(
     PVECS_SERV_STORE pStore,
-    PWSTR pszCanonicalCertPEM
+    PWSTR pszCanonicalCertPEM,
+    BOOLEAN bLogOnDuplicate
     );
 
 DWORD
@@ -1386,6 +1674,17 @@ VecsSrvComputeCertAlias(
      PWSTR pszCertificate,
      PWSTR *ppszHash
     );*/
+
+DWORD
+VecsSrvFlushCertsToDisk(
+    VOID
+    );
+
+DWORD
+VecsSrvFlushSSLCertFromDB(
+    BOOL bLogOnError
+    );
+
 
 //ipcmarshalhelper.c
 //
@@ -1439,7 +1738,6 @@ VmAfdDecodeEnumContextHandle(
                       DWORD dwBlobSize,
                       PVECS_SRV_ENUM_CONTEXT_HANDLE *ppEnumContext
                       );
-
 
 
 //authservice.c
@@ -1518,6 +1816,12 @@ VmAfdQueryCACerts(
     );
 
 DWORD
+VmAfdGetDomainFunctionLevel(
+    LDAP* pLotus,
+    PSTR* ppDomainFunctionLevel
+    );
+
+DWORD
 VecsSrvOpenCertStoreWithAuth(
                              PCWSTR pszStoreName,
                              PCWSTR pszPassword,
@@ -1558,6 +1862,12 @@ DWORD
 VecsSrvValidateAceType(
     DWORD dwAceType,
     VMAFD_ACE_TYPE *pAceType
+    );
+
+DWORD
+VmAfdGetDefaultDomainName(
+    LDAP* pLotus,
+    PSTR* ppDomainName
     );
 
 //storehash_util.c
@@ -1640,7 +1950,93 @@ VmAfdSrvIsValidGUID(
     PCWSTR pwszGUID
     );
 
+DWORD
+_VmAfdConfigGetString(
+    PCSTR    pszSubKey,      /* IN     */
+    PCSTR    pszValueName,   /* IN     */
+    PWSTR*   ppwszValue      /*    OUT */
+    );
+
+DWORD
+_VmAfdConfigGetInteger(
+    PCSTR    pszValueName,   /* IN     */
+    PDWORD   pdwValue        /*    OUT */
+    );
+
+
+DWORD
+_VmAfdConfigSetInteger(
+    PCSTR    pszValueName,   /* IN     */
+    DWORD    dwValue        /* IN */
+    );
+
+VMAFD_STATUS
+VmAfdStatus(
+    VOID
+    );
+
+UINT64
+VmAfdGetTimeInMilliSec(
+    VOID
+    );
+
+DWORD
+VmAfdCircularBufferCreate(
+    DWORD dwCapacity,
+    DWORD dwElementSize,
+    PVMAFD_CIRCULAR_BUFFER *ppCircularBuffer
+    );
+
+VOID VmAfdCircularBufferFree(
+    PVMAFD_CIRCULAR_BUFFER pCircularBuffer
+    );
+
+DWORD
+VmAfdCircularBufferReset(
+    PVMAFD_CIRCULAR_BUFFER pCircularBuffer
+    );
+
+DWORD
+VmAfdCircularBufferGetCapacity(
+    PVMAFD_CIRCULAR_BUFFER pCircularBuffer,
+    PDWORD pdwCapacity
+    );
+
+DWORD
+VmAfdCircularBufferSetCapacity(
+    PVMAFD_CIRCULAR_BUFFER pCircularBuffer,
+    DWORD dwCapacity
+    );
+
+PVOID
+VmAfdCircularBufferGetNextEntry(
+    PVMAFD_CIRCULAR_BUFFER pCircularBuffer
+    );
+
+DWORD
+VmAfdSuperLoggingGetEntries(
+    PVMSUPERLOGGING pLogger,
+    UINT64 *pEnumerationCookie,
+    DWORD dwCount,
+    PVMAFD_SUPERLOG_ENTRY_ARRAY *ppEntries
+    );
+
+DWORD
+VmAfdCircularBufferSelectElements(
+    PVMAFD_CIRCULAR_BUFFER pCircularBuffer,
+    DWORD dwCount, // 0 implies that we want all elements.
+    CIRCULAR_BUFFER_SELECT_CALLBACK Callback,
+    PVOID pContext
+    );
+
+DWORD
+VmAfdCircularBufferGetSize(
+    PVMAFD_CIRCULAR_BUFFER pCircularBuffer,
+    PDWORD pSize
+    );
+
 // vmdir.c
+
 
 DWORD
 VmAfSrvDirGetMachineId(
@@ -1672,6 +2068,286 @@ VOID
 VmAfSrvDirFreeMemberships(
     PSTR* ppszMemberships,
     DWORD dwMemberships
+    );
+
+DWORD
+VmAfSrvRefreshSiteName(
+    VOID
+    );
+
+DWORD
+VmAfSrvGetSiteNameForDC(
+    PWSTR pwszDCName,
+    PWSTR* ppwszSiteName
+    );
+
+//cdcthread.c
+
+DWORD
+CdcInitThreadContext(
+    PCDC_THREAD_CONTEXT *ppThrContext
+    );
+
+VOID
+CdcShutdownThread(
+    PCDC_THREAD_CONTEXT pThrContext,
+    PSTR pszThreadName
+    );
+
+DWORD
+CdcWakeupThread(
+    PCDC_THREAD_CONTEXT pThrContext
+    );
+
+BOOLEAN
+CdcToShutdownThread(
+    PCDC_THREAD_CONTEXT pThrContext
+    );
+
+VOID
+CdcSetShutdownFlagThread(
+    PCDC_THREAD_CONTEXT pThrContext
+    );
+
+//cdcservice.c
+
+DWORD
+CdcInitCdcService(
+    PCDC_CONTEXT *ppContext
+    );
+
+VOID
+CdcShutdownCdcService(
+    PCDC_CONTEXT pCdcContext
+    );
+
+DWORD
+CdcSrvInitDefaultHAMode(
+    PCDC_CONTEXT pCdcContext
+    );
+
+DWORD
+CdcSrvShutdownDefaultHAMode(
+    PCDC_CONTEXT pCdcContext
+    );
+
+DWORD
+CdcSrvEnableDefaultHA(
+    PCDC_CONTEXT pContext
+    );
+
+DWORD
+CdcSrvEnableLegacyModeHA(
+    PCDC_CONTEXT pContext
+    );
+
+DWORD
+CdcSrvForceRefreshCache(
+    PCDC_CONTEXT pContext
+    );
+
+DWORD
+CdcSrvGetDCName(
+    PCWSTR pszDomain,
+    DWORD  dwFlags,
+    PCDC_DC_INFO_W *ppAffinitizedDC
+    );
+
+DWORD
+CdcSrvGetCurrentState(
+    PCDC_DC_STATE pCdcState
+    );
+
+DWORD
+VmAfSrvGetAffinitizedDC(
+    PWSTR* ppwszDCName
+    );
+
+
+DWORD
+CdcSrvEnumDCEntries(
+    PWSTR **pppszEntryNames,
+    PDWORD pdwCount
+    );
+
+DWORD
+CdcSrvGetDCStatusInfo(
+    PWSTR pwszDCName,
+    PWSTR pwszDomainName,
+    PCDC_DC_STATUS_INFO_W *ppCdcStatusInfo,
+    PVMAFD_HB_STATUS_W    *ppHeartbeatStatus
+    );
+
+DWORD
+CdcSrvWakeupStateMachine(
+    PCDC_CONTEXT pCdcContext
+    );
+
+DWORD
+CdcRpcAllocateDCStatusInfo(
+     PCDC_DC_STATUS_INFO_W pDCStatusInfo,
+     PCDC_DC_STATUS_INFO_W *ppRpcDCStatusInfo
+     );
+
+VOID
+CdcRpcFreeDCStatuInfo(
+    PCDC_DC_STATUS_INFO_W  pRpcDCStatusInfo
+    );
+
+DWORD
+VmAfSrvGetRegKeySecurity(
+    PCSTR    pszSubKey,
+    PSTR*    ppszSecurity
+    );
+
+//cdcstatemachine.c
+
+
+DWORD
+CdcInitStateMachine(
+      PCDC_STATE_MACHINE_CONTEXT *ppStateMachine
+      );
+
+DWORD
+CdcRunStateMachine(
+      PCDC_STATE_MACHINE_CONTEXT pStateMachine,
+      PCDC_DC_STATE              pCdcEndingState
+      );
+
+DWORD
+CdcEnableStateMachine(
+     PCDC_STATE_MACHINE_CONTEXT pStateMachine
+     );
+
+DWORD
+CdcDisableStateMachine(
+     PCDC_STATE_MACHINE_CONTEXT pStateMachine
+     );
+
+VOID
+CdcShutdownStateMachine(
+      PCDC_STATE_MACHINE_CONTEXT pStateMachine
+      );
+
+DWORD
+CdcWakeupStateMachine(
+      PCDC_STATE_MACHINE_CONTEXT pStateMachine,
+      BOOLEAN                    bWaitForCompletion
+      );
+
+
+//cdcupdate.c
+
+DWORD
+CdcInitCdcCacheUpdate(
+      PCDC_CACHE_UPDATE_CONTEXT *ppUpdateContext
+      );
+
+VOID
+CdcShutdownCdcCacheUpdate(
+      PCDC_CACHE_UPDATE_CONTEXT pUpdateContext
+      );
+
+DWORD
+CdcWakeupCdcCacheUpdate(
+      PCDC_CACHE_UPDATE_CONTEXT pDCCaching,
+      BOOLEAN                   bPurgeRefresh,
+      BOOLEAN                   bWaitForRefresh
+      );
+
+//heartbeat.c
+
+DWORD
+VmAfSrvInitHeartbeatTable(
+    VOID
+    );
+
+DWORD
+VmAfSrvPostHeartbeat(
+    PCWSTR pwszServiceName,
+    DWORD  dwPort
+    );
+
+DWORD
+VmAfSrvGetHeartbeatStatus(
+    PVMAFD_HB_STATUS_W* ppHeartbeatStatus
+    );
+
+VOID
+VmAfdFreeHbNode(
+    PVMAFD_HB_NODE pNode
+    );
+
+VOID
+VmAfdHeartbeatCleanup(
+    VOID
+    );
+
+DWORD
+VmAfdRpcAllocateHeartbeatStatus(
+    PVMAFD_HB_STATUS_W  pHeartbeatStatus,
+    PVMAFD_HB_STATUS_W  *ppHeartbeatStatus
+    );
+
+VOID
+VmAfdRpcFreeHeartbeatStatus(
+    PVMAFD_HB_STATUS_W pHeartbeatStatus
+    );
+
+
+//ddns.c
+
+DWORD
+VmDdnsInitThread(
+        PDDNS_CONTEXT* ppDdnsContext
+        );
+
+VOID
+VmDdnsShutdown(
+        PDDNS_CONTEXT pDdnsContext
+        );
+
+VOID
+VmDdnsExit(
+          PDDNS_CONTEXT pDdnsContext
+          );
+
+DWORD
+VmDdnsGetSourceIp(
+        VMDNS_IP4_ADDRESS** ppSourceIp4,
+        VMDNS_IP6_ADDRESS** ppSourceIp6
+        );
+
+DWORD
+VmDdnsUpdateMakePacket(
+          PSTR pszZone,
+          PSTR pszHostname,
+          PSTR pszName,
+          PSTR* ppDnsPacket,
+          DWORD* ppacketSize,
+          DWORD hederId,
+          DWORD dwFlag
+          );
+
+//sourceip.c
+
+VOID
+VmAfdShutdownSrcIpThread(
+    PSOURCE_IP_CONTEXT pSourceIpContext
+    );
+
+DWORD
+VmAfdInitSourceIpThread(
+    PSOURCE_IP_CONTEXT* ppSourceIpContext
+    );
+
+DWORD
+VmAfdIpcCreateComputerAccount(
+    PVM_AFD_CONNECTION_CONTEXT pConnectionContext,
+    PBYTE pRequest,
+    DWORD dwRequestSize,
+    PBYTE * ppResponse,
+    PDWORD pdwResponseSize
     );
 
 #ifdef __cplusplus

@@ -34,113 +34,6 @@ VmDirInternalUpdateObjectSD(
     ULONG ulSecDescRel
     );
 
-static
-DWORD
-VmDirSetEntrySecurityDescriptor(
-    PVDIR_ENTRY pEntry,
-    PSECURITY_DESCRIPTOR_RELATIVE pSecDescRelToSet,
-    ULONG ulSecDescToSetLen
-    );
-
-
-DWORD
-VmDirGetSecurityDescriptorForDn(
-    PSTR                            pszObjectDn,
-    SECURITY_INFORMATION            SecurityInformation,
-    PSECURITY_DESCRIPTOR_RELATIVE*  ppSecDesc,
-    PULONG                          pulSecDescLength
-    )
-{
-    DWORD dwError = ERROR_SUCCESS;
-    PVDIR_ENTRY pEntry = NULL;
-
-    dwError = VmDirSimpleDNToEntry(pszObjectDn, &pEntry);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    dwError = VmDirGetSecurityDescriptorForEntry(pEntry,
-                                                 SecurityInformation,
-                                                 ppSecDesc,
-                                                 pulSecDescLength);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-cleanup:
-    if (pEntry)
-    {
-        VmDirFreeEntry(pEntry);
-    }
-
-    return dwError;
-
-error:
-    *ppSecDesc= NULL;
-
-    goto cleanup;
-}
-
-DWORD
-VmDirGetSecurityInformationFromSD(
-    PSECURITY_DESCRIPTOR_RELATIVE pSecDesc,
-    PSECURITY_INFORMATION pSecInfo
-    )
-{
-	DWORD dwError = ERROR_SUCCESS;
-    PSID pOwner = NULL;
-    PSID pGroup = NULL;
-    PACL pDacl = NULL;
-    PACL pSacl = NULL;
-    BOOLEAN bDefaulted = FALSE;
-    BOOLEAN bPresent = FALSE;
-    PSECURITY_DESCRIPTOR_ABSOLUTE pSecDescAbs = NULL;
-    SECURITY_INFORMATION SecInfo = 0;
-
-    dwError = VmDirSecurityAclSelfRelativeToAbsoluteSD(&pSecDescAbs, pSecDesc);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    dwError = VmDirGetOwnerSecurityDescriptor(pSecDescAbs, &pOwner, &bDefaulted);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    if (pOwner)
-    {
-        SecInfo |= OWNER_SECURITY_INFORMATION;
-    }
-
-    dwError = VmDirGetGroupSecurityDescriptor(pSecDescAbs, &pGroup, &bDefaulted);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    if (pGroup)
-    {
-        SecInfo |= GROUP_SECURITY_INFORMATION;
-    }
-
-    dwError = VmDirGetDaclSecurityDescriptor(pSecDescAbs, &bPresent, &pDacl, &bDefaulted);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    if (bPresent)
-    {
-        SecInfo |= DACL_SECURITY_INFORMATION;
-        bPresent = FALSE;
-    }
-
-    dwError = VmDirGetSaclSecurityDescriptor(pSecDescAbs, &bPresent, &pSacl, &bDefaulted);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    if (bPresent)
-    {
-        SecInfo |= SACL_SECURITY_INFORMATION;
-        bPresent = FALSE;
-    }
-
-    *pSecInfo = SecInfo;
-
-cleanup:
-    VmDirFreeAbsoluteSecurityDescriptor(&pSecDescAbs);
-
-    return dwError;
-
-error:
-    goto cleanup;
-}
-
 DWORD
 VmDirGetSecurityDescriptorForEntry(
     PVDIR_ENTRY pEntry,
@@ -181,7 +74,7 @@ VmDirGetSecurityDescriptorForEntry(
             }
 
             ulOldSecDescLength = ulsecDescLength;
-            ulsecDescLength = VMDIR_ACL_MIN(ulsecDescLength*2, SECURITY_DESCRIPTOR_RELATIVE_MAX_SIZE);
+            ulsecDescLength = VMDIR_MIN(ulsecDescLength*2, SECURITY_DESCRIPTOR_RELATIVE_MAX_SIZE);
 
             dwError = VmDirReallocateMemoryWithInit((PVOID)pSecDescBuffer,
                                                     (PVOID *)(&pSecDescBuffer),
@@ -242,35 +135,74 @@ error:
 
 DWORD
 VmDirSetSecurityDescriptorForDn(
-    PSTR pszObjectDn,
-    SECURITY_INFORMATION SecurityInformation,
-    PSECURITY_DESCRIPTOR_RELATIVE pSecDescRel,
-    ULONG ulSecDescRel
+    PCSTR pszObjectDn,
+    PVMDIR_SECURITY_DESCRIPTOR pSecDesc
     )
 {
-	DWORD dwError = ERROR_SUCCESS;
+    DWORD dwError = ERROR_SUCCESS;
     PVDIR_ENTRY pEntry = NULL;
 
     dwError = VmDirSimpleDNToEntry(pszObjectDn, &pEntry);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     dwError = VmDirSetSecurityDescriptorForEntry(pEntry,
-                                                 SecurityInformation,
-                                                 pSecDescRel,
-                                                 ulSecDescRel);
+                                                 pSecDesc->SecInfo,
+                                                 pSecDesc->pSecDesc,
+                                                 pSecDesc->ulSecDesc);
     BAIL_ON_VMDIR_ERROR(dwError);
 
 cleanup:
-    if (pEntry)
-    {
-        VmDirFreeEntry(pEntry);
-    }
+    VmDirFreeEntry(pEntry);
 
     return dwError;
 
 error:
     goto cleanup;
+}
 
+//
+// Sets the security descriptor for object <pszObjectDn> and all objects
+// below it (if any).
+//
+DWORD
+VmDirSetRecursiveSecurityDescriptorForDn(
+    PCSTR pszObjectDn,
+    PVMDIR_SECURITY_DESCRIPTOR pSecDesc
+    )
+{
+    DWORD dwError = 0;
+    VDIR_ENTRY_ARRAY entryArray = {0};
+    int iCnt = 0;
+    PVDIR_BACKEND_INTERFACE pBE = NULL;
+
+    dwError = VmDirFilterInternalSearch(pszObjectDn,
+                                        LDAP_SCOPE_SUBTREE,
+                                        "objectClass=*",
+                                        0,
+                                        NULL,
+                                        &entryArray);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    pBE = VmDirBackendSelect(NULL);
+    dwError = pBE->pfnBEConfigureFsync(FALSE);
+    BAIL_ON_VMDIR_ERROR(dwError);
+
+    for (iCnt = 0; iCnt < entryArray.iSize; iCnt++)
+    {
+        dwError = VmDirSetSecurityDescriptorForEntry(
+                    &entryArray.pEntry[iCnt],
+                    pSecDesc->SecInfo,
+                    pSecDesc->pSecDesc,
+                    pSecDesc->ulSecDesc);
+        BAIL_ON_VMDIR_ERROR(dwError);
+    }
+
+cleanup:
+    dwError = pBE->pfnBEConfigureFsync(TRUE);
+    VmDirFreeEntryArrayContent(&entryArray);
+    return dwError;
+error:
+    goto cleanup;
 }
 
 // This function is only used internally to add SD for a given entry during
@@ -286,28 +218,28 @@ VmDirSetSecurityDescriptorForEntry(
     )
 {
     DWORD dwError = VMDIR_ERROR_INSUFFICIENT_ACCESS;
-	PSECURITY_DESCRIPTOR_RELATIVE pNewSecDescRel = NULL;
-	ULONG ulNewSecDescLen = 0;
-	// Do not free
-	PSECURITY_DESCRIPTOR_RELATIVE pSecDescRelToSet = NULL;
-	ULONG ulSecDescToSetLen = 0;
+    PSECURITY_DESCRIPTOR_RELATIVE pNewSecDescRel = NULL;
+    ULONG ulNewSecDescLen = 0;
+    // Do not free
+    PSECURITY_DESCRIPTOR_RELATIVE pSecDescRelToSet = NULL;
+    ULONG ulSecDescToSetLen = 0;
     PVDIR_ATTRIBUTE pObjectSdExist = NULL;
 
 
-	/* Sanity checks */
-	if (SecurityInformation == 0)
-	{
+    /* Sanity checks */
+    if (SecurityInformation == 0)
+    {
         dwError = ERROR_INVALID_PARAMETER;
         BAIL_ON_VMDIR_ERROR(dwError);
-	}
+    }
 
-	if (!VmDirValidRelativeSecurityDescriptor(pSecDescRel, ulSecDescRel, SecurityInformation))
-	{
-		dwError = ERROR_INVALID_SECURITY_DESCR;
+    if (!VmDirValidRelativeSecurityDescriptor(pSecDescRel, ulSecDescRel, SecurityInformation))
+    {
+        dwError = ERROR_INVALID_SECURITY_DESCR;
         BAIL_ON_VMDIR_ERROR(dwError);
-	}
+    }
 
-	// Entry's SD is not cached yet
+    // Entry's SD is not cached yet
     pObjectSdExist = VmDirEntryFindAttribute(
                                      ATTR_OBJECT_SECURITY_DESCRIPTOR,
                                      pEntry);
@@ -355,8 +287,8 @@ VmDirSetSecurityDescriptorForEntry(
     BAIL_ON_VMDIR_ERROR(dwError);
 
     // Update pEntry SD cache
-    dwError = VmDirSetEntrySecurityDescriptor(pEntry, pSecDescRelToSet, ulSecDescToSetLen);
-	BAIL_ON_VMDIR_ERROR(dwError);
+    dwError = VmDirEntryCacheSecurityDescriptor(pEntry, pSecDescRelToSet, ulSecDescToSetLen);
+    BAIL_ON_VMDIR_ERROR(dwError);
 
 error:
 
@@ -402,12 +334,7 @@ VmDirSecurityAclSelfRelativeToAbsoluteSD(
         BAIL_ON_VMDIR_ERROR(dwError);
     }
 
-    dwError = VmDirAllocateMemory(SECURITY_DESCRIPTOR_ABSOLUTE_MIN_SIZE, (PVOID*)&pAbsolute);
-    BAIL_ON_VMDIR_ERROR(dwError);
-
-    dwError = VmDirCreateSecurityDescriptorAbsolute(
-                  pAbsolute,
-                  SECURITY_DESCRIPTOR_REVISION);
+    dwError = VmDirCreateSecurityDescriptorAbsolute(&pAbsolute);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     if (ulDaclSize)
@@ -585,9 +512,8 @@ error:
     goto cleanup;
 }
 
-static
 DWORD
-VmDirSetEntrySecurityDescriptor(
+VmDirEntryCacheSecurityDescriptor(
     PVDIR_ENTRY pEntry,
     PSECURITY_DESCRIPTOR_RELATIVE pSecDescRelToSet,
     ULONG ulSecDescToSetLen
@@ -595,31 +521,32 @@ VmDirSetEntrySecurityDescriptor(
 {
     DWORD dwError = ERROR_SUCCESS;
 
-	if (!pEntry->pAclCtx)
+    if (!pEntry->pAclCtx)
     {
-		dwError = VmDirAllocateMemory(sizeof(*pEntry->pAclCtx), (PVOID*)&pEntry->pAclCtx);
-	    BAIL_ON_VMDIR_ERROR(dwError);
+        dwError = VmDirAllocateMemory(sizeof(*pEntry->pAclCtx), (PVOID*)&pEntry->pAclCtx);
+        BAIL_ON_VMDIR_ERROR(dwError);
     }
-	else
-	{
+    else
+    {
         VmDirAclCtxContentFree(pEntry->pAclCtx);
-	}
+    }
 
     dwError = VmDirAllocateMemory(ulSecDescToSetLen, (PVOID*)&pEntry->pAclCtx->pSecurityDescriptor);
     BAIL_ON_VMDIR_ERROR(dwError);
+
     dwError = VmDirCopyMemory(
-        pEntry->pAclCtx->pSecurityDescriptor, ulSecDescToSetLen,
-        pSecDescRelToSet, ulSecDescToSetLen );
+                pEntry->pAclCtx->pSecurityDescriptor,
+                ulSecDescToSetLen,
+                pSecDescRelToSet,
+                ulSecDescToSetLen);
     BAIL_ON_VMDIR_ERROR(dwError);
 
     pEntry->pAclCtx->ulSecDescLength = ulSecDescToSetLen;
 
-error:
-    if (dwError != ERROR_SUCCESS)
-    {
-        VmDirAclCtxContentFree(pEntry->pAclCtx);
-        VMDIR_SAFE_FREE_MEMORY(pEntry->pAclCtx);
-    }
-
+cleanup:
     return dwError;
+error:
+    VmDirAclCtxContentFree(pEntry->pAclCtx);
+    VMDIR_SAFE_FREE_MEMORY(pEntry->pAclCtx);
+    goto cleanup;
 }

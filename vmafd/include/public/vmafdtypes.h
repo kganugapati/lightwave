@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -146,6 +146,9 @@ void *vecs_crl_handle_t;
 #define READ_STORE 0x40000000
 #define WRITE_STORE 0x80000000
 
+//CDC_GET_DCNAME_FLAG
+#define CDC_FORCE_REFRESH 0x00000001
+
 #ifndef VMAFD_STATUS_DEFINED
 #define VMAFD_STATUS_DEFINED 1
 
@@ -157,6 +160,7 @@ typedef enum {
     CERT_ENTRY_TYPE_SECRET_KEY,
     CERT_ENTRY_TYPE_TRUSTED_CERT,
     CERT_ENTRY_TYPE_REVOKED_CERT_LIST,
+    CERT_ENTRY_TYPE_ENCRYPTED_PRIVATE_KEY
 } CERT_ENTRY_TYPE;
 
 typedef enum {
@@ -196,9 +200,9 @@ typedef enum
 
 #endif /* VMAFD_DOMAIN_STATE_DEFINED */
 
+
 #ifndef VMAFD_CRL_DATA_DEFINED
 #define VMAFD_CRL_DATA_DEFINED 1
-#define FILE_CHUNK 64 * 1024
 
 typedef struct _VMAFD_CRL_DATA
 {
@@ -376,6 +380,204 @@ typedef enum
 #endif /* CRL_OPEN_MODE_DEFINED */
 
 
+#ifndef CDC_ADDRESS_TYPE_DEFINED
+#define CDC_ADDRESS_TYPE_DEFINED 1
+
+typedef enum
+{
+    CDC_ADDRESS_TYPE_UNDEFINED = 0,
+    CDC_ADDRESS_TYPE_INET,
+    CDC_ADDRESS_TYPE_NETBIOS
+} CDC_ADDRESS_TYPE;
+
+#endif
+
+#ifndef CDC_DC_INFO_A_DEFINED
+#define CDC_DC_INFO_A_DEFINED    1
+
+typedef char* GUID_A;
+//TODO: Later change this to actual GUID struct?
+
+typedef struct _CDC_DC_INFO_A
+{
+    char*             pszDCName;
+    char*             pszDCAddress;
+    CDC_ADDRESS_TYPE  DcAddressType;
+    char*             pszDomainName;
+    char*             pszDcSiteName;
+}CDC_DC_INFO_A, *PCDC_DC_INFO_A;
+
+#endif
+
+#ifndef CDC_DC_INFO_W_DEFINED
+#define CDC_DC_INFO_W_DEFINED    1
+
+typedef wstring_t GUID_W;
+//TODO: Later change this to actual GUID struct?
+
+typedef struct _CDC_DC_INFO_W
+{
+    wstring_t            pszDCName;
+    wstring_t            pszDCAddress;
+    CDC_ADDRESS_TYPE     DcAddressType;
+    wstring_t            pszDomainName;
+    wstring_t            pszDcSiteName;
+}CDC_DC_INFO_W, *PCDC_DC_INFO_W;
+
+#endif
+
+#ifndef CDC_DC_STATE_DEFINED
+#define CDC_DC_STATE_DEFINED    1
+
+typedef enum {
+    CDC_DC_STATE_UNDEFINED =0,
+    CDC_DC_STATE_NO_DC_LIST,
+    CDC_DC_STATE_SITE_AFFINITIZED,
+    CDC_DC_STATE_OFF_SITE,
+    CDC_DC_STATE_NO_DCS_ALIVE,
+    CDC_DC_STATE_LEGACY
+} CDC_DC_STATE, *PCDC_DC_STATE;
+
+#endif
+
+
+typedef UINT32 VMAFD_JOIN_FLAGS;
+
+#define VMAFD_JOIN_FLAGS_ENABLE_NSSWITCH    0x00000001
+#define VMAFD_JOIN_FLAGS_ENABLE_PAM         0x00000002
+#define VMAFD_JOIN_FLAGS_ENABLE_SSH         0x00000004
+#define VMAFD_JOIN_FLAGS_CLIENT_PREJOINED   0x00000008
+
+#ifndef VMAFD_HB_INFO_A_DEFINED
+#define VMAFD_HB_INFO_A_DEFINED 1
+
+typedef struct _VMAFD_HB_INFO_A
+{
+    char*  pszServiceName;
+    UINT32 dwPort;
+    UINT32 dwLastHeartbeat;
+    UINT32  bIsAlive;
+} VMAFD_HB_INFO_A, *PVMAFD_HB_INFO_A;
+
+#endif
+
+#ifndef VMAFD_HB_STATUS_A_DEFINED
+#define VMAFD_HB_STATUS_A_DEFINED 1
+
+typedef struct _VMAFD_HB_STATUS_A
+{
+    UINT32             bIsAlive;
+    UINT32             dwCount;
+    PVMAFD_HB_INFO_A  pHeartbeatInfoArr;
+} VMAFD_HB_STATUS_A, *PVMAFD_HB_STATUS_A;
+
+#endif
+
+#ifndef VMAFD_HB_INFO_W_DEFINED
+#define VMAFD_HB_INFO_W_DEFINED 1
+
+typedef struct _VMAFD_HB_INFO_W
+{
+    wstring_t pszServiceName;
+    UINT32 dwPort;
+    UINT32 dwLastHeartbeat;
+    UINT32  bIsAlive;
+} VMAFD_HB_INFO_W, *PVMAFD_HB_INFO_W;
+
+#endif
+
+#ifndef VMAFD_HB_STATUS_W_DEFINED
+#define VMAFD_HB_STATUS_W_DEFINED 1
+
+typedef struct _VMAFD_HB_STATUS_W
+{
+    UINT32             bIsAlive;
+    UINT32             dwCount;
+#ifdef _DCE_IDL_
+    [size_is(dwCount)]
+#endif /* _DCE_IDL_ */
+    PVMAFD_HB_INFO_W   pHeartbeatInfoArr;
+} VMAFD_HB_STATUS_W, *PVMAFD_HB_STATUS_W;
+
+#endif
+
+#ifndef CDC_DC_STATUS_INFO_A_DEFINED
+#define CDC_DC_STATUS_INFO_A_DEFINED    1
+
+typedef struct _CDC_DC_STATUS_INFO_A
+{
+    UINT32             dwLastPing;
+    UINT32             dwLastResponseTime;
+    UINT32             dwLastError;
+    UINT32             bIsAlive;
+    char*              pszSiteName;
+} CDC_DC_STATUS_INFO_A, *PCDC_DC_STATUS_INFO_A;
+#endif
+
+#ifndef CDC_DC_STATUS_INFO_W_DEFINED
+#define CDC_DC_STATUS_INFO_W_DEFINED    1
+
+typedef struct _CDC_DC_STATUS_INFO_W
+{
+    UINT32             dwLastPing;
+    UINT32             dwLastResponseTime;
+    UINT32             dwLastError;
+    UINT32             bIsAlive;
+    wstring_t          pwszSiteName;
+} CDC_DC_STATUS_INFO_W, *PCDC_DC_STATUS_INFO_W;
+#endif
+
+
+#ifndef VMAFD_DC_INFO_W_DEFINED
+#define VMAFD_DC_INFO_W_DEFINED         1
+
+typedef struct _VMAFD_DC_INFO_W
+{
+    wstring_t  pwszHostName;
+    wstring_t  pwszAddress;
+}VMAFD_DC_INFO_W, *PVMAFD_DC_INFO_W;
+#endif
+
+#ifndef VMAFD_MAX_DN_LEN
+#define VMAFD_MAX_DN_LEN 1024
+#endif
+
+typedef struct _VMAFD_SUPERLOG_ENTRY
+{
+    UINT32 dwErrorCode;
+    UINT32 iStartTime;
+    UINT32 iEndTime;
+    UINT32 dwState;
+    UINT32 dwCDCPingTime;
+    UINT32 dwCDCLastPing;
+    UINT32 bCDCIsAlive;
+    UINT32 bHBIsAlive;
+    UINT32 dwHBCount;
+    unsigned char pszDomainName[VMAFD_MAX_DN_LEN];
+    unsigned char pszDCName[VMAFD_MAX_DN_LEN];
+    unsigned char pszSiteName[VMAFD_MAX_DN_LEN];
+    unsigned char pszDCAddress[VMAFD_MAX_DN_LEN];
+} VMAFD_SUPERLOG_ENTRY, *PVMAFD_SUPERLOG_ENTRY;
+
+
+typedef struct _VMAFD_SUPERLOG_ENTRY_ARRAY
+{
+    UINT32 dwCount;
+#ifdef _DCE_IDL_
+    [size_is(dwCount)]
+#endif
+    PVMAFD_SUPERLOG_ENTRY entries;
+} VMAFD_SUPERLOG_ENTRY_ARRAY, *PVMAFD_SUPERLOG_ENTRY_ARRAY;
+
+
+typedef
+#ifdef _DCE_IDL_
+[context_handle]
+#endif
+void *vmafd_superlog_cookie_t;
+
+
+
 #ifndef _DCE_IDL_
 #ifndef VMAFD_SERVER_DEFINED
 #define VMAFD_SERVER_DEFINED 1
@@ -386,6 +588,15 @@ typedef enum
 typedef struct _VMAFD_SERVER VMAFD_SERVER, *PVMAFD_SERVER;
 #endif /* VMAFD_SERVER_DEFINED */
 #endif
+
+typedef struct _VMAFD_DC_ENTRIES_W
+{
+    UINT32 dwCount;
+#ifdef _DCE_IDL_
+    [size_is(dwCount)]
+#endif
+    wstring_t* ppszEntries;
+} CDC_DC_ENTRIES_W, *PCDC_DC_ENTRIES_W;
 
 #ifdef _DCE_IDL_
 cpp_quote("#endif")

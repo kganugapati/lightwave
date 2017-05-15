@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
  * of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an “AS IS” BASIS, without
  * warranties or conditions of any kind, EITHER EXPRESS OR IMPLIED.  See the
@@ -21,6 +21,7 @@ class VecsAdapter {
    static final int ERROR_OBJECT_NOT_FOUND = 4312;
 //   static final int ERROR_NO_MORE_ITEMS = 259;
    static final int ERROR_ALREADY_EXISTS = 183;
+   static final int ERROR_INVALID_PARAMETER = 87;
 
 //   static final int VECS_BASE_ERROR = 90000;
    // private static final int VECS_GENERIC_FILE_IO = VECS_BASE_ERROR + 1;
@@ -39,7 +40,12 @@ class VecsAdapter {
       if (isWindows) {
          System.loadLibrary("libvecsjni");
       } else {
-         System.load("/usr/lib/vmware-vmafd/lib64/libvecsjni.so");
+            try {
+              System.load("/opt/vmware/lib64/libvecsjni.so");
+            }
+            catch (UnsatisfiedLinkError e) {
+              System.load("/usr/lib/vmware-vmafd/lib64/libvecsjni.so");
+            }
       }
    }
 
@@ -128,6 +134,27 @@ class VecsAdapter {
    VecsDeleteEntryW(
          PointerRef pStore,
          String alias
+         );
+
+   static native int
+   VecsSetPermissionW(
+         PointerRef pStore,
+         String userName,
+         int accessMask
+         );
+
+   static native int
+   VecsRevokePermissionW(
+         PointerRef pStore,
+         String userName,
+         int accessMask
+         );
+
+   static native int
+   VecsGetPermissionsW(
+         PointerRef pStore,
+         StringRef owner,
+         List<VecsPermissionNative> pStorePermissions
          );
 
    static native int

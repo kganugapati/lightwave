@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2015 VMware, Inc.  All Rights Reserved.
+ * Copyright © 2012-2016 VMware, Inc.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the “License”); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -278,6 +278,70 @@ public class VMCAClient implements Iterable<X509Certificate> {
         return getCertificateFromString(VMCAAdapter2
                 .VMCAGetSignedCertificateFromCSR(context,
                         certificateRequest, epochNotBefore, epochNotAfter));
+    }
+
+    /*
+     * Returns a Signed Host Certificate from the Server 
+     *
+     * @param hostName -- Host name, CSR will be validated against hostname
+     *
+     * @param ipAddress -- optional -- ipAddress to validate against CSR
+     *
+     * @param certificateRequest -- A PKCS 10 Certificate request
+     *
+     * @param notBefore - Start date of the Certificate
+     *
+     * @param notAfter - End Date of the Certificate
+     *
+     * @return X509Certificate
+     *
+     * @throws Exception
+     */
+
+    public X509Certificate
+    getCertificateForHost(String hostName, String ipAddress,
+            String certificateRequest,
+            Date notBefore, Date notAfter) throws Exception {
+
+        try(VMCAServerContext context = getServerContext())
+        {
+            return this.getCertificateForHost(context, hostName, ipAddress,
+                                  certificateRequest, notBefore, notAfter);
+        }
+    }
+
+    /*
+     * Returns a Signed Host Certificate from the Server
+     *
+     * @param certificateRequest -- A PKCS 10 Certificate request
+     *
+     * @param hostName -- Host name, CSR will be validated against hostname
+     *
+     * @param ipAddress -- optional -- ipAddress to validate against CSR
+     *
+     * @param notBefore - Start date of the Certificate
+     *
+     * @param notAfter - End Date of the Certificate
+     *
+     * @return X509Certificate
+     *
+     * @throws Exception
+     */
+    protected X509Certificate
+    getCertificateForHost(VMCAServerContext context, String hostName,
+            String ipAddress, String certificateRequest,
+            Date notBefore, Date notAfter) throws Exception {
+
+        long epochNotBefore = notBefore.getTime();
+        long epochNotAfter = notAfter.getTime();
+
+        epochNotBefore = epochNotBefore / 1000;
+        epochNotAfter = epochNotAfter / 1000;
+
+        return getCertificateFromString(VMCAAdapter2
+                .VMCAGetSignedCertificateForHost(context,
+                        hostName, ipAddress, certificateRequest,
+                        epochNotBefore, epochNotAfter));
     }
 
     private String getPEMEncodedKey(KeyPair Keys) {
